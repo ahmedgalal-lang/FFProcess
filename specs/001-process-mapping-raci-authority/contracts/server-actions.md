@@ -38,7 +38,7 @@ recorded as such, not as a fabricated `Member`.
 |---|---|---|---|
 | `createProcess` **[Editor+]** | `{ workspaceId, code, name, description?, parentProcessId? }` | `Process` or `{ ok: false, error: "VALIDATION_ERROR" }` (duplicate code) | code uniqueness + parent-cycle checks (FR-020, FR-022) |
 | `updateProcess` **[Editor+]** | `{ processId, expectedUpdatedAt, code?, name?, description?, parentProcessId? }` | `Process` or `{ ok: false, error: "CONFLICT" \| "VALIDATION_ERROR" }` | same validation as createProcess; rejects a `parentProcessId` that would create a cycle |
-| `saveProcessMap` **[Editor+]** | `{ processId, expectedUpdatedAt, steps[] (each with optional `linkedProcessId`), connections[] }` | `Process` (with steps/connections) or `{ ok: false, error: "CONFLICT" }` | optimistic concurrency per Research §6; full-graph replace-save (autosave payload); `linkedProcessId` implements FR-021 |
+| `saveProcessMap` **[Editor+]** | `{ processId, expectedUpdatedAt, steps[] (each with optional `linkedProcessIds: string[]`), connections[] }` | `Process` (with steps/connections) or `{ ok: false, error: "CONFLICT" }` | optimistic concurrency per Research §6; full-graph replace-save (autosave payload); `linkedProcessIds` (zero or more) implements FR-021's many-to-many step-to-Process link via `ProcessStepLink` |
 | `createActivity` **[Editor+]** | `{ processId, name, relatedStepId? }` | `Activity` | |
 | `reorderActivities` **[Editor+]** | `{ processId, orderedActivityIds[] }` | `Activity[]` | |
 

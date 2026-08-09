@@ -138,14 +138,15 @@ by a unique code and optionally nested under a parent Process (FR-019, FR-020, F
 
 Relationships: has many `ProcessStep`, `Activity`; has one `RaciMatrix` status summary (derived,
 not a separate table — see RACI Matrix state below); self-referential `parentProcessId` → many
-sub-`Process`es; referenced by other Processes' `ProcessStep.linkedProcessId` (cross-process links).
+sub-`Process`es; referenced by other Processes' steps via `ProcessStepLink.targetProcessId`
+(cross-process links, many-to-many).
 
 Validation rules (enforced in `lib/domain/process-hierarchy.ts`, unit-tested per Principle III):
 - `code` MUST be unique within `workspaceId` (FR-022); create/rename is rejected with a reference
   to the conflicting Process otherwise.
 - `parentProcessId` MUST NOT create a cycle — a Process cannot be its own ancestor, checked by
   walking the parent chain before save (FR-020, Edge Cases).
-- A Process with one or more sub-processes, or that is the target of any `ProcessStep.linkedProcessId`,
+- A Process with one or more sub-processes, or that is the target of any `ProcessStepLink`,
   cannot be hard-deleted — it is archived instead, mirroring the Role/Person rule (FR-018 pattern).
 
 ## ProcessStep
@@ -160,8 +161,23 @@ A node in the Process Map (FR-003, FR-004).
 | label | string | |
 | assignedRoleId | uuid \| null | FK → Role |
 | swimlaneRoleId | uuid \| null | FK → Role, may differ conceptually from assignedRoleId but defaults to it |
-| linkedProcessId | uuid \| null | FK → Process (a different Process than `processId`); optional cross-process hand-off (FR-021) |
 | positionX / positionY | float | canvas layout coordinates |
+
+Relationships: has many `ProcessStepLink` (zero or more cross-process links per step, FR-021).
+
+## ProcessStepLink
+
+A step-level cross-process link (FR-021) — many-to-many between `ProcessStep` and `Process`, so
+one step can hand off into multiple downstream Processes (spec Amendment 2026-08-09).
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| stepId | uuid | FK → ProcessStep |
+| targetProcessId | uuid | FK → Process (a different Process than the step's own `processId`) |
+
+Validation rules: unique (`stepId`, `targetProcessId`) — a step links to a given Process at most
+once, though it may link to any number of *different* Processes.
 
 ## StepConnection
 
@@ -266,7 +282,7 @@ Workspace 1──* Role
 Workspace 1──* Person *──* Role   (via PersonRole)
 Workspace 1──* Process 1──* ProcessStep 1──* StepConnection
 Process   *──1 Process        (parentProcessId — main/sub-process hierarchy)
-ProcessStep *──1 Process      (linkedProcessId — cross-process step link)
+ProcessStep 1──* ProcessStepLink *──1 Process   (many-to-many cross-process step links)
 Process   1──* Activity 1──* RaciAssignment *──1 Role
 Process   1──1 RaciMatrixStatus
 Workspace 1──* DecisionType 1──* ApprovalRule ──(Role | Person)

@@ -111,9 +111,10 @@ links per spec.md FR-019–FR-022.
 - [ ] T064 [P] [US1] Unit test process-code uniqueness and parent-cycle prevention in `tests/unit/process-hierarchy.test.ts` — write first, must fail
 - [ ] T065 [US1] Implement `lib/domain/process-hierarchy.ts` per T064 — implement only after T064 fails
 - [ ] T066 [US1] Extend `createProcess` with `code`/`parentProcessId`, add `updateProcess` Server Action in `app/actions/process.ts` (depends on T065)
-- [ ] T067 [US1] Extend `saveProcessMap` to accept optional `linkedProcessId` per step (depends on T065)
+- [ ] T067 [US1] Extend `saveProcessMap` to accept optional `linkedProcessIds[]` per step, persisting via `ProcessStepLink` (depends on T065)
 - [ ] T068 [US1] Build Processes index UI showing main/sub-process tree with code badges in `app/(app)/workspaces/[workspaceId]/processes/page.tsx` (depends on T066)
-- [ ] T069 [US1] Add cross-process link affordance to Process Map steps (badge showing target code, click-through to that Process's map) in `components/process-map/` (depends on T067, T028)
+- [ ] T069 [US1] Add cross-process link affordance to Process Map steps (one badge per linked Process, each click-through to that Process's map) in `components/process-map/` (depends on T067, T028)
+- [ ] T080 [US1] Build a linear Steps List view of the same Process (ordered entries: type, Role, predecessor, links) with a Diagram/List toggle, both views driven by the same step data per FR-027, in `components/process-map/steps-list.tsx` (depends on T028, T069)
 
 **Checkpoint**: User Story 1 fully functional and independently testable/demoable.
 

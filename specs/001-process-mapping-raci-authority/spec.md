@@ -26,7 +26,7 @@ A consultant starts a new client engagement. They create a Workspace for that cl
 4. **Given** a Process Map with steps assigned to Roles, **When** a user groups steps into swimlanes by Role, **Then** each step visually appears within its assigned Role's lane.
 5. **Given** an in-progress edit to a Process Map, **When** the user makes a change and stops interacting, **Then** the change is saved automatically without an explicit "Save" action losing work on reload.
 6. **Given** a new Process being created, **When** the user assigns it a Process Code (e.g. "SAL101") and optionally marks it as a sub-process of another Process in the same Workspace, **Then** the code and the parent/sub-process relationship are saved and the Process is discoverable by that code from anywhere in the Workspace.
-7. **Given** two Processes that exist in the same Workspace, **When** a user adds a link from a Process Map step in one Process to the other Process, **Then** the step visibly shows the linked Process's code and following it opens that Process's map.
+7. **Given** three or more Processes that exist in the same Workspace, **When** a user adds links from a single Process Map step to two or more of those other Processes (e.g. one step that can hand off to either a Vendor Onboarding process or a Sales Order process depending on the situation), **Then** the step visibly shows every linked Process's code as a separate, individually followable link, and following any one of them opens that Process's map.
 
 ---
 
@@ -144,12 +144,13 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - **FR-018**: System MUST prevent deletion of a Role or Person that is currently referenced by a Process Map step, RACI assignment, or Authority Matrix rule, without first removing or reassigning those references (or MUST archive rather than hard-delete referenced Roles/People, preserving historical assignments).
 - **FR-019**: System MUST allow each Process to be assigned a short Process Code (e.g. "SAL101") that is unique within its Workspace, settable at creation and editable afterward, used to identify and reference the Process elsewhere in the system.
 - **FR-020**: System MUST allow a Process to optionally be designated as a sub-process of exactly one other Process in the same Workspace, forming a main/sub-process hierarchy of arbitrary depth, and MUST prevent a Process from being set as an ancestor of itself (no circular hierarchies).
-- **FR-021**: System MUST allow a Process Map step to optionally link to another Process (by Process Code), visibly marking that step as a hand-off/continuation point, and MUST let a user follow that link to open the linked Process's map.
+- **FR-021**: System MUST allow a Process Map step to optionally link to one or more other Processes (by Process Code) — a single step MAY represent a hand-off point into multiple downstream Processes — visibly marking each linked Process on that step, and MUST let a user follow any one of those links to open the linked Process's map.
 - **FR-022**: System MUST reject an attempt to create or rename a Process with a Process Code already in use by another Process in the same Workspace.
 - **FR-023**: System MUST recognize a single Firm (the consultancy operating the product) that owns every Workspace, and MUST associate every user with the Firm as either a Firm Owner or a regular Firm Member.
 - **FR-024**: A Firm Owner MUST be able to access (view and edit) every Workspace under the Firm without holding an explicit per-workspace Member record, and MUST be able to view a consolidated list of every Workspace in the Firm.
 - **FR-025**: A Firm Member who is not a Firm Owner MUST NOT gain access to any Workspace from Firm membership alone — Workspace access still requires an explicit Workspace Member record for that Firm Member, exactly as for any other user.
 - **FR-026**: System MUST prevent the Firm from having zero Firm Owners at any time (e.g. block removing or downgrading the last remaining Firm Owner), mirroring FR-016's protection for Workspace Admins.
+- **FR-027**: System MUST provide, for any Process Map, both the diagram view (the visual flowchart/swimlane canvas) and a linear list view (each step shown as an ordered entry with its type, assigned Role, predecessor, and any Process links), and MUST let a user switch between the two views of the same underlying steps at will — both views reflect the same data, so a step added in one is immediately visible in the other.
 
 ### Key Entities
 
@@ -213,3 +214,11 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
   to each one, while every other user remains strictly Workspace-scoped. Constitution Principle V
   amended (v1.0.0 → v1.1.0) to carve out this one explicit exception to "no implicit cross-workspace
   read or write."
+- **2026-08-09**: Widened FR-021 so a single Process Map step can link to one or more other
+  Processes, not just one — requested so a step (e.g. "Send PO to Vendor") can represent multiple
+  possible hand-offs (e.g. either Vendor Onboarding or Sales Order Fulfillment, depending on the
+  situation) rather than being limited to a single downstream Process.
+- **2026-08-09**: Added FR-027 — a linear list view of a Process Map's steps as an alternative to
+  the diagram view, switchable at will, both reflecting the same underlying steps. Requested so
+  users who prefer scanning steps as a sequence (rather than a spatial diagram) have that option
+  without maintaining separate data.
