@@ -60,9 +60,20 @@ story depends on. **No user story work can begin until this phase is complete.**
 - [ ] T019 Implement authenticated app shell — `app/(app)/layout.tsx` (workspace switcher) and `app/(app)/workspaces/[workspaceId]/layout.tsx` (calls `requireWorkspaceAccess`, 404/redirect on non-membership)
 - [ ] T020 [P] Implement `prisma/seed.ts` seeding one demo Workspace with sample Roles/People for local development and E2E tests
 
+### Firm Ownership (amendment 2026-08-09b, Foundational)
+
+Adds the Firm/Firm Owner carve-out per spec.md FR-023–FR-026 and Constitution v1.1.0.
+
+- [ ] T070 [P] Add `Firm`, `FirmMember` models to `prisma/schema.prisma`; add `firmId` to `Workspace` per data-model.md
+- [ ] T071 [P] Unit test: at least one active `FirmMember` with `role = OWNER` must always remain (`LAST_OWNER` enforcement) in `tests/unit/firm-ownership.test.ts` — write first, must fail
+- [ ] T072 Implement `lib/domain/firm-ownership.ts` per T071 — implement only after T071 fails
+- [ ] T073 Unit test: `requireWorkspaceAccess` grants access via explicit `Member` OR `FirmMember.role = OWNER`, and denies a non-Owner Firm Member with no `Member` record, in `tests/unit/workspace-access.test.ts` — write first, must fail
+- [ ] T074 Extend `requireWorkspaceAccess` helper (T017) to check the Firm Owner carve-out per T073 (depends on T073)
+- [ ] T075 [P] Extend `prisma/seed.ts` (T020) to seed the single Firm row and one Firm Owner
+
 **Checkpoint**: Authenticated users can sign in, land in an empty workspace shell; unauthenticated
-or non-member access to a workspace route is rejected server-side. Foundation ready for all
-user stories.
+or non-member access to a workspace route is rejected server-side, except for a Firm Owner, who
+reaches every workspace via the carve-out. Foundation ready for all user stories.
 
 ---
 
@@ -202,6 +213,15 @@ Scenario 5).
 - [ ] T055 [US5] Implement `app/api/invitations/[token]/accept/route.ts` (depends on T053)
 - [ ] T056 [US5] Build workspace Members management UI in `app/(app)/workspaces/[workspaceId]/members/page.tsx` (depends on T053, T054)
 - [ ] T057 [US5] E2E test: quickstart.md Scenario 5 in `tests/e2e/membership.spec.ts`
+
+### Firm Owner — All-Clients View (amendment 2026-08-09b, US5)
+
+Builds the Firm Owner-facing side of the carve-out added to Foundational (T070-T075).
+
+- [ ] T076 [US5] Implement `listAllWorkspaces`, `addFirmOwner`, `changeFirmMemberRole` Server Actions in `app/actions/organization.ts` per contracts/server-actions.md (depends on T072, T074)
+- [ ] T077 [US5] Build an "All Clients" view for Firm Owners listing every Workspace, tagging `MEMBER` vs `OWNER_CARVEOUT` access, in `app/(app)/firm/clients/page.tsx` (depends on T076)
+- [ ] T078 [US5] Build Firm Owners management UI (add/remove Owner, `LAST_OWNER` guard surfaced in the UI) in `app/(app)/firm/settings/page.tsx` (depends on T076)
+- [ ] T079 [US5] E2E test: a Firm Owner opens a Workspace with no explicit `Member` record and edits it; a non-Owner Firm Member without a `Member` record is denied, in `tests/e2e/firm-owner.spec.ts`
 
 **Checkpoint**: All five user stories independently functional — feature-complete for v1 scope.
 

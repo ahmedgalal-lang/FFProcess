@@ -75,6 +75,16 @@ its unresolved/not-final status (FR-012, FR-013; Acceptance Scenarios 1-4).
 server-side (not just UI-hidden); the uninvited account is denied access with no data leakage
 (FR-014, FR-015; Acceptance Scenarios 1-5).
 
+4. As the seeded Firm Owner account, open the "All Clients" view and confirm the Acme Industrial
+   workspace appears even though the Firm Owner holds no explicit `Member` record in it; open it
+   and confirm editing succeeds.
+5. As the second test account from step 1 (an ordinary Firm Member, not an Owner), attempt to
+   open a different Workspace it was never invited to — confirm access is denied.
+
+**Expected**: the Firm Owner reaches every Workspace via the carve-out without a fabricated
+Member record; a non-Owner Firm Member gets no access beyond Workspaces it was explicitly added
+to (FR-023–FR-026; Acceptance Scenarios 6-8).
+
 ## Automated coverage
 
 - `tests/unit/raci-validation.test.ts` — exercises `lib/domain/raci-validation.ts` directly
@@ -84,3 +94,6 @@ server-side (not just UI-hidden); the uninvited account is denied access with no
   a threshold value).
 - `tests/e2e/core-workflows.spec.ts` — Playwright walkthrough of Scenarios 1–3 against a seeded
   test database.
+- `tests/unit/workspace-access.test.ts` / `tests/unit/firm-ownership.test.ts` — exercise
+  `requireWorkspaceAccess` and the last-Firm-Owner guard directly against Scenario 5's steps 4-5.
+- `tests/e2e/firm-owner.spec.ts` — Playwright walkthrough of Scenario 5 steps 4-5.

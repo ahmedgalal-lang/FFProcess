@@ -1,5 +1,16 @@
 <!--
 Sync Impact Report
+- Version change: 1.0.0 → 1.1.0
+- Modified principles: V. Workspace Isolation & Least Privilege — added the Firm Owner
+  carve-out (a single, explicitly-granted role that may access every Workspace in the
+  Firm) as the only exception to "no implicit cross-workspace read or write"
+- Added sections: none (existing sections expanded in place)
+- Removed sections: none
+- Follow-up TODOs: none
+-->
+
+<!--
+Sync Impact Report (previous)
 - Version change: [TEMPLATE] → 1.0.0 (initial ratification)
 - Modified principles: n/a (first adoption)
 - Added sections:
@@ -71,14 +82,27 @@ usability requirement for the primary workflow, not a compliance checkbox.
 ### V. Workspace Isolation & Least Privilege
 All persisted data MUST be scoped to a Workspace (representing one client engagement or
 business unit) at the schema level, and every query MUST be filtered by the requesting
-user's authorized workspace(s) — there is no implicit cross-workspace read or write.
-Authorization checks MUST live on the server (route handlers/server actions/middleware),
-never be enforced by hiding UI alone. Role-based access within a workspace (e.g. viewer,
-editor, workspace admin) MUST be explicit and checked server-side per action.
+user's authorized workspace(s) — there is no implicit cross-workspace read or write, with
+exactly one carve-out: a Firm Owner (see below). Authorization checks MUST live on the
+server (route handlers/server actions/middleware), never be enforced by hiding UI alone.
+Role-based access within a workspace (e.g. viewer, editor, workspace admin) MUST be
+explicit and checked server-side per action.
+
+**Firm Owner carve-out**: the product belongs to a single Firm (the consultancy) that owns
+every Workspace (client). A Firm Owner — an explicitly-granted role at the Firm level, not
+something inherited automatically from Workspace-level Admin access — MAY access every
+Workspace under the Firm without holding an explicit per-workspace Member record. This
+access MUST still be enforced server-side per action (never client-hidden only), and MUST
+be attributable to the Firm Owner role rather than presented as ordinary workspace
+membership, so cross-client access stays deliberate and auditable rather than a silent
+bypass of the isolation guarantee below. Every other role remains workspace-scoped exactly
+as stated above: Firm membership alone (without the Owner role) grants no workspace access.
 
 Rationale: consultants manage multiple client engagements concurrently in one instance;
 a workspace data leak (even accidental) is a client-confidentiality incident, not just a
-bug.
+bug. The firm's own leadership still needs a portfolio view across all clients — that need
+is met by one narrow, explicit role rather than by weakening the isolation rule for anyone
+with elevated workspace access.
 
 ### VI. Simplicity & Incremental Delivery
 Build the smallest working vertical slice for each capability before generalizing.
@@ -142,4 +166,4 @@ constitution; any unavoidable deviation MUST be documented with rationale and, w
 possible, a path back to compliance. Complexity that is not justified against these
 principles MUST be simplified before merge.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-09 | **Last Amended**: 2026-08-09
+**Version**: 1.1.0 | **Ratified**: 2026-08-09 | **Last Amended**: 2026-08-09

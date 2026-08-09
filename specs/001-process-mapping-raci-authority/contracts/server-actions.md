@@ -6,9 +6,21 @@ server-side inside every action, never trusted from the client payload). Signatu
 conceptual — inputs are the Zod-inferred shape, outputs are `{ ok: true, data }` or
 `{ ok: false, error }` discriminated unions unless noted.
 
-Every action implicitly requires an authenticated session and re-derives the caller's `Member`
-record for the target `workspaceId` server-side; actions annotated **[Editor+]** or
-**[Admin]** reject callers below that access level (FR-015).
+Every action implicitly requires an authenticated session and re-derives the caller's effective
+access to the target `workspaceId` server-side via `requireWorkspaceAccess()`, which resolves
+access from either (a) an explicit `Member` record for that Workspace, or (b) the caller holding
+`FirmMember.role = OWNER` (Constitution Principle V's Firm Owner carve-out) — whichever grants
+sufficient access; actions annotated **[Editor+]** or **[Admin]** reject callers below that
+effective access level (FR-015, FR-024, FR-025). A Firm Owner acting via carve-out (b) is
+recorded as such, not as a fabricated `Member`.
+
+## `app/actions/organization.ts`
+
+| Action | Input | Output | Notes |
+|---|---|---|---|
+| `listAllWorkspaces` **[Firm Owner]** | `{}` | `Array<{ workspace: Workspace, accessVia: "MEMBER" \| "OWNER_CARVEOUT" }>` | every Workspace in the Firm, tagging how the caller can reach it (FR-024, FR-026 Acceptance Scenario 6) |
+| `addFirmOwner` **[Firm Owner]** | `{ userId }` | `FirmMember` | promotes an existing Firm Member (or invites a new one) to Owner |
+| `changeFirmMemberRole` **[Firm Owner]** | `{ firmMemberId, role }` | `FirmMember` or `{ ok: false, error: "LAST_OWNER" }` | enforces FR-026 |
 
 ## `app/actions/org.ts`
 
@@ -82,5 +94,6 @@ type ActionError =
   | { ok: false; error: "VALIDATION_ERROR"; issues: ZodIssue[] }
   | { ok: false; error: "CONFLICT" }                  // optimistic concurrency (autosave)
   | { ok: false; error: "LAST_ADMIN" }
+  | { ok: false; error: "LAST_OWNER" }
   | { ok: false; error: "VALIDATION_FAILED"; issues: RaciIssue[] | AuthorityIssue[] };
 ```

@@ -1,22 +1,56 @@
 # Phase 1 Data Model: Process Mapping, RACI & Authority Matrices
 
-Entities below are derived from the spec's Key Entities section. All entities except `User`
-and `Invitation` carry a `workspaceId` foreign key and every query is expected to filter by it
-(Constitution Principle V). Field lists are conceptual (types are illustrative, not final Prisma
-syntax) — exact column types/constraints are finalized during `/speckit-implement`.
+Entities below are derived from the spec's Key Entities section. All entities except `User`,
+`Firm`, and `FirmMember` carry a `workspaceId` foreign key (directly or via `Process`/
+`DecisionType`) and every query is expected to filter by it, subject to the Firm Owner
+carve-out described under `FirmMember` (Constitution Principle V). Field lists are conceptual
+(types are illustrative, not final Prisma syntax) — exact column types/constraints are
+finalized during `/speckit-implement`.
 
-## Workspace
+## Firm
 
-The isolation boundary for all other data (FR-001).
+The single consultancy that owns every Workspace (FR-023). Exactly one row exists in v1.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid | PK |
 | name | string | required |
+| createdAt | timestamp | |
+
+Relationships: has many `FirmMember`, `Workspace`.
+
+## FirmMember
+
+A User's Firm-level role (FR-023, FR-024, FR-025, FR-026) — separate from, and does not by
+itself grant, any per-Workspace `Member` access.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| firmId | uuid | FK → Firm |
+| userId | uuid | FK → User |
+| role | enum | `OWNER` \| `MEMBER` |
+
+Validation rules (enforced in `lib/domain/firm-ownership.ts`, unit-tested per Principle III):
+- The Firm MUST always retain at least one `FirmMember` with `role = OWNER` (FR-026) —
+  enforced on removal/downgrade, mirroring the last-Workspace-Admin rule.
+- `role = OWNER` is the only path to implicit cross-Workspace access (Constitution Principle V
+  carve-out); `role = MEMBER` alone grants no Workspace access (FR-025).
+
+## Workspace
+
+The isolation boundary for all other data (FR-001), except for the Firm Owner carve-out —
+see `FirmMember` above and Constitution Principle V.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| firmId | uuid | FK → Firm |
+| name | string | required |
 | currency | string | ISO 4217 code, default per Assumptions (single currency per workspace) |
 | createdAt / updatedAt | timestamp | |
 
-Relationships: has many `Member`, `Role`, `Person`, `Process`, `DecisionType`.
+Relationships: has many `Member`, `Role`, `Person`, `Process`, `DecisionType`; belongs to one `Firm`.
 
 ## User
 
@@ -28,7 +62,8 @@ Account identity, workspace-independent (Auth.js managed).
 | email | string | unique |
 | name | string | |
 
-Relationships: has many `Member` (one per Workspace they belong to).
+Relationships: has many `Member` (one per Workspace they belong to); has one `FirmMember`
+record (Firm-level role, independent of Workspace membership).
 
 ## Member
 
@@ -224,6 +259,8 @@ Validation rules (enforced in `lib/domain/authority-resolution.ts`, unit-tested)
 ## Entity Relationship Summary
 
 ```text
+Firm      1──* FirmMember *──1 User
+Firm      1──* Workspace
 Workspace 1──* Member *──1 User
 Workspace 1──* Role
 Workspace 1──* Person *──* Role   (via PersonRole)

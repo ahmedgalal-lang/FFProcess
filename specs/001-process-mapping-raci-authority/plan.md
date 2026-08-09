@@ -95,6 +95,13 @@ derivation; RACI/Authority business rules (Principle III) are isolated in `lib/d
 Project Structure, confirming they are unit-testable without the web framework. Gate remains
 PASS.
 
+**Amendment re-check (2026-08-09, Firm Owner)**: Constitution Principle V was itself amended
+(v1.0.0 → v1.1.0) to add the Firm Owner carve-out. The plan's `requireWorkspaceAccess()` helper
+(`lib/auth/workspace.ts`, Foundational phase) now resolves access from either an explicit
+`Member` row or `FirmMember.role = OWNER`, per `contracts/server-actions.md`'s updated access
+paragraph — no new service or architectural layer required, just an additional check inside the
+same existing helper. Gate remains PASS.
+
 ## Project Structure
 
 ### Documentation (this feature)

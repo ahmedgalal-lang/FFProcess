@@ -86,11 +86,11 @@ A user exports a completed Process Map, RACI Matrix, or Authority Matrix as a do
 
 ### User Story 5 - Invite Teammates with Scoped Access (Priority: P5)
 
-A workspace admin invites colleagues (or client staff) to a Workspace by email, assigning each an access level (Viewer, Editor, or Admin) within that workspace. Invited users can only see and act on workspaces they have been added to.
+A workspace admin invites colleagues (or client staff) to a Workspace by email, assigning each an access level (Viewer, Editor, or Admin) within that workspace. Invited users can only see and act on workspaces they have been added to — except a Firm Owner (the consultancy's own leadership), who can see and act on every Workspace across every client without needing to be separately added to each one, and who manages the all-clients view and who else holds the Firm Owner role.
 
-**Why this priority**: Solo use of the tool (a single consultant building artifacts) already delivers the core value in Stories 1-4; multi-user collaboration is important for team engagements but is not required for the first usable release.
+**Why this priority**: Solo use of the tool (a single consultant building artifacts) already delivers the core value in Stories 1-4; multi-user collaboration is important for team engagements but is not required for the first usable release. The Firm Owner capability rides on the same access-control mechanism this story builds, so it belongs here rather than as a separate story.
 
-**Independent Test**: Can be fully tested by having a workspace admin invite a second account as Editor, confirming that account can edit but not manage workspace membership, and confirming a third, non-invited account cannot see the workspace at all.
+**Independent Test**: Can be fully tested by having a workspace admin invite a second account as Editor, confirming that account can edit but not manage workspace membership, and confirming a third, non-invited account cannot see the workspace at all — plus confirming a Firm Owner account can open that same workspace without ever being added as a Member.
 
 **Acceptance Scenarios**:
 
@@ -99,6 +99,9 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 3. **Given** a user with Editor access, **When** they edit Roles, People, process maps, or matrices, **Then** their changes save, but they cannot manage workspace membership or delete the workspace.
 4. **Given** a user with Admin access, **When** they manage members or workspace settings, **Then** they can add/remove members, change access levels, and delete the workspace.
 5. **Given** a user who is not a member of a Workspace, **When** they attempt to access it directly (e.g. via a shared link), **Then** access is denied and no workspace data is revealed.
+6. **Given** a Firm Owner, **When** they open the all-clients view, **Then** they see every Workspace in the Firm — including ones they hold no explicit Workspace membership in — and can open, view, and edit any of them.
+7. **Given** a Firm Owner accessing a Workspace they are not an explicit Member of, **When** the access is recorded, **Then** it is attributable to their Firm Owner role, not indistinguishable from ordinary workspace membership.
+8. **Given** a Firm with exactly one Firm Owner, **When** someone attempts to remove that person's Firm Owner role, **Then** the system blocks it so the Firm is never left without an Owner.
 
 ---
 
@@ -114,6 +117,8 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - What happens when a user tries to reuse a Process Code already assigned to another Process in the same Workspace? The system must reject the save and explain which Process already holds that code.
 - What happens when a user tries to set a Process's parent to one of that Process's own descendants (or to itself)? The system must block the change rather than create a cycle.
 - What happens when a Process that has sub-processes, or is the target of a step-level cross-process link, is deleted? Deletion is blocked (or the Process is archived rather than hard-deleted) until sub-processes are reassigned and inbound links are removed, consistent with how Roles/People are protected (FR-018).
+- What happens when a Firm Owner opens a Workspace they hold no explicit Member record in and then edits its content? The edit is attributed to them and recorded like any other change; the system does not fabricate a Member record on their behalf (FR-024, Edge Cases below on auditability).
+- What happens when the only Firm Owner tries to demote themselves or leaves? Blocked, same pattern as the last-Workspace-Admin rule (FR-026).
 
 ## Requirements *(mandatory)*
 
@@ -141,10 +146,16 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - **FR-020**: System MUST allow a Process to optionally be designated as a sub-process of exactly one other Process in the same Workspace, forming a main/sub-process hierarchy of arbitrary depth, and MUST prevent a Process from being set as an ancestor of itself (no circular hierarchies).
 - **FR-021**: System MUST allow a Process Map step to optionally link to another Process (by Process Code), visibly marking that step as a hand-off/continuation point, and MUST let a user follow that link to open the linked Process's map.
 - **FR-022**: System MUST reject an attempt to create or rename a Process with a Process Code already in use by another Process in the same Workspace.
+- **FR-023**: System MUST recognize a single Firm (the consultancy operating the product) that owns every Workspace, and MUST associate every user with the Firm as either a Firm Owner or a regular Firm Member.
+- **FR-024**: A Firm Owner MUST be able to access (view and edit) every Workspace under the Firm without holding an explicit per-workspace Member record, and MUST be able to view a consolidated list of every Workspace in the Firm.
+- **FR-025**: A Firm Member who is not a Firm Owner MUST NOT gain access to any Workspace from Firm membership alone — Workspace access still requires an explicit Workspace Member record for that Firm Member, exactly as for any other user.
+- **FR-026**: System MUST prevent the Firm from having zero Firm Owners at any time (e.g. block removing or downgrading the last remaining Firm Owner), mirroring FR-016's protection for Workspace Admins.
 
 ### Key Entities
 
-- **Workspace**: A single client engagement or business unit; the isolation boundary for all other data. Has a name and a list of Members with access levels.
+- **Firm**: The single consultancy operating this product; owns every Workspace. Has a name and a list of Firm Members, each either a Firm Owner or a regular Firm Member.
+- **Firm Member**: A user's membership in the Firm, carrying one Firm-level role (Owner or Member). Owner grants implicit access to every Workspace under the Firm; Member alone grants no Workspace access.
+- **Workspace**: A single client engagement or business unit, belonging to the Firm; the isolation boundary for all other data (except the Firm Owner carve-out above). Has a name and a list of Members with access levels.
 - **Member**: A user's membership in a Workspace, carrying one access level (Viewer, Editor, Admin).
 - **Role**: A named organizational function within a Workspace (e.g. "Finance Manager"), reused across Process Maps, RACI Matrices, and Authority Matrices.
 - **Person**: A named individual within a Workspace, optionally associated with one or more Roles.
@@ -179,6 +190,7 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - Deleted-but-referenced Roles/People are archived, not hard-deleted, so historical Process Map, RACI, and Authority Matrix data remains intact and auditable.
 - Process Codes are free-text strings unique per Workspace (e.g. a department prefix plus a number, such as "SAL101"); the system suggests but does not rigidly enforce a specific pattern in v1.
 - The main/sub-process hierarchy is a simple parent reference (a Process points at zero or one parent Process); there is no separate "program" or "portfolio" entity above it in v1 — a top-level Process with sub-processes serves that role.
+- v1 supports exactly one Firm (this product instance belongs to one consultancy); it is not a multi-firm/white-label platform. Firm Owner is a small, explicitly-granted set of people (the firm's own leadership), not something every Workspace Admin inherits.
 
 ## Out of Scope (v1)
 
@@ -196,3 +208,8 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
   step-level cross-process linking (FR-021) — requested to let processes like a Sales process
   ("SAL101") be uniquely identified, organized as main/subsidiary processes, and cross-referenced
   from steps in other processes.
+- **2026-08-09**: Added the Firm and Firm Owner role (FR-023–FR-026) — requested so the
+  consultancy's own leadership can access every client Workspace without being separately added
+  to each one, while every other user remains strictly Workspace-scoped. Constitution Principle V
+  amended (v1.0.0 → v1.1.0) to carve out this one explicit exception to "no implicit cross-workspace
+  read or write."
