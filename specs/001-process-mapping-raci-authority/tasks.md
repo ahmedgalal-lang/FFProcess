@@ -92,6 +92,18 @@ Scenario 1).
 - [ ] T030 [US1] Add keyboard node selection/movement and ARIA labeling to the canvas per Constitution Principle IV (depends on T028)
 - [ ] T031 [US1] E2E test: quickstart.md Scenario 1 in `tests/e2e/process-map.spec.ts`
 
+### Process Coding & Hierarchy (amendment 2026-08-09, US1)
+
+Adds Process Codes (e.g. "SAL101"), main/sub-process hierarchy, and step-level cross-process
+links per spec.md FR-019–FR-022.
+
+- [ ] T064 [P] [US1] Unit test process-code uniqueness and parent-cycle prevention in `tests/unit/process-hierarchy.test.ts` — write first, must fail
+- [ ] T065 [US1] Implement `lib/domain/process-hierarchy.ts` per T064 — implement only after T064 fails
+- [ ] T066 [US1] Extend `createProcess` with `code`/`parentProcessId`, add `updateProcess` Server Action in `app/actions/process.ts` (depends on T065)
+- [ ] T067 [US1] Extend `saveProcessMap` to accept optional `linkedProcessId` per step (depends on T065)
+- [ ] T068 [US1] Build Processes index UI showing main/sub-process tree with code badges in `app/(app)/workspaces/[workspaceId]/processes/page.tsx` (depends on T066)
+- [ ] T069 [US1] Add cross-process link affordance to Process Map steps (badge showing target code, click-through to that Process's map) in `components/process-map/` (depends on T067, T028)
+
 **Checkpoint**: User Story 1 fully functional and independently testable/demoable.
 
 ---
@@ -163,7 +175,7 @@ visually matches the on-screen matrix, including a not-final indicator if export
 - [ ] T047 [P] [US4] Implement PDF renderers (Process Map, RACI, Authority) with `@react-pdf/renderer` in `lib/export/pdf/`
 - [ ] T048 [P] [US4] Implement Excel renderers (RACI, Authority) with `exceljs` in `lib/export/xlsx.ts`
 - [ ] T049 [US4] Implement route handlers `app/api/export/process-map/[id]/route.ts`, `app/api/export/raci/[id]/route.ts`, `app/api/export/authority/[id]/route.ts` (depends on T047, T048)
-- [ ] T050 [US4] Wire export buttons into map/RACI/authority pages, including Draft/unresolved-issue banner per FR-013 (depends on T049)
+- [ ] T050 [US4] Wire export buttons into map/RACI/authority pages, opening a format-selection preview (PDF/Excel/PNG) with the Draft/unresolved-issue banner per FR-013 visible before download is confirmed (depends on T049)
 - [ ] T051 [US4] E2E test: quickstart.md Scenario 4 in `tests/e2e/export.spec.ts`
 
 **Checkpoint**: All three artifact types can be produced as shareable files.

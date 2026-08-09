@@ -88,18 +88,30 @@ Join table associating People with Roles.
 
 ## Process
 
-A named business process containing a Process Map and Activities (FR-003, FR-005).
+A named business process containing a Process Map and Activities (FR-003, FR-005), identified
+by a unique code and optionally nested under a parent Process (FR-019, FR-020, FR-022).
 
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid | PK |
 | workspaceId | uuid | FK |
+| code | string | required, unique within `workspaceId` (e.g. "SAL101") — case-insensitive uniqueness |
 | name | string | required |
 | description | string \| null | |
+| parentProcessId | uuid \| null | FK → Process (self-referential; main/sub-process hierarchy, arbitrary depth) |
 | createdAt / updatedAt | timestamp | `updatedAt` doubles as the optimistic-concurrency token for autosave (Research §6) |
 
 Relationships: has many `ProcessStep`, `Activity`; has one `RaciMatrix` status summary (derived,
-not a separate table — see RACI Matrix state below).
+not a separate table — see RACI Matrix state below); self-referential `parentProcessId` → many
+sub-`Process`es; referenced by other Processes' `ProcessStep.linkedProcessId` (cross-process links).
+
+Validation rules (enforced in `lib/domain/process-hierarchy.ts`, unit-tested per Principle III):
+- `code` MUST be unique within `workspaceId` (FR-022); create/rename is rejected with a reference
+  to the conflicting Process otherwise.
+- `parentProcessId` MUST NOT create a cycle — a Process cannot be its own ancestor, checked by
+  walking the parent chain before save (FR-020, Edge Cases).
+- A Process with one or more sub-processes, or that is the target of any `ProcessStep.linkedProcessId`,
+  cannot be hard-deleted — it is archived instead, mirroring the Role/Person rule (FR-018 pattern).
 
 ## ProcessStep
 
@@ -113,6 +125,7 @@ A node in the Process Map (FR-003, FR-004).
 | label | string | |
 | assignedRoleId | uuid \| null | FK → Role |
 | swimlaneRoleId | uuid \| null | FK → Role, may differ conceptually from assignedRoleId but defaults to it |
+| linkedProcessId | uuid \| null | FK → Process (a different Process than `processId`); optional cross-process hand-off (FR-021) |
 | positionX / positionY | float | canvas layout coordinates |
 
 ## StepConnection
@@ -215,6 +228,8 @@ Workspace 1──* Member *──1 User
 Workspace 1──* Role
 Workspace 1──* Person *──* Role   (via PersonRole)
 Workspace 1──* Process 1──* ProcessStep 1──* StepConnection
+Process   *──1 Process        (parentProcessId — main/sub-process hierarchy)
+ProcessStep *──1 Process      (linkedProcessId — cross-process step link)
 Process   1──* Activity 1──* RaciAssignment *──1 Role
 Process   1──1 RaciMatrixStatus
 Workspace 1──* DecisionType 1──* ApprovalRule ──(Role | Person)

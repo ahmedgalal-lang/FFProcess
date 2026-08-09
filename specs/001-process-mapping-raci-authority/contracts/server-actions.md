@@ -24,8 +24,9 @@ record for the target `workspaceId` server-side; actions annotated **[Editor+]**
 
 | Action | Input | Output | Notes |
 |---|---|---|---|
-| `createProcess` **[Editor+]** | `{ workspaceId, name, description? }` | `Process` | |
-| `saveProcessMap` **[Editor+]** | `{ processId, expectedUpdatedAt, steps[], connections[] }` | `Process` (with steps/connections) or `{ ok: false, error: "CONFLICT" }` | optimistic concurrency per Research §6; full-graph replace-save (autosave payload) |
+| `createProcess` **[Editor+]** | `{ workspaceId, code, name, description?, parentProcessId? }` | `Process` or `{ ok: false, error: "VALIDATION_ERROR" }` (duplicate code) | code uniqueness + parent-cycle checks (FR-020, FR-022) |
+| `updateProcess` **[Editor+]** | `{ processId, expectedUpdatedAt, code?, name?, description?, parentProcessId? }` | `Process` or `{ ok: false, error: "CONFLICT" \| "VALIDATION_ERROR" }` | same validation as createProcess; rejects a `parentProcessId` that would create a cycle |
+| `saveProcessMap` **[Editor+]** | `{ processId, expectedUpdatedAt, steps[] (each with optional `linkedProcessId`), connections[] }` | `Process` (with steps/connections) or `{ ok: false, error: "CONFLICT" }` | optimistic concurrency per Research §6; full-graph replace-save (autosave payload); `linkedProcessId` implements FR-021 |
 | `createActivity` **[Editor+]** | `{ processId, name, relatedStepId? }` | `Activity` | |
 | `reorderActivities` **[Editor+]** | `{ processId, orderedActivityIds[] }` | `Activity[]` | |
 

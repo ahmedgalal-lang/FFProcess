@@ -25,6 +25,8 @@ A consultant starts a new client engagement. They create a Workspace for that cl
 3. **Given** an empty Process Map, **When** a user adds steps, connects them in sequence, adds a decision point with two branches, and assigns a Role to each step, **Then** the map persists the steps, connections, branch labels, and Role assignments, and re-opening the map shows the same layout.
 4. **Given** a Process Map with steps assigned to Roles, **When** a user groups steps into swimlanes by Role, **Then** each step visually appears within its assigned Role's lane.
 5. **Given** an in-progress edit to a Process Map, **When** the user makes a change and stops interacting, **Then** the change is saved automatically without an explicit "Save" action losing work on reload.
+6. **Given** a new Process being created, **When** the user assigns it a Process Code (e.g. "SAL101") and optionally marks it as a sub-process of another Process in the same Workspace, **Then** the code and the parent/sub-process relationship are saved and the Process is discoverable by that code from anywhere in the Workspace.
+7. **Given** two Processes that exist in the same Workspace, **When** a user adds a link from a Process Map step in one Process to the other Process, **Then** the step visibly shows the linked Process's code and following it opens that Process's map.
 
 ---
 
@@ -109,6 +111,9 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - What happens when an Authority Matrix query value exactly equals a threshold boundary (e.g. rule is "up to $10,000" and query is exactly $10,000)? Boundaries are inclusive of the stated threshold unless a rule explicitly states otherwise.
 - What happens when a workspace's last remaining Admin tries to leave or is removed? The system must prevent a workspace from ending up with zero Admins.
 - What happens when exporting a very large process map (100+ steps)? Export must still complete and remain legible (e.g. paginated PDF) rather than failing or producing an unreadable single page.
+- What happens when a user tries to reuse a Process Code already assigned to another Process in the same Workspace? The system must reject the save and explain which Process already holds that code.
+- What happens when a user tries to set a Process's parent to one of that Process's own descendants (or to itself)? The system must block the change rather than create a cycle.
+- What happens when a Process that has sub-processes, or is the target of a step-level cross-process link, is deleted? Deletion is blocked (or the Process is archived rather than hard-deleted) until sub-processes are reassigned and inbound links are removed, consistent with how Roles/People are protected (FR-018).
 
 ## Requirements *(mandatory)*
 
@@ -132,6 +137,10 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - **FR-016**: System MUST prevent a Workspace from having zero Admins at any time (e.g. block removing or downgrading the last remaining Admin).
 - **FR-017**: System MUST autosave in-progress edits to Process Maps, RACI Matrices, and Authority Matrices without requiring an explicit save action, and MUST NOT silently discard a user's unsaved changes on navigation or reload.
 - **FR-018**: System MUST prevent deletion of a Role or Person that is currently referenced by a Process Map step, RACI assignment, or Authority Matrix rule, without first removing or reassigning those references (or MUST archive rather than hard-delete referenced Roles/People, preserving historical assignments).
+- **FR-019**: System MUST allow each Process to be assigned a short Process Code (e.g. "SAL101") that is unique within its Workspace, settable at creation and editable afterward, used to identify and reference the Process elsewhere in the system.
+- **FR-020**: System MUST allow a Process to optionally be designated as a sub-process of exactly one other Process in the same Workspace, forming a main/sub-process hierarchy of arbitrary depth, and MUST prevent a Process from being set as an ancestor of itself (no circular hierarchies).
+- **FR-021**: System MUST allow a Process Map step to optionally link to another Process (by Process Code), visibly marking that step as a hand-off/continuation point, and MUST let a user follow that link to open the linked Process's map.
+- **FR-022**: System MUST reject an attempt to create or rename a Process with a Process Code already in use by another Process in the same Workspace.
 
 ### Key Entities
 
@@ -139,8 +148,8 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - **Member**: A user's membership in a Workspace, carrying one access level (Viewer, Editor, Admin).
 - **Role**: A named organizational function within a Workspace (e.g. "Finance Manager"), reused across Process Maps, RACI Matrices, and Authority Matrices.
 - **Person**: A named individual within a Workspace, optionally associated with one or more Roles.
-- **Process**: A named business process within a Workspace, containing a Process Map and a set of Activities usable by a RACI Matrix.
-- **Process Step**: A node in a Process Map — a task, decision point, start, or end — with sequencing/connections to other steps, an optional assigned Role, and an optional swimlane grouping.
+- **Process**: A named business process within a Workspace, containing a Process Map and a set of Activities usable by a RACI Matrix. Carries a unique, workspace-scoped Process Code (e.g. "SAL101") and may designate one other Process in the same Workspace as its parent, forming a main/sub-process hierarchy.
+- **Process Step**: A node in a Process Map — a task, decision point, start, or end — with sequencing/connections to other steps, an optional assigned Role, an optional swimlane grouping, and an optional link to another Process (by Process Code) representing a hand-off into that Process's map.
 - **Activity**: A discrete unit of work within a Process that appears as a row in a RACI Matrix; may correspond to one or more Process Steps.
 - **RACI Assignment**: The RACI code (Responsible, Accountable, Consulted, Informed) linking one Activity to one Role within a RACI Matrix.
 - **Decision Type**: A named category of decision or transaction requiring approval (e.g. "Purchase Order") within a Workspace.
@@ -168,6 +177,8 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - "Value thresholds" in the Authority Matrix are monetary amounts in a single currency per Workspace; multi-currency support is out of scope for v1.
 - A Workspace corresponds 1:1 with a single client engagement or business unit; cross-workspace reporting/rollups are out of scope for v1.
 - Deleted-but-referenced Roles/People are archived, not hard-deleted, so historical Process Map, RACI, and Authority Matrix data remains intact and auditable.
+- Process Codes are free-text strings unique per Workspace (e.g. a department prefix plus a number, such as "SAL101"); the system suggests but does not rigidly enforce a specific pattern in v1.
+- The main/sub-process hierarchy is a simple parent reference (a Process points at zero or one parent Process); there is no separate "program" or "portfolio" entity above it in v1 — a top-level Process with sub-processes serves that role.
 
 ## Out of Scope (v1)
 
@@ -178,3 +189,10 @@ A workspace admin invites colleagues (or client staff) to a Workspace by email, 
 - Billing/payments and subscription management.
 - Multi-currency authority thresholds.
 - Cross-workspace reporting or analytics rollups.
+
+## Amendments
+
+- **2026-08-09**: Added Process Codes (FR-019, FR-022), main/sub-process hierarchy (FR-020), and
+  step-level cross-process linking (FR-021) — requested to let processes like a Sales process
+  ("SAL101") be uniquely identified, organized as main/subsidiary processes, and cross-referenced
+  from steps in other processes.
