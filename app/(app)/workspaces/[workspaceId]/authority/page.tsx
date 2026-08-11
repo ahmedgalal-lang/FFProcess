@@ -37,7 +37,23 @@ export default async function AuthorityMatrixPage(
 
         return (
           <section key={dt.id} className="mb-8">
-            <h2 className="mb-2 text-sm font-semibold text-slate-800">{dt.name}</h2>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-800">{dt.name}</h2>
+              <div className="flex gap-2">
+                <a
+                  href={`/api/export/authority/${dt.id}?format=pdf`}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Export PDF
+                </a>
+                <a
+                  href={`/api/export/authority/${dt.id}?format=xlsx`}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Export Excel
+                </a>
+              </div>
+            </div>
             {conflicts.length > 0 && (
               <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                 {conflicts.length} conflicting rule pair(s) detected — thresholds are ambiguous.

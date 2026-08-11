@@ -27,11 +27,13 @@ type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: st
 export function MapView({
   workspaceId,
   processId,
+  processCode,
   steps,
   connections,
 }: {
   workspaceId: string;
   processId: string;
+  processCode: string;
   steps: StepT[];
   connections: ConnectionT[];
 }) {
@@ -42,23 +44,37 @@ export function MapView({
 
   return (
     <div>
-      <div className="mb-3 inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
-        {(["diagram", "list"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            className={`rounded-md px-3 py-1 text-xs font-semibold ${
-              mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-            }`}
-          >
-            {m === "diagram" ? "⌗ Diagram" : "☰ Steps List"}
-          </button>
-        ))}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+          {(["diagram", "list"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`rounded-md px-3 py-1 text-xs font-semibold ${
+                mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+              }`}
+            >
+              {m === "diagram" ? "⌗ Diagram" : "☰ Steps List"}
+            </button>
+          ))}
+        </div>
+        <a
+          href={`/api/export/process-map/${processId}`}
+          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Export PDF
+        </a>
       </div>
 
       {mode === "diagram" ? (
-        <ProcessMapCanvas workspaceId={workspaceId} processId={processId} steps={steps} connections={connections} />
+        <ProcessMapCanvas
+          workspaceId={workspaceId}
+          processId={processId}
+          processCode={processCode}
+          steps={steps}
+          connections={connections}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {steps.map((step, i) => {

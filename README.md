@@ -53,18 +53,22 @@ links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
 - Processes: creation with unique Process Codes, main/sub-process hierarchy, cross-process
   step links (one step can link to multiple other Processes)
 - Process Map: React Flow diagram canvas (swimlanes, decision diamonds, drag-to-reposition
-  with autosave) with a Diagram/Steps-List toggle over the same underlying data (FR-027);
-  add-step flow with auto-layout (lane by Role, appended left-to-right)
+  with autosave, drag-to-connect between step handles, click-to-select + Delete a connector)
+  with a Diagram/Steps-List toggle over the same underlying data (FR-027); add-step flow with
+  auto-layout (lane by Role, appended left-to-right); PNG export of the live canvas
 - RACI Matrix: live grid, validation (missing/multiple Accountable, missing Responsible),
-  finalize/reopen lifecycle
-- Authority Matrix: threshold + co-approval rules, approver query tool, gap/conflict detection
-- Members: invite (Member record created directly; email delivery via Resend not wired up —
-  tasks.md T054), access-level management, last-Admin protection
+  finalize/reopen lifecycle, PDF/Excel export
+- Authority Matrix: threshold + co-approval rules, approver query tool, gap/conflict detection,
+  PDF/Excel export
+- Members: invite by email with a tokenized accept link (7-day expiry) — sent via Resend when
+  `RESEND_API_KEY` is configured, otherwise shown directly in the UI as a shareable link;
+  the accept page creates an account for brand-new invitees or signs an existing account in;
+  access-level management, last-Admin protection
 - All business rules (`lib/domain/*`) are unit-tested first, per Constitution Principle III
 
 ## Not yet built
 
-Export (PDF/Excel/PNG), invitation emails, drag-to-connect (new connections are made via the
-Add Step form's "connects from" field, not by dragging between node handles), and most of the
-Playwright E2E coverage beyond `tests/e2e/core-workflows.spec.ts`. See
-`specs/001-process-mapping-raci-authority/tasks.md` for the full remaining task list.
+A full accessibility pass (keyboard navigation + ARIA labeling for the process-map canvas and
+RACI grid — tasks.md T030/T038/T058) and most of the Playwright E2E coverage beyond
+`tests/e2e/core-workflows.spec.ts`. See `specs/001-process-mapping-raci-authority/tasks.md` for
+the full remaining task list.

@@ -65,4 +65,46 @@ test.describe("Core workflows", () => {
     await page.click('button:has-text("$250,000")');
     await expect(page.locator("main")).toContainText("No authorized approver");
   });
+
+  test("Inviting a new member produces a working accept link that provisions an account", async ({ page, context }) => {
+    const email = `invite-test-${Date.now()}@example.com`;
+
+    await page.goto("/workspaces/workspace-acme/members");
+    const inviteForm = page.locator("form").filter({ has: page.locator('button:has-text("Send invitation")') });
+    await inviteForm.locator('input[type="email"]').fill(email);
+    await inviteForm.locator("select").selectOption("EDITOR");
+    await inviteForm.locator('button:has-text("Send invitation")').click();
+
+    const acceptLink = page.locator("a.font-mono");
+    await expect(acceptLink).toBeVisible();
+    const acceptUrl = await acceptLink.getAttribute("href");
+    expect(acceptUrl).toContain("/invitations/");
+    await expect(page.locator("tr", { hasText: email })).toContainText("Invite pending");
+
+    // Accept the invite as a brand-new visitor (separate browser context = logged out).
+    const inviteePage = await context.browser()!.newContext().then((c) => c.newPage());
+    await inviteePage.goto(acceptUrl!);
+    await expect(inviteePage.locator("h1")).toContainText("Join Acme Industrial");
+    await inviteePage.fill("#name", "Invite Test User");
+    await inviteePage.fill("#password", "test-password-123");
+    await inviteePage.click('button:has-text("Create account & join")');
+    await inviteePage.waitForURL("**/workspaces/workspace-acme");
+    await expect(inviteePage.locator("h1")).toHaveText("Acme Industrial");
+    await inviteePage.close();
+
+    // The same accept link must not be reusable once consumed.
+    const staleInviteePage = await context.browser()!.newContext().then((c) => c.newPage());
+    await staleInviteePage.goto(acceptUrl!);
+    await expect(staleInviteePage.locator("h1")).toContainText("Invitation not found");
+    await staleInviteePage.close();
+
+    // The invited access level (Editor) must have carried through to the accepted membership.
+    await page.reload();
+    const row = page.locator("tr", { hasText: email });
+    await expect(row).toContainText("Active");
+    await expect(row.locator("select")).toHaveValue("EDITOR");
+
+    // Cleanup: remove the invitee so re-runs start clean.
+    await row.locator('button:has-text("Remove")').click();
+  });
 });

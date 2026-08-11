@@ -7,10 +7,11 @@ export type LoginState = { error: string | null };
 
 export async function loginAction(_prevState: LoginState, formData: FormData): Promise<LoginState> {
   try {
+    const callbackUrl = formData.get("callbackUrl");
     await signIn("credentials", {
       email: formData.get("email"),
       password: formData.get("password"),
-      redirectTo: "/workspaces",
+      redirectTo: typeof callbackUrl === "string" && callbackUrl.startsWith("/") ? callbackUrl : "/workspaces",
     });
     return { error: null };
   } catch (error) {

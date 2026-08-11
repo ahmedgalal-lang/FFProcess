@@ -38,8 +38,24 @@ export default async function RaciMatrixPage(
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <div className="mb-1 text-xs text-slate-400">
-        {process.code} · {process.name}
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="text-xs text-slate-400">
+          {process.code} · {process.name}
+        </div>
+        <div className="flex gap-2">
+          <a
+            href={`/api/export/raci/${processId}?format=pdf`}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Export PDF
+          </a>
+          <a
+            href={`/api/export/raci/${processId}?format=xlsx`}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Export Excel
+          </a>
+        </div>
       </div>
       <h1 className="text-xl font-semibold text-slate-900">RACI Matrix</h1>
       <p className="mt-1 mb-5 text-sm text-slate-500">

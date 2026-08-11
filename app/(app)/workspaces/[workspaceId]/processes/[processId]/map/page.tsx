@@ -53,7 +53,13 @@ export default async function ProcessMapPage(
         </a>
       </p>
 
-      <MapView workspaceId={workspaceId} processId={processId} steps={process.steps} connections={connections} />
+      <MapView
+        workspaceId={workspaceId}
+        processId={processId}
+        processCode={process.code}
+        steps={process.steps}
+        connections={connections}
+      />
 
       <div className="mt-5">
         <AddStepForm

@@ -191,6 +191,65 @@ export async function addProcessStep(
   return ok({ id: created.id });
 }
 
+const createConnectionSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  fromStepId: z.string().min(1),
+  toStepId: z.string().min(1),
+  label: z.string().trim().max(60).optional().or(z.literal("")),
+});
+
+/** Connects two existing steps by dragging between their handles on the canvas. */
+export async function createStepConnection(
+  input: z.infer<typeof createConnectionSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = createConnectionSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid connection", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const { processId, fromStepId, toStepId, label } = parsed.data;
+
+  const steps = await prisma.processStep.findMany({ where: { processId }, select: { id: true } });
+  const validIds = new Set(steps.map((s) => s.id));
+  const issues = validateConnections(
+    [{ fromStepId, toStepId }],
+    new Map(
+      [...validIds].map((id) => [id, processId])
+    )
+  );
+  if (!validIds.has(fromStepId) || !validIds.has(toStepId) || issues.length > 0) return notFound();
+
+  const connection = await prisma.stepConnection.create({
+    data: { processId, fromStepId, toStepId, label: label || undefined },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${processId}/map`);
+  return ok({ id: connection.id });
+}
+
+const deleteConnectionSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  connectionId: z.string().min(1),
+});
+
+export async function deleteStepConnection(
+  input: z.infer<typeof deleteConnectionSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteConnectionSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  await prisma.stepConnection.delete({ where: { id: parsed.data.connectionId } });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ id: parsed.data.connectionId });
+}
+
 const updateStepPositionSchema = z.object({
   workspaceId: z.string().min(1),
   processId: z.string().min(1),

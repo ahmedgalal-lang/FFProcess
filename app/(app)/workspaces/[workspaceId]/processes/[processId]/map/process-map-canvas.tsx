@@ -1,17 +1,25 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { toPng } from "html-to-image";
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
   Controls,
+  Panel,
   MarkerType,
+  applyEdgeChanges,
+  getNodesBounds,
+  getViewportForBounds,
+  useReactFlow,
   type Node,
   type Edge,
   type OnNodeDrag,
+  type OnConnect,
+  type OnEdgesChange,
 } from "@xyflow/react";
-import { updateStepPosition } from "@/lib/actions/process";
+import { updateStepPosition, createStepConnection, deleteStepConnection } from "@/lib/actions/process";
 import { TaskNode, DecisionNode, TerminalNode, LaneNode, type StepLinkData } from "./map-nodes";
 
 const NODE_TYPES = { task: TaskNode, decision: DecisionNode, terminal: TerminalNode, lane: LaneNode };
@@ -54,11 +62,13 @@ function chooseHandles(from: StepT, to: StepT) {
 export function ProcessMapCanvas({
   workspaceId,
   processId,
+  processCode,
   steps,
   connections,
 }: {
   workspaceId: string;
   processId: string;
+  processCode: string;
   steps: StepT[];
   connections: ConnectionT[];
 }) {
@@ -115,35 +125,74 @@ export function ProcessMapCanvas({
     return [...laneNodes, ...stepNodes];
   }, [laneOrder, laneLabel, steps, canvasWidth, workspaceId]);
 
-  const initialEdges: Edge[] = useMemo(() => {
-    const byId = new Map(steps.map((s) => [s.id, s]));
-    return connections.flatMap((c) => {
-      const from = byId.get(c.fromStepId);
-      const to = byId.get(c.toStepId);
-      if (!from || !to) return [];
+  const stepById = useMemo(() => new Map(steps.map((s) => [s.id, s])), [steps]);
+
+  const buildEdge = useCallback(
+    (id: string, fromStepId: string, toStepId: string, label: string | null): Edge | null => {
+      const from = stepById.get(fromStepId);
+      const to = stepById.get(toStepId);
+      if (!from || !to) return null;
       const isLoop = to.positionX < from.positionX;
       const { sourceHandle, targetHandle } = chooseHandles(from, to);
-      return [
-        {
-          id: c.id,
-          source: c.fromStepId,
-          target: c.toStepId,
-          sourceHandle,
-          targetHandle,
-          label: c.label ?? undefined,
-          type: "smoothstep",
-          animated: false,
-          style: isLoop ? { stroke: "#d97706", strokeDasharray: "4 3" } : { stroke: "#94a3b8" },
-          markerEnd: { type: MarkerType.ArrowClosed, color: isLoop ? "#d97706" : "#94a3b8" },
-          labelStyle: { fontSize: 10, fontWeight: 700 },
-          labelBgStyle: { fill: "#fff" },
-        } satisfies Edge,
-      ];
-    });
-  }, [steps, connections]);
+      return {
+        id,
+        source: fromStepId,
+        target: toStepId,
+        sourceHandle,
+        targetHandle,
+        label: label ?? undefined,
+        type: "smoothstep",
+        animated: false,
+        style: isLoop ? { stroke: "#d97706", strokeDasharray: "4 3" } : { stroke: "#94a3b8" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: isLoop ? "#d97706" : "#94a3b8" },
+        labelStyle: { fontSize: 10, fontWeight: 700 },
+        labelBgStyle: { fill: "#fff" },
+      };
+    },
+    [stepById]
+  );
+
+  const initialEdges: Edge[] = useMemo(
+    () => connections.flatMap((c) => buildEdge(c.id, c.fromStepId, c.toStepId, c.label) ?? []),
+    [connections, buildEdge]
+  );
 
   const [nodes, setNodes] = useState(initialNodes);
+  const [edges, setEdges] = useState(initialEdges);
   const [saving, setSaving] = useState(false);
+
+  const onConnect: OnConnect = useCallback(
+    (connection) => {
+      if (!connection.source || !connection.target || connection.source === connection.target) return;
+      setSaving(true);
+      createStepConnection({
+        workspaceId,
+        processId,
+        fromStepId: connection.source,
+        toStepId: connection.target,
+      })
+        .then((result) => {
+          if (!result.ok) return;
+          const edge = buildEdge(result.data.id, connection.source!, connection.target!, null);
+          if (edge) setEdges((eds) => [...eds, edge]);
+        })
+        .finally(() => setSaving(false));
+    },
+    [workspaceId, processId, buildEdge]
+  );
+
+  const onEdgesChange: OnEdgesChange = useCallback(
+    (changes) => {
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+      for (const change of changes) {
+        if (change.type === "remove") {
+          setSaving(true);
+          deleteStepConnection({ workspaceId, processId, connectionId: change.id }).finally(() => setSaving(false));
+        }
+      }
+    },
+    [workspaceId, processId]
+  );
 
   const onNodeDragStop: OnNodeDrag = useCallback(
     (_event, node) => {
@@ -170,7 +219,7 @@ export function ProcessMapCanvas({
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
-          edges={initialEdges}
+          edges={edges}
           onNodesChange={(changes) =>
             setNodes((nds) => {
               const next = [...nds];
@@ -184,6 +233,9 @@ export function ProcessMapCanvas({
             })
           }
           onNodeDragStop={onNodeDragStop}
+          onConnect={onConnect}
+          onEdgesChange={onEdgesChange}
+          deleteKeyCode={["Backspace", "Delete"]}
           nodeTypes={NODE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.15 }}
@@ -193,8 +245,61 @@ export function ProcessMapCanvas({
         >
           <Background gap={20} size={1} color="#e2e8f0" />
           <Controls showInteractive={false} />
+          <Panel position="top-right">
+            <ExportPngButton processCode={processCode} />
+          </Panel>
+          <Panel position="bottom-left">
+            <span className="rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-400 shadow-sm">
+              Drag a node edge to connect steps · select a connector + Delete to remove it
+            </span>
+          </Panel>
         </ReactFlow>
       </ReactFlowProvider>
     </div>
+  );
+}
+
+function ExportPngButton({ processCode }: { processCode: string }) {
+  const { getNodes } = useReactFlow();
+  const [exporting, setExporting] = useState(false);
+
+  const onExport = useCallback(() => {
+    const nodes = getNodes();
+    const bounds = getNodesBounds(nodes);
+    const width = 1600;
+    const height = 900;
+    const viewport = getViewportForBounds(bounds, width, height, 0.2, 2, 0.15);
+    const el = document.querySelector(".react-flow__viewport") as HTMLElement | null;
+    if (!el) return;
+
+    setExporting(true);
+    toPng(el, {
+      backgroundColor: "#ffffff",
+      width,
+      height,
+      style: {
+        width: `${width}px`,
+        height: `${height}px`,
+        transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+      },
+    })
+      .then((dataUrl) => {
+        const a = document.createElement("a");
+        a.download = `${processCode}-process-map.png`;
+        a.href = dataUrl;
+        a.click();
+      })
+      .finally(() => setExporting(false));
+  }, [getNodes, processCode]);
+
+  return (
+    <button
+      type="button"
+      onClick={onExport}
+      disabled={exporting}
+      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+    >
+      {exporting ? "Exporting…" : "⬇ PNG"}
+    </button>
   );
 }

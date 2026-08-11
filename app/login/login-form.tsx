@@ -5,11 +5,12 @@ import { loginAction, type LoginState } from "./actions";
 
 const initialState: LoginState = { error: null };
 
-export function LoginForm() {
+export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      {callbackUrl && <input type="hidden" name="callbackUrl" value={callbackUrl} />}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="email" className="text-sm font-medium text-slate-700">
           Email

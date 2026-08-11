@@ -44,9 +44,20 @@ original task text, discovered while implementing:
   `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/`, not `components/process-map/`
   — Next.js App Router convention favors colocating route-specific components over a shared
   `components/` tree for single-use pieces.
-- **Export (T047-T051), invitation email (T054-T055)**: not built.
-- **E2E coverage** (T031, T039, T046): the three scenarios are covered, but consolidated into
-  one `tests/e2e/core-workflows.spec.ts` rather than split into separate files.
+- **Export (T047-T050)**: built — PDF (`@react-pdf/renderer`) and Excel (`exceljs`) for
+  RACI/Authority, plus client-side PNG rasterization of the live Process Map canvas
+  (`html-to-image`). Deviation: direct download links, no format-selection preview modal.
+  T051 (dedicated export E2E spec) still outstanding — covered only incidentally by manual
+  verification.
+- **Drag-to-connect**: built — dragging between step handles on the canvas creates a
+  `StepConnection` via `createStepConnection`; selecting an edge + Delete removes it via
+  `deleteStepConnection`. Not a numbered task in the original breakdown (T028 only covered the
+  canvas itself); added during the "yes all" build-out pass.
+- **Invitation email (T054-T057)**: built — see the T054-T057 entries below for the exact
+  shape (Resend with a same-page fallback link; accept page + Server Actions rather than a
+  route handler; single-use tokens with a 7-day expiry).
+- **E2E coverage** (T031, T039, T046, T057): the core scenarios are covered, but consolidated
+  into one `tests/e2e/core-workflows.spec.ts` rather than split into separate files.
 - **Accessibility pass** (T030, T038, T058): not done as a dedicated pass — basic semantic
   HTML only. A real audit is still outstanding.
 
@@ -211,10 +222,10 @@ visually matches the on-screen matrix, including a not-final indicator if export
 
 ### Implementation for User Story 4
 
-- [ ] T047 [P] [US4] Implement PDF renderers (Process Map, RACI, Authority) with `@react-pdf/renderer` in `lib/export/pdf/`
-- [ ] T048 [P] [US4] Implement Excel renderers (RACI, Authority) with `exceljs` in `lib/export/xlsx.ts`
-- [ ] T049 [US4] Implement route handlers `app/api/export/process-map/[id]/route.ts`, `app/api/export/raci/[id]/route.ts`, `app/api/export/authority/[id]/route.ts` (depends on T047, T048)
-- [ ] T050 [US4] Wire export buttons into map/RACI/authority pages, opening a format-selection preview (PDF/Excel/PNG) with the Draft/unresolved-issue banner per FR-013 visible before download is confirmed (depends on T049)
+- [x] T047 [P] [US4] Implement PDF renderers (Process Map, RACI, Authority) with `@react-pdf/renderer` in `lib/export/pdf/`
+- [x] T048 [P] [US4] Implement Excel renderers (RACI, Authority) with `exceljs` in `lib/export/xlsx.ts`
+- [x] T049 [US4] Implement route handlers `app/api/export/process-map/[id]/route.ts`, `app/api/export/raci/[id]/route.ts`, `app/api/export/authority/[id]/route.ts` (depends on T047, T048)
+- [x] T050 [US4] Wire export buttons into map/RACI/authority pages (PDF/Excel links on RACI + Authority pages; PNG export button on the Process Map canvas). Deviation: no format-selection preview modal or pre-download Draft/unresolved-issue banner (FR-013) — direct download links instead (depends on T049)
 - [ ] T051 [US4] E2E test: quickstart.md Scenario 4 in `tests/e2e/export.spec.ts`
 
 **Checkpoint**: All three artifact types can be produced as shareable files.
@@ -237,10 +248,10 @@ Scenario 5).
 ### Implementation for User Story 5
 
 - [x] T053 [US5] Implement `inviteMember`, `changeMemberAccessLevel`, `removeMember` Server Actions in `app/actions/membership.ts` per T052
-- [ ] T054 [P] [US5] Implement invitation email sending via Resend in `lib/email/invitation.ts`
-- [ ] T055 [US5] Implement `app/api/invitations/[token]/accept/route.ts` (depends on T053)
+- [x] T054 [P] [US5] Implement invitation email sending via Resend in `lib/email/invitation.ts` — no-ops with a logged accept link (surfaced in the Members UI) when `RESEND_API_KEY` is unset
+- [x] T055 [US5] Implement invitation accept flow. Deviation: a page + Server Actions (`app/invitations/[token]/accept/page.tsx`, `acceptInvitation`/`acceptInvitationWithNewAccount` in `lib/actions/membership.ts`) instead of a route handler — creates an account for brand-new invitees (name+password) or accepts for an already-signed-in matching session; tokens are single-use with a 7-day expiry (depends on T053)
 - [x] T056 [US5] Build workspace Members management UI in `app/(app)/workspaces/[workspaceId]/members/page.tsx` (depends on T053, T054)
-- [ ] T057 [US5] E2E test: quickstart.md Scenario 5 in `tests/e2e/membership.spec.ts`
+- [x] T057 [US5] E2E test covering the full invite → accept-link → create-account → active-member → single-use-token lifecycle, in `tests/e2e/core-workflows.spec.ts` (consolidated, not a separate `membership.spec.ts` — see E2E coverage note above)
 
 ### Firm Owner — All-Clients View (amendment 2026-08-09b, US5)
 

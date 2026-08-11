@@ -8,43 +8,62 @@ export function InviteForm({ workspaceId }: { workspaceId: string }) {
   const [email, setEmail] = useState("");
   const [accessLevel, setAccessLevel] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [error, setError] = useState<string | null>(null);
+  const [lastInvite, setLastInvite] = useState<{ acceptUrl: string; emailSent: boolean } | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
   return (
-    <form
-      className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-slate-300 p-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setError(null);
-        startTransition(async () => {
-          const result = await inviteMember({ workspaceId, email, accessLevel });
-          if (!result.ok) {
-            setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid" : result.error);
-            return;
-          }
-          setEmail("");
-          router.refresh();
-        });
-      }}
-    >
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Email</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Access level</label>
-        <select value={accessLevel} onChange={(e) => setAccessLevel(e.target.value as typeof accessLevel)} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm">
-          <option value="VIEWER">Viewer</option>
-          <option value="EDITOR">Editor</option>
-          <option value="ADMIN">Admin</option>
-        </select>
-      </div>
-      <button type="submit" disabled={pending} className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
-        Send invitation
-      </button>
-      {error && <span className="text-xs text-red-600">{error}</span>}
-    </form>
+    <div className="flex flex-col gap-2">
+      <form
+        className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-slate-300 p-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          setLastInvite(null);
+          startTransition(async () => {
+            const result = await inviteMember({ workspaceId, email, accessLevel });
+            if (!result.ok) {
+              setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid" : result.error);
+              return;
+            }
+            setEmail("");
+            setLastInvite({ acceptUrl: result.data.acceptUrl, emailSent: result.data.emailSent });
+            router.refresh();
+          });
+        }}
+      >
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-slate-600">Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-slate-600">Access level</label>
+          <select value={accessLevel} onChange={(e) => setAccessLevel(e.target.value as typeof accessLevel)} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm">
+            <option value="VIEWER">Viewer</option>
+            <option value="EDITOR">Editor</option>
+            <option value="ADMIN">Admin</option>
+          </select>
+        </div>
+        <button type="submit" disabled={pending} className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
+          Send invitation
+        </button>
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </form>
+      {lastInvite && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          {lastInvite.emailSent ? (
+            "Invitation email sent."
+          ) : (
+            <>
+              No email provider configured — share this link directly:{" "}
+              <a href={lastInvite.acceptUrl} className="font-mono text-slate-900 underline break-all">
+                {lastInvite.acceptUrl}
+              </a>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
