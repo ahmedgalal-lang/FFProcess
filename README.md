@@ -52,8 +52,9 @@ links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
 - Org Directory (Roles, People) with archive-not-delete semantics
 - Processes: creation with unique Process Codes, main/sub-process hierarchy, cross-process
   step links (one step can link to multiple other Processes)
-- Process Map: steps list view with add-step flow (autosaves); a full drag-and-drop diagram
-  canvas (React Flow, per `plan.md`) is not yet built — see `specs/.../tasks.md` T028/T030
+- Process Map: React Flow diagram canvas (swimlanes, decision diamonds, drag-to-reposition
+  with autosave) with a Diagram/Steps-List toggle over the same underlying data (FR-027);
+  add-step flow with auto-layout (lane by Role, appended left-to-right)
 - RACI Matrix: live grid, validation (missing/multiple Accountable, missing Responsible),
   finalize/reopen lifecycle
 - Authority Matrix: threshold + co-approval rules, approver query tool, gap/conflict detection
@@ -63,6 +64,7 @@ links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
 
 ## Not yet built
 
-Export (PDF/Excel/PNG), invitation emails, the interactive process-map canvas, and most of the
+Export (PDF/Excel/PNG), invitation emails, drag-to-connect (new connections are made via the
+Add Step form's "connects from" field, not by dragging between node handles), and most of the
 Playwright E2E coverage beyond `tests/e2e/core-workflows.spec.ts`. See
 `specs/001-process-mapping-raci-authority/tasks.md` for the full remaining task list.

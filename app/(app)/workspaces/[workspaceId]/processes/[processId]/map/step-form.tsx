@@ -46,8 +46,6 @@ export function AddStepForm({
               label,
               assignedRoleId: roleId || undefined,
               swimlaneRoleId: roleId || undefined,
-              positionX: 0,
-              positionY: 0,
               linkedProcessIds,
             },
             fromStepId: fromStepId || undefined,

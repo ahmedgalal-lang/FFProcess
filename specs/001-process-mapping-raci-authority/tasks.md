@@ -23,20 +23,47 @@ to enable independent implementation, testing, and incremental delivery.
 Single Next.js App Router project per plan.md's Project Structure — `app/`, `lib/`,
 `components/`, `prisma/`, `tests/` at repository root.
 
+## Implementation Status (2026-08-11)
+
+`[x]` below reflects the actual MVP build, not just planning. Known deviations from the
+original task text, discovered while implementing:
+
+- **Auth session strategy**: `lib/auth/config.ts` uses **JWT**, not database sessions —
+  Auth.js rejects the Credentials provider with database sessions outright
+  (`UnsupportedStrategy`), a constraint only surfaced by running it. Database sessions remain
+  the plan for when a non-Credentials provider is added.
+- **UI library**: no shadcn/ui (T002) — plain Tailwind utility classes throughout; no
+  TanStack Table (T004) — the RACI/Authority grids are hand-rolled `<table>`s. Both are
+  reasonable per Constitution Principle VI (simplicity) but are a real scope cut, not an
+  oversight.
+- **`saveProcessMap`/optimistic concurrency** (T025, T029): not built. Implemented instead as
+  `addProcessStep` — one step + one connection per call, autosaved immediately, no
+  `expectedUpdatedAt` conflict handling. Fine for the current single-editor-at-a-time
+  assumption; revisit if concurrent editing is ever in scope.
+- **Process Map canvas** (T028, T080): built with `@xyflow/react` directly under
+  `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/`, not `components/process-map/`
+  — Next.js App Router convention favors colocating route-specific components over a shared
+  `components/` tree for single-use pieces.
+- **Export (T047-T051), invitation email (T054-T055)**: not built.
+- **E2E coverage** (T031, T039, T046): the three scenarios are covered, but consolidated into
+  one `tests/e2e/core-workflows.spec.ts` rather than split into separate files.
+- **Accessibility pass** (T030, T038, T058): not done as a dedicated pass — basic semantic
+  HTML only. A real audit is still outstanding.
+
 ---
 
 ## Phase 1: Setup
 
 **Purpose**: Project initialization and tooling
 
-- [ ] T001 Initialize Next.js 15 project (App Router, TypeScript strict, Tailwind CSS) at repository root
+- [x] T001 Initialize Next.js 15 project (App Router, TypeScript strict, Tailwind CSS) at repository root
 - [ ] T002 [P] Install and initialize shadcn/ui component library, configure `components/ui/`
-- [ ] T003 [P] Install Prisma, initialize `prisma/schema.prisma` with PostgreSQL datasource
+- [x] T003 [P] Install Prisma, initialize `prisma/schema.prisma` with PostgreSQL datasource
 - [ ] T004 [P] Install Zod, Auth.js v5, `@xyflow/react`, `@tanstack/react-table`, `@react-pdf/renderer`, `exceljs`, Resend SDK
 - [ ] T005 [P] Configure Vitest + Testing Library (`vitest.config.ts`, `tests/unit/`, `tests/integration/` setup)
-- [ ] T006 [P] Configure Playwright (`playwright.config.ts`, `tests/e2e/` setup)
+- [x] T006 [P] Configure Playwright (`playwright.config.ts`, `tests/e2e/` setup)
 - [ ] T007 [P] Configure ESLint + Prettier for TypeScript strict mode per Constitution Principle I
-- [ ] T008 Create `.env.example` documenting `DATABASE_URL`, `AUTH_SECRET`, email provider credentials
+- [x] T008 Create `.env.example` documenting `DATABASE_URL`, `AUTH_SECRET`, email provider credentials
 
 **Checkpoint**: `pnpm dev` runs an empty Next.js app; `pnpm test` and `pnpm test:e2e` run (no tests yet)
 
@@ -47,29 +74,29 @@ Single Next.js App Router project per plan.md's Project Structure — `app/`, `l
 **Purpose**: Shared domain schema, auth, and workspace-scoping infrastructure that every user
 story depends on. **No user story work can begin until this phase is complete.**
 
-- [ ] T009 Define core Prisma models — `Workspace`, `User`, `Member` — in `prisma/schema.prisma` per data-model.md
-- [ ] T010 Add `Role`, `Person`, `PersonRole` models to `prisma/schema.prisma` per data-model.md
-- [ ] T011 Add `Process`, `ProcessStep`, `StepConnection`, `Activity` models to `prisma/schema.prisma` per data-model.md
-- [ ] T012 Add `RaciAssignment`, `RaciMatrixStatus` models to `prisma/schema.prisma` per data-model.md
-- [ ] T013 Add `DecisionType`, `ApprovalRule` models to `prisma/schema.prisma` per data-model.md
-- [ ] T014 Run initial Prisma migration (`pnpm prisma migrate dev --name init`) and commit `prisma/migrations/`
-- [ ] T015 [P] Implement Prisma client singleton in `lib/db/client.ts`
-- [ ] T016 [P] Configure Auth.js (database session strategy) in `lib/auth/config.ts` and `app/api/auth/[...nextauth]/route.ts`
-- [ ] T017 Implement `requireWorkspaceAccess(workspaceId, minLevel)` server-side helper in `lib/auth/workspace.ts` (Constitution Principle V — every Server Action/route handler will call this)
-- [ ] T018 [P] Implement shared `ActionError` discriminated union and helper builders in `lib/actions/errors.ts` per contracts/server-actions.md
-- [ ] T019 Implement authenticated app shell — `app/(app)/layout.tsx` (workspace switcher) and `app/(app)/workspaces/[workspaceId]/layout.tsx` (calls `requireWorkspaceAccess`, 404/redirect on non-membership)
-- [ ] T020 [P] Implement `prisma/seed.ts` seeding one demo Workspace with sample Roles/People for local development and E2E tests
+- [x] T009 Define core Prisma models — `Workspace`, `User`, `Member` — in `prisma/schema.prisma` per data-model.md
+- [x] T010 Add `Role`, `Person`, `PersonRole` models to `prisma/schema.prisma` per data-model.md
+- [x] T011 Add `Process`, `ProcessStep`, `StepConnection`, `Activity` models to `prisma/schema.prisma` per data-model.md
+- [x] T012 Add `RaciAssignment`, `RaciMatrixStatus` models to `prisma/schema.prisma` per data-model.md
+- [x] T013 Add `DecisionType`, `ApprovalRule` models to `prisma/schema.prisma` per data-model.md
+- [x] T014 Run initial Prisma migration (`pnpm prisma migrate dev --name init`) and commit `prisma/migrations/`
+- [x] T015 [P] Implement Prisma client singleton in `lib/db/client.ts`
+- [x] T016 [P] Configure Auth.js (database session strategy) in `lib/auth/config.ts` and `app/api/auth/[...nextauth]/route.ts`
+- [x] T017 Implement `requireWorkspaceAccess(workspaceId, minLevel)` server-side helper in `lib/auth/workspace.ts` (Constitution Principle V — every Server Action/route handler will call this)
+- [x] T018 [P] Implement shared `ActionError` discriminated union and helper builders in `lib/actions/errors.ts` per contracts/server-actions.md
+- [x] T019 Implement authenticated app shell — `app/(app)/layout.tsx` (workspace switcher) and `app/(app)/workspaces/[workspaceId]/layout.tsx` (calls `requireWorkspaceAccess`, 404/redirect on non-membership)
+- [x] T020 [P] Implement `prisma/seed.ts` seeding one demo Workspace with sample Roles/People for local development and E2E tests
 
 ### Firm Ownership (amendment 2026-08-09b, Foundational)
 
 Adds the Firm/Firm Owner carve-out per spec.md FR-023–FR-026 and Constitution v1.1.0.
 
-- [ ] T070 [P] Add `Firm`, `FirmMember` models to `prisma/schema.prisma`; add `firmId` to `Workspace` per data-model.md
+- [x] T070 [P] Add `Firm`, `FirmMember` models to `prisma/schema.prisma`; add `firmId` to `Workspace` per data-model.md
 - [ ] T071 [P] Unit test: at least one active `FirmMember` with `role = OWNER` must always remain (`LAST_OWNER` enforcement) in `tests/unit/firm-ownership.test.ts` — write first, must fail
 - [ ] T072 Implement `lib/domain/firm-ownership.ts` per T071 — implement only after T071 fails
 - [ ] T073 Unit test: `requireWorkspaceAccess` grants access via explicit `Member` OR `FirmMember.role = OWNER`, and denies a non-Owner Firm Member with no `Member` record, in `tests/unit/workspace-access.test.ts` — write first, must fail
-- [ ] T074 Extend `requireWorkspaceAccess` helper (T017) to check the Firm Owner carve-out per T073 (depends on T073)
-- [ ] T075 [P] Extend `prisma/seed.ts` (T020) to seed the single Firm row and one Firm Owner
+- [x] T074 Extend `requireWorkspaceAccess` helper (T017) to check the Firm Owner carve-out per T073 (depends on T073)
+- [x] T075 [P] Extend `prisma/seed.ts` (T020) to seed the single Firm row and one Firm Owner
 
 **Checkpoint**: Authenticated users can sign in, land in an empty workspace shell; unauthenticated
 or non-member access to a workspace route is rejected server-side, except for a Firm Owner, who
@@ -88,33 +115,33 @@ Scenario 1).
 
 ### Tests for User Story 1
 
-- [ ] T021 [P] [US1] Unit test process-graph rules (connections must share `processId`, cycles permitted) in `tests/unit/process-graph.test.ts` — write first, must fail
+- [x] T021 [P] [US1] Unit test process-graph rules (connections must share `processId`, cycles permitted) in `tests/unit/process-graph.test.ts` — write first, must fail
 - [ ] T022 [P] [US1] Integration test `createProcess`/`saveProcessMap` optimistic-concurrency behavior in `tests/integration/process.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T023 [P] [US1] Implement `lib/domain/process-graph.ts` (connection validation per T021) — implement only after T021 fails
+- [x] T023 [P] [US1] Implement `lib/domain/process-graph.ts` (connection validation per T021) — implement only after T021 fails
 - [ ] T024 [P] [US1] Implement `createRole`, `archiveRole`, `createPerson`, `archivePerson`, `setPersonRoles` Server Actions in `app/actions/org.ts` per contracts/server-actions.md
 - [ ] T025 [US1] Implement `createProcess`, `saveProcessMap` (optimistic concurrency via `expectedUpdatedAt`), `createActivity`, `reorderActivities` Server Actions in `app/actions/process.ts` (depends on T023)
-- [ ] T026 [P] [US1] Build Org directory UI (Roles/People list, create/archive forms) in `app/(app)/workspaces/[workspaceId]/org/page.tsx`
-- [ ] T027 [P] [US1] Build Process list/create UI in `app/(app)/workspaces/[workspaceId]/processes/page.tsx`
-- [ ] T028 [US1] Build Process Map canvas with `@xyflow/react` — custom Start/Task/Decision/End node types, swimlane-by-Role grouping — in `components/process-map/`
+- [x] T026 [P] [US1] Build Org directory UI (Roles/People list, create/archive forms) in `app/(app)/workspaces/[workspaceId]/org/page.tsx`
+- [x] T027 [P] [US1] Build Process list/create UI in `app/(app)/workspaces/[workspaceId]/processes/page.tsx`
+- [x] T028 [US1] Build Process Map canvas with `@xyflow/react` — custom Start/Task/Decision/End node types, swimlane-by-Role grouping — in `components/process-map/`
 - [ ] T029 [US1] Wire Process Map page with debounced autosave calling `saveProcessMap` and conflict ("changed elsewhere") handling in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/page.tsx` (depends on T025, T028)
 - [ ] T030 [US1] Add keyboard node selection/movement and ARIA labeling to the canvas per Constitution Principle IV (depends on T028)
-- [ ] T031 [US1] E2E test: quickstart.md Scenario 1 in `tests/e2e/process-map.spec.ts`
+- [x] T031 [US1] E2E test: quickstart.md Scenario 1 in `tests/e2e/process-map.spec.ts`
 
 ### Process Coding & Hierarchy (amendment 2026-08-09, US1)
 
 Adds Process Codes (e.g. "SAL101"), main/sub-process hierarchy, and step-level cross-process
 links per spec.md FR-019–FR-022.
 
-- [ ] T064 [P] [US1] Unit test process-code uniqueness and parent-cycle prevention in `tests/unit/process-hierarchy.test.ts` — write first, must fail
-- [ ] T065 [US1] Implement `lib/domain/process-hierarchy.ts` per T064 — implement only after T064 fails
-- [ ] T066 [US1] Extend `createProcess` with `code`/`parentProcessId`, add `updateProcess` Server Action in `app/actions/process.ts` (depends on T065)
-- [ ] T067 [US1] Extend `saveProcessMap` to accept optional `linkedProcessIds[]` per step, persisting via `ProcessStepLink` (depends on T065)
-- [ ] T068 [US1] Build Processes index UI showing main/sub-process tree with code badges in `app/(app)/workspaces/[workspaceId]/processes/page.tsx` (depends on T066)
-- [ ] T069 [US1] Add cross-process link affordance to Process Map steps (one badge per linked Process, each click-through to that Process's map) in `components/process-map/` (depends on T067, T028)
-- [ ] T080 [US1] Build a linear Steps List view of the same Process (ordered entries: type, Role, predecessor, links) with a Diagram/List toggle, both views driven by the same step data per FR-027, in `components/process-map/steps-list.tsx` (depends on T028, T069)
+- [x] T064 [P] [US1] Unit test process-code uniqueness and parent-cycle prevention in `tests/unit/process-hierarchy.test.ts` — write first, must fail
+- [x] T065 [US1] Implement `lib/domain/process-hierarchy.ts` per T064 — implement only after T064 fails
+- [x] T066 [US1] Extend `createProcess` with `code`/`parentProcessId`, add `updateProcess` Server Action in `app/actions/process.ts` (depends on T065)
+- [x] T067 [US1] Extend `saveProcessMap` to accept optional `linkedProcessIds[]` per step, persisting via `ProcessStepLink` (depends on T065)
+- [x] T068 [US1] Build Processes index UI showing main/sub-process tree with code badges in `app/(app)/workspaces/[workspaceId]/processes/page.tsx` (depends on T066)
+- [x] T069 [US1] Add cross-process link affordance to Process Map steps (one badge per linked Process, each click-through to that Process's map) in `components/process-map/` (depends on T067, T028)
+- [x] T080 [US1] Build a linear Steps List view of the same Process (ordered entries: type, Role, predecessor, links) with a Diagram/List toggle, both views driven by the same step data per FR-027, in `components/process-map/steps-list.tsx` (depends on T028, T069)
 
 **Checkpoint**: User Story 1 fully functional and independently testable/demoable.
 
@@ -131,17 +158,17 @@ Activity without an Accountable, run validation, confirm exactly that gap is fla
 
 ### Tests for User Story 2
 
-- [ ] T032 [P] [US2] Unit test RACI rules — missing Accountable, multiple Accountable, missing Responsible — in `tests/unit/raci-validation.test.ts` — write first, must fail
+- [x] T032 [P] [US2] Unit test RACI rules — missing Accountable, multiple Accountable, missing Responsible — in `tests/unit/raci-validation.test.ts` — write first, must fail
 - [ ] T033 [P] [US2] Integration test `setRaciAssignment`/`validateRaciMatrix`/`finalizeRaciMatrix` in `tests/integration/raci.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T034 [US2] Implement `lib/domain/raci-validation.ts` per T032 — implement only after T032 fails
-- [ ] T035 [US2] Implement `setRaciAssignment`, `validateRaciMatrix`, `finalizeRaciMatrix`, `reopenRaciMatrix` Server Actions in `app/actions/raci.ts` (depends on T034)
-- [ ] T036 [US2] Build RACI grid on semantic `<table>` with TanStack Table in `components/raci-grid/`
-- [ ] T037 [US2] Build RACI Matrix page with validation-issue banner and Finalize/Reopen actions in `app/(app)/workspaces/[workspaceId]/processes/[processId]/raci/page.tsx` (depends on T035, T036)
+- [x] T034 [US2] Implement `lib/domain/raci-validation.ts` per T032 — implement only after T032 fails
+- [x] T035 [US2] Implement `setRaciAssignment`, `validateRaciMatrix`, `finalizeRaciMatrix`, `reopenRaciMatrix` Server Actions in `app/actions/raci.ts` (depends on T034)
+- [x] T036 [US2] Build RACI grid on semantic `<table>` with TanStack Table in `components/raci-grid/`
+- [x] T037 [US2] Build RACI Matrix page with validation-issue banner and Finalize/Reopen actions in `app/(app)/workspaces/[workspaceId]/processes/[processId]/raci/page.tsx` (depends on T035, T036)
 - [ ] T038 [US2] Add arrow-key cell navigation and grid ARIA semantics to the RACI grid per Constitution Principle IV (depends on T036)
-- [ ] T039 [US2] E2E test: quickstart.md Scenario 2 in `tests/e2e/raci.spec.ts`
+- [x] T039 [US2] E2E test: quickstart.md Scenario 2 in `tests/e2e/raci.spec.ts`
 
 **Checkpoint**: User Stories 1 and 2 both independently functional.
 
@@ -158,16 +185,16 @@ rule, query several values, confirm correct approver(s) or a correctly flagged g
 
 ### Tests for User Story 3
 
-- [ ] T040 [P] [US3] Unit test threshold resolution, co-approval triggering, gap detection, conflict detection (including inclusive-boundary edge case) in `tests/unit/authority-resolution.test.ts` — write first, must fail
+- [x] T040 [P] [US3] Unit test threshold resolution, co-approval triggering, gap detection, conflict detection (including inclusive-boundary edge case) in `tests/unit/authority-resolution.test.ts` — write first, must fail
 - [ ] T041 [P] [US3] Integration test `createApprovalRule`/`queryApprovers`/`validateAuthorityMatrix` in `tests/integration/authority.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T042 [US3] Implement `lib/domain/authority-resolution.ts` per T040 — implement only after T040 fails
-- [ ] T043 [US3] Implement `createDecisionType`, `createApprovalRule`, `deleteApprovalRule`, `validateAuthorityMatrix`, `queryApprovers` Server Actions in `app/actions/authority.ts` (depends on T042)
-- [ ] T044 [US3] Build Authority Matrix rule-builder grid in `components/authority-grid/`
-- [ ] T045 [US3] Build Authority Matrix page with approver-query tool (value → approvers/gap) in `app/(app)/workspaces/[workspaceId]/authority/page.tsx` (depends on T043, T044)
-- [ ] T046 [US3] E2E test: quickstart.md Scenario 3 in `tests/e2e/authority.spec.ts`
+- [x] T042 [US3] Implement `lib/domain/authority-resolution.ts` per T040 — implement only after T040 fails
+- [x] T043 [US3] Implement `createDecisionType`, `createApprovalRule`, `deleteApprovalRule`, `validateAuthorityMatrix`, `queryApprovers` Server Actions in `app/actions/authority.ts` (depends on T042)
+- [x] T044 [US3] Build Authority Matrix rule-builder grid in `components/authority-grid/`
+- [x] T045 [US3] Build Authority Matrix page with approver-query tool (value → approvers/gap) in `app/(app)/workspaces/[workspaceId]/authority/page.tsx` (depends on T043, T044)
+- [x] T046 [US3] E2E test: quickstart.md Scenario 3 in `tests/e2e/authority.spec.ts`
 
 **Checkpoint**: User Stories 1-3 all independently functional — the three core matrix types exist.
 
@@ -209,10 +236,10 @@ Scenario 5).
 
 ### Implementation for User Story 5
 
-- [ ] T053 [US5] Implement `inviteMember`, `changeMemberAccessLevel`, `removeMember` Server Actions in `app/actions/membership.ts` per T052
+- [x] T053 [US5] Implement `inviteMember`, `changeMemberAccessLevel`, `removeMember` Server Actions in `app/actions/membership.ts` per T052
 - [ ] T054 [P] [US5] Implement invitation email sending via Resend in `lib/email/invitation.ts`
 - [ ] T055 [US5] Implement `app/api/invitations/[token]/accept/route.ts` (depends on T053)
-- [ ] T056 [US5] Build workspace Members management UI in `app/(app)/workspaces/[workspaceId]/members/page.tsx` (depends on T053, T054)
+- [x] T056 [US5] Build workspace Members management UI in `app/(app)/workspaces/[workspaceId]/members/page.tsx` (depends on T053, T054)
 - [ ] T057 [US5] E2E test: quickstart.md Scenario 5 in `tests/e2e/membership.spec.ts`
 
 ### Firm Owner — All-Clients View (amendment 2026-08-09b, US5)

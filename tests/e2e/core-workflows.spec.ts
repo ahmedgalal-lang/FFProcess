@@ -25,10 +25,19 @@ test.describe("Core workflows", () => {
     await page.waitForURL("**/map");
 
     await expect(page.locator("h1")).toContainText("Purchase-to-Pay");
-    const steps = page.locator("main .rounded-xl.border.border-slate-200.bg-white.p-3\\.5");
-    await expect(steps).toHaveCount(9);
+
+    // Diagram view (default): React Flow renders one node per step plus one per swimlane.
+    const laneNodes = page.locator(".react-flow__node").filter({ hasText: /^(AP Clerk|Finance Manager|Procurement Lead)$/i });
+    await expect(laneNodes).toHaveCount(3);
+    const stepNodes = page.locator(".react-flow__node").filter({ hasNotText: /^(AP Clerk|Finance Manager|Procurement Lead)$/i });
+    await expect(stepNodes).toHaveCount(9);
     await expect(page.locator("text=🔗 PUR102")).toBeVisible();
     await expect(page.locator("text=🔗 SAL101")).toBeVisible();
+
+    // Steps List view: same 9 steps, rendered as boxes instead of a diagram.
+    await page.click('button:has-text("Steps List")');
+    const steps = page.locator("main .rounded-xl.border.border-slate-200.bg-white.p-3\\.5");
+    await expect(steps).toHaveCount(9);
   });
 
   test("RACI matrix flags the seeded validation gap and blocks finalization", async ({ page }) => {

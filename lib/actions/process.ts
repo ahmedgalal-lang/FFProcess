@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { isCodeAvailable, wouldCreateCycle } from "@/lib/domain/process-hierarchy";
 import { validateConnections } from "@/lib/domain/process-graph";
+import { laneY, nextStepX } from "@/lib/domain/process-layout";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
 const createProcessSchema = z.object({
@@ -104,8 +105,6 @@ const stepInputSchema = z.object({
   label: z.string().trim().min(1).max(200),
   assignedRoleId: z.string().min(1).optional().or(z.literal("")),
   swimlaneRoleId: z.string().min(1).optional().or(z.literal("")),
-  positionX: z.number(),
-  positionY: z.number(),
   linkedProcessIds: z.array(z.string().min(1)).default([]),
 });
 
@@ -132,16 +131,27 @@ export async function addProcessStep(
 
   const { processId, step, fromStepId, connectionLabel } = parsed.data;
 
+  const stepsInProcess = await prisma.processStep.findMany({
+    where: { processId },
+    select: { id: true, positionX: true, swimlaneRoleId: true, assignedRoleId: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   if (fromStepId) {
-    const stepsInProcess = await prisma.processStep.findMany({
-      where: { processId },
-      select: { id: true },
-    });
     const validIds = new Set(stepsInProcess.map((s) => s.id));
-    const stepProcessId = new Map<string, string>();
-    for (const id of validIds) stepProcessId.set(id, processId);
     if (!validIds.has(fromStepId)) return notFound();
   }
+
+  // Auto-layout: reuse each Role's existing swimlane, assigning new lanes in
+  // first-appearance order; place the new step to the right of the map.
+  const laneOrder: string[] = [];
+  for (const s of stepsInProcess) {
+    const roleId = s.swimlaneRoleId ?? s.assignedRoleId;
+    if (roleId && !laneOrder.includes(roleId)) laneOrder.push(roleId);
+  }
+  const resolvedRoleId = step.swimlaneRoleId || step.assignedRoleId || null;
+  const positionX = nextStepX(stepsInProcess.map((s) => s.positionX));
+  const positionY = laneY(resolvedRoleId, laneOrder);
 
   const created = await prisma.$transaction(async (tx) => {
     const newStep = await tx.processStep.create({
@@ -151,8 +161,8 @@ export async function addProcessStep(
         label: step.label,
         assignedRoleId: step.assignedRoleId || undefined,
         swimlaneRoleId: step.swimlaneRoleId || undefined,
-        positionX: step.positionX,
-        positionY: step.positionY,
+        positionX,
+        positionY,
         links: step.linkedProcessIds.length
           ? { create: step.linkedProcessIds.map((targetProcessId) => ({ targetProcessId })) }
           : undefined,
@@ -179,6 +189,32 @@ export async function addProcessStep(
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${processId}/map`);
   return ok({ id: created.id });
+}
+
+const updateStepPositionSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  stepId: z.string().min(1),
+  positionX: z.number(),
+  positionY: z.number(),
+});
+
+/** Persists a drag-to-reposition on the Process Map canvas (autosave, FR-017). */
+export async function updateStepPosition(
+  input: z.infer<typeof updateStepPositionSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateStepPositionSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid position", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const step = await prisma.processStep.update({
+    where: { id: parsed.data.stepId },
+    data: { positionX: parsed.data.positionX, positionY: parsed.data.positionY },
+  });
+
+  return ok({ id: step.id });
 }
 
 const createActivitySchema = z.object({
