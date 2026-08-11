@@ -1,0 +1,402 @@
+// FFProcess data model — see specs/001-process-mapping-raci-authority/data-model.md
+// for the authoritative field-by-field rationale. This file is the implementation
+// of that design; keep them in sync when either changes.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// Auth.js (NextAuth v5) — database session strategy, Prisma adapter
+// ============================================================================
+
+model User {
+  id            String    @id @default(uuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+
+  accounts     Account[]
+  sessions     Session[]
+  firmMember   FirmMember?
+  memberships  Member[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================================================
+// Firm — the single consultancy that owns every Workspace (spec FR-023-FR-026)
+// ============================================================================
+
+enum FirmRole {
+  OWNER
+  MEMBER
+}
+
+model Firm {
+  id   String @id @default(uuid())
+  name String
+
+  members    FirmMember[]
+  workspaces Workspace[]
+
+  createdAt DateTime @default(now())
+
+  @@map("firms")
+}
+
+model FirmMember {
+  id     String   @id @default(uuid())
+  firmId String
+  userId String   @unique
+  role   FirmRole
+
+  firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@map("firm_members")
+}
+
+// ============================================================================
+// Workspace — one client engagement; the isolation boundary (spec FR-001)
+// ============================================================================
+
+enum AccessLevel {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+enum MemberStatus {
+  PENDING
+  ACTIVE
+  REMOVED
+}
+
+model Workspace {
+  id       String @id @default(uuid())
+  firmId   String
+  name     String
+  currency String @default("USD")
+
+  firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
+
+  members       Member[]
+  roles         Role[]
+  people        Person[]
+  processes     Process[]
+  decisionTypes DecisionType[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("workspaces")
+}
+
+model Member {
+  id            String       @id @default(uuid())
+  workspaceId   String
+  userId        String?
+  invitedEmail  String?
+  accessLevel   AccessLevel
+  status        MemberStatus @default(PENDING)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId, status])
+  @@map("members")
+}
+
+// ============================================================================
+// Shared org model — Role, Person, PersonRole (spec FR-002, Constitution II)
+// ============================================================================
+
+model Role {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  archivedAt  DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  personRoles      PersonRole[]
+  processSteps     ProcessStep[]        @relation("StepAssignedRole")
+  swimlaneSteps    ProcessStep[]        @relation("StepSwimlaneRole")
+  raciAssignments  RaciAssignment[]
+  approverRules    ApprovalRule[]       @relation("ApproverRole")
+  coApproverRules  ApprovalRule[]       @relation("CoApproverRole")
+
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId])
+  @@map("roles")
+}
+
+model Person {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  email       String?
+  archivedAt  DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  personRoles   PersonRole[]
+  approverRules ApprovalRule[] @relation("ApproverPerson")
+
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId])
+  @@map("people")
+}
+
+model PersonRole {
+  personId String
+  roleId   String
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([personId, roleId])
+  @@map("person_roles")
+}
+
+// ============================================================================
+// Process Mapping — Process, ProcessStep, ProcessStepLink, StepConnection
+// (spec FR-003, FR-004, FR-019-FR-022, FR-027)
+// ============================================================================
+
+model Process {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  code             String
+  name             String
+  description      String?
+  parentProcessId  String?
+  archivedAt       DateTime?
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parentProcess Process?  @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
+  subProcesses  Process[] @relation("ProcessHierarchy")
+
+  steps            ProcessStep[]
+  activities       Activity[]
+  raciMatrixStatus RaciMatrixStatus?
+  linkedFromSteps  ProcessStepLink[] @relation("LinkTargetProcess")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, code])
+  @@index([workspaceId, parentProcessId])
+  @@map("processes")
+}
+
+enum StepType {
+  START
+  TASK
+  DECISION
+  END
+}
+
+model ProcessStep {
+  id              String   @id @default(uuid())
+  processId       String
+  type            StepType
+  label           String
+  assignedRoleId  String?
+  swimlaneRoleId  String?
+  positionX       Float    @default(0)
+  positionY       Float    @default(0)
+
+  process       Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  assignedRole  Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])
+  swimlaneRole  Role?   @relation("StepSwimlaneRole", fields: [swimlaneRoleId], references: [id])
+
+  links           ProcessStepLink[]
+  outgoingEdges   StepConnection[]  @relation("FromStep")
+  incomingEdges   StepConnection[]  @relation("ToStep")
+  activities      Activity[]
+
+  createdAt DateTime @default(now())
+
+  @@index([processId])
+  @@map("process_steps")
+}
+
+model ProcessStepLink {
+  id               String @id @default(uuid())
+  stepId           String
+  targetProcessId  String
+
+  step          ProcessStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  targetProcess Process     @relation("LinkTargetProcess", fields: [targetProcessId], references: [id])
+
+  @@unique([stepId, targetProcessId])
+  @@map("process_step_links")
+}
+
+model StepConnection {
+  id          String  @id @default(uuid())
+  processId   String
+  fromStepId  String
+  toStepId    String
+  label       String?
+
+  fromStep ProcessStep @relation("FromStep", fields: [fromStepId], references: [id], onDelete: Cascade)
+  toStep   ProcessStep @relation("ToStep", fields: [toStepId], references: [id], onDelete: Cascade)
+
+  @@index([processId])
+  @@map("step_connections")
+}
+
+// ============================================================================
+// RACI Matrix — Activity, RaciAssignment, RaciMatrixStatus (spec FR-005-FR-007)
+// ============================================================================
+
+model Activity {
+  id            String  @id @default(uuid())
+  processId     String
+  name          String
+  relatedStepId String?
+  order         Int     @default(0)
+
+  process     Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
+  relatedStep ProcessStep? @relation(fields: [relatedStepId], references: [id])
+
+  raciAssignments RaciAssignment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([processId])
+  @@map("activities")
+}
+
+enum RaciCode {
+  RESPONSIBLE
+  ACCOUNTABLE
+  CONSULTED
+  INFORMED
+}
+
+model RaciAssignment {
+  id         String   @id @default(uuid())
+  activityId String
+  roleId     String
+  code       RaciCode
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  role     Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, roleId])
+  @@map("raci_assignments")
+}
+
+enum RaciStatus {
+  DRAFT
+  FINAL
+}
+
+model RaciMatrixStatus {
+  processId            String     @id
+  status               RaciStatus @default(DRAFT)
+  finalizedAt          DateTime?
+  finalizedByMemberId  String?
+
+  process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  @@map("raci_matrix_statuses")
+}
+
+// ============================================================================
+// Authority Matrix — DecisionType, ApprovalRule (spec FR-008-FR-011)
+// ============================================================================
+
+model DecisionType {
+  id          String @id @default(uuid())
+  workspaceId String
+  name        String
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rules     ApprovalRule[]
+
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId])
+  @@map("decision_types")
+}
+
+model ApprovalRule {
+  id                       String   @id @default(uuid())
+  decisionTypeId           String
+  approverRoleId           String?
+  approverPersonId         String?
+  maxThreshold             Decimal  @db.Decimal(14, 2)
+  coApprovalAboveThreshold Decimal? @db.Decimal(14, 2)
+  coApprovalRoleId         String?
+
+  decisionType    DecisionType @relation(fields: [decisionTypeId], references: [id], onDelete: Cascade)
+  approverRole    Role?        @relation("ApproverRole", fields: [approverRoleId], references: [id])
+  approverPerson  Person?      @relation("ApproverPerson", fields: [approverPersonId], references: [id])
+  coApproverRole  Role?        @relation("CoApproverRole", fields: [coApprovalRoleId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([decisionTypeId])
+  @@map("approval_rules")
+}

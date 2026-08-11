@@ -1,0 +1,61 @@
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/db/client";
+import { validateRaciMatrix } from "@/lib/domain/raci-validation";
+import { RaciGrid } from "./raci-grid";
+import { AddActivityForm } from "./activity-form";
+
+export default async function RaciMatrixPage(
+  props: PageProps<"/workspaces/[workspaceId]/processes/[processId]/raci">
+) {
+  const { workspaceId, processId } = await props.params;
+
+  const process = await prisma.process.findUnique({ where: { id: processId } });
+  if (!process || process.workspaceId !== workspaceId) notFound();
+
+  const [roles, activities, matrixStatus] = await Promise.all([
+    prisma.role.findMany({ where: { workspaceId, archivedAt: null }, orderBy: { name: "asc" } }),
+    prisma.activity.findMany({
+      where: { processId },
+      include: { raciAssignments: true },
+      orderBy: { order: "asc" },
+    }),
+    prisma.raciMatrixStatus.findUnique({ where: { processId } }),
+  ]);
+
+  const activitiesForGrid = activities.map((a) => ({
+    id: a.id,
+    name: a.name,
+    assignments: Object.fromEntries(a.raciAssignments.map((ra) => [ra.roleId, ra.code])),
+  }));
+
+  const issues = validateRaciMatrix(
+    activities.map((a) => ({
+      activityId: a.id,
+      name: a.name,
+      assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
+    }))
+  );
+
+  return (
+    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+      <div className="mb-1 text-xs text-slate-400">
+        {process.code} · {process.name}
+      </div>
+      <h1 className="text-xl font-semibold text-slate-900">RACI Matrix</h1>
+      <p className="mt-1 mb-5 text-sm text-slate-500">
+        Click a cell to cycle Responsible → Accountable → Consulted → Informed → clear.
+      </p>
+
+      <RaciGrid
+        workspaceId={workspaceId}
+        processId={processId}
+        roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+        initialActivities={activitiesForGrid}
+        initialIssues={issues}
+        initialStatus={matrixStatus?.status ?? "DRAFT"}
+      />
+
+      <AddActivityForm workspaceId={workspaceId} processId={processId} />
+    </main>
+  );
+}
