@@ -36,7 +36,7 @@ export function TaskNode({ data }: NodeProps & { data: StepNodeData }) {
       <Handles />
       <div className="text-[12px] font-semibold leading-tight text-slate-900">{data.label}</div>
       {data.roleName && (
-        <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">{data.roleName}</div>
+        <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{data.roleName}</div>
       )}
       {data.links.length > 0 && (
         <div className="absolute -bottom-6 flex flex-col items-center gap-0.5">
@@ -83,7 +83,7 @@ export type LaneNodeData = { label: string };
 export function LaneNode({ data }: NodeProps & { data: LaneNodeData }) {
   return (
     <div className="flex h-[130px] items-start border-b border-dashed border-slate-200 bg-slate-50/60 pl-3 pt-2">
-      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{data.label}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{data.label}</span>
     </div>
   );
 }

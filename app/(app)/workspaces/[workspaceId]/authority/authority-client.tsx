@@ -124,23 +124,25 @@ export function QueryTool({ workspaceId, decisionTypeId }: { workspaceId: string
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="mb-3 text-sm font-semibold text-slate-800">Who can approve this?</h3>
+      <h3 className="mb-3 text-sm font-semibold text-slate-800" id={`query-heading-${decisionTypeId}`}>Who can approve this?</h3>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-500">$</span>
+        <label htmlFor={`query-value-${decisionTypeId}`} className="text-sm text-slate-500">$</label>
         <input
+          id={`query-value-${decisionTypeId}`}
+          aria-label="Approval value in dollars"
           value={value}
           onChange={(e) => runQuery(e.target.value)}
           className="w-32 rounded-lg border border-slate-300 px-2.5 py-1.5 font-mono text-sm"
         />
       </div>
-      <div className="mt-2 flex gap-1.5">
+      <div className="mt-2 flex gap-1.5" role="group" aria-label="Example values">
         {[5000, 60000, 250000].map((v) => (
           <button key={v} type="button" onClick={() => runQuery(String(v))} className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600 hover:bg-slate-200">
             ${v.toLocaleString()}
           </button>
         ))}
       </div>
-      <div className="mt-3 border-t border-slate-100 pt-3 text-sm">
+      <div className="mt-3 border-t border-slate-100 pt-3 text-sm" aria-live="polite">
         {pending && <span className="text-slate-400">…</span>}
         {!pending && result?.gap && (
           <span className="font-semibold text-red-600">⚠ No authorized approver for this value.</span>
@@ -162,10 +164,10 @@ export function QueryTool({ workspaceId, decisionTypeId }: { workspaceId: string
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-slate-600">{label}</label>
+    <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+      {label}
       {children}
-    </div>
+    </label>
   );
 }
 

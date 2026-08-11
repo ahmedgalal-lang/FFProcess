@@ -49,6 +49,22 @@ function nodeKindFor(type: StepT["type"]): keyof typeof NODE_TYPES {
   return "task";
 }
 
+const STEP_TYPE_LABEL: Record<StepT["type"], string> = {
+  START: "Start",
+  TASK: "Task",
+  DECISION: "Decision",
+  END: "End",
+};
+
+function describeStep(s: StepT): string {
+  const parts = [`${STEP_TYPE_LABEL[s.type]} step: ${s.label}`];
+  if (s.assignedRole) parts.push(`assigned to ${s.assignedRole.name}`);
+  if (s.links.length > 0) {
+    parts.push(`linked to ${s.links.map((l) => l.targetProcess.code).join(", ")}`);
+  }
+  return parts.join(", ");
+}
+
 /** Picks handle ids on each side based on the geometric relationship between two steps. */
 function chooseHandles(from: StepT, to: StepT) {
   const dx = to.positionX - from.positionX;
@@ -101,6 +117,7 @@ export function ProcessMapCanvas({
       style: { width: canvasWidth, height: 130 },
       draggable: false,
       selectable: false,
+      focusable: false,
       zIndex: 0,
     }));
 
@@ -118,6 +135,7 @@ export function ProcessMapCanvas({
         type: kind,
         position: { x: s.positionX - half.x, y: s.positionY - half.y },
         data: { label: s.label, roleName: s.assignedRole?.name, links, workspaceId },
+        ariaLabel: describeStep(s),
         zIndex: 1,
       };
     });
@@ -141,6 +159,7 @@ export function ProcessMapCanvas({
         sourceHandle,
         targetHandle,
         label: label ?? undefined,
+        ariaLabel: `Connector from ${from.label} to ${to.label}${label ? `, labeled ${label}` : ""}`,
         type: "smoothstep",
         animated: false,
         style: isLoop ? { stroke: "#d97706", strokeDasharray: "4 3" } : { stroke: "#94a3b8" },
@@ -249,7 +268,7 @@ export function ProcessMapCanvas({
             <ExportPngButton processCode={processCode} />
           </Panel>
           <Panel position="bottom-left">
-            <span className="rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-400 shadow-sm">
+            <span className="rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow-sm">
               Drag a node edge to connect steps · select a connector + Delete to remove it
             </span>
           </Panel>

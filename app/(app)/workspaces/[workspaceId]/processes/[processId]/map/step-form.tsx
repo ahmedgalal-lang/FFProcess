@@ -159,9 +159,9 @@ export function AddStepForm({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-slate-600">{label}</label>
+    <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+      {label}
       {children}
-    </div>
+    </label>
   );
 }

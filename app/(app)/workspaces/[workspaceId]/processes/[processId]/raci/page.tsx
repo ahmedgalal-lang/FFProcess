@@ -39,7 +39,7 @@ export default async function RaciMatrixPage(
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <div className="mb-1 flex items-center justify-between gap-3">
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-slate-500">
           {process.code} · {process.name}
         </div>
         <div className="flex gap-2">

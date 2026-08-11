@@ -36,7 +36,7 @@ export default async function ProcessMapPage(
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       {process.parentProcess && (
-        <div className="mb-1 text-xs text-slate-400">
+        <div className="mb-1 text-xs text-slate-500">
           {process.parentProcess.code} · {process.parentProcess.name} <span className="mx-1">/</span>
         </div>
       )}

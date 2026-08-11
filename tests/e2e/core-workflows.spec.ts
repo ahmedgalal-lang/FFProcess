@@ -47,7 +47,7 @@ test.describe("Core workflows", () => {
     await page.click("text=Build RACI");
     await page.waitForURL("**/raci");
 
-    await expect(page.locator("text=validation issue")).toBeVisible();
+    await expect(page.getByText(/\d+ validation issues? — finalization blocked/)).toBeVisible();
     await expect(page.locator('button:has-text("Mark Final")')).toBeDisabled();
   });
 

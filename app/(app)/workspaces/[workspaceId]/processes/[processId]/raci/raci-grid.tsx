@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setRaciAssignment, finalizeRaciMatrix, reopenRaciMatrix } from "@/lib/actions/raci";
 import type { RaciIssue } from "@/lib/domain/raci-validation";
@@ -12,6 +12,12 @@ const LETTER: Record<Code, string> = {
   ACCOUNTABLE: "A",
   CONSULTED: "C",
   INFORMED: "I",
+};
+const CODE_NAME: Record<Code, string> = {
+  RESPONSIBLE: "Responsible",
+  ACCOUNTABLE: "Accountable",
+  CONSULTED: "Consulted",
+  INFORMED: "Informed",
 };
 const CELL_STYLE: Record<Code, string> = {
   RESPONSIBLE: "bg-sky-50 text-sky-700",
@@ -42,7 +48,48 @@ export function RaciGrid({
   const [issues, setIssues] = useState(initialIssues);
   const [status, setStatus] = useState(initialStatus);
   const [pending, startTransition] = useTransition();
+  const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
   const router = useRouter();
+  const cellRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  function cellKey(rowIdx: number, colIdx: number) {
+    return `${rowIdx}:${colIdx}`;
+  }
+
+  function focusCell(rowIdx: number, colIdx: number) {
+    const clampedRow = Math.max(0, Math.min(activities.length - 1, rowIdx));
+    const clampedCol = Math.max(0, Math.min(roles.length - 1, colIdx));
+    cellRefs.current.get(cellKey(clampedRow, clampedCol))?.focus();
+  }
+
+  function onCellKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, rowIdx: number, colIdx: number) {
+    switch (e.key) {
+      case "ArrowRight":
+        e.preventDefault();
+        focusCell(rowIdx, colIdx + 1);
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        focusCell(rowIdx, colIdx - 1);
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        focusCell(rowIdx + 1, colIdx);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        focusCell(rowIdx - 1, colIdx);
+        break;
+      case "Home":
+        e.preventDefault();
+        focusCell(rowIdx, 0);
+        break;
+      case "End":
+        e.preventDefault();
+        focusCell(rowIdx, roles.length - 1);
+        break;
+    }
+  }
 
   function recomputeLocalIssues(next: ActivityT[]): RaciIssue[] {
     const out: RaciIssue[] = [];
@@ -133,32 +180,47 @@ export function RaciGrid({
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" role="grid" aria-label="RACI assignments by activity and role">
+          <caption className="sr-only">
+            Each cell cycles Responsible, Accountable, Consulted, Informed, then clear. Use the arrow
+            keys to move between cells.
+          </caption>
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-2">Activity</th>
+              <th scope="col" className="px-4 py-2">Activity</th>
               {roles.map((r) => (
-                <th key={r.id} className="px-3 py-2 text-center">
+                <th key={r.id} scope="col" className="px-3 py-2 text-center">
                   {r.name}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {activities.map((activity) => (
+            {activities.map((activity, rowIdx) => (
               <tr
                 key={activity.id}
                 className={`border-t border-slate-100 ${flaggedActivityIds.has(activity.id) ? "shadow-[inset_3px_0_0_0_theme(colors.red.400)]" : ""}`}
               >
-                <th className="px-4 py-2 text-left font-medium text-slate-900">{activity.name}</th>
-                {roles.map((r) => {
+                <th scope="row" className="px-4 py-2 text-left font-medium text-slate-900">
+                  {activity.name}
+                  {flaggedActivityIds.has(activity.id) && <span className="sr-only"> — has a validation issue</span>}
+                </th>
+                {roles.map((r, colIdx) => {
                   const code = activity.assignments[r.id];
                   return (
-                    <td key={r.id} className="px-3 py-2 text-center">
+                    <td key={r.id} role="gridcell" className="px-3 py-2 text-center">
                       <button
+                        ref={(el) => {
+                          if (el) cellRefs.current.set(cellKey(rowIdx, colIdx), el);
+                          else cellRefs.current.delete(cellKey(rowIdx, colIdx));
+                        }}
                         type="button"
+                        tabIndex={focusedCell.row === rowIdx && focusedCell.col === colIdx ? 0 : -1}
+                        onFocus={() => setFocusedCell({ row: rowIdx, col: colIdx })}
                         onClick={() => cycleCell(activity.id, r.id)}
-                        className={`h-8 w-8 rounded-lg font-mono text-xs font-bold ${code ? CELL_STYLE[code] : "border border-dashed border-slate-300 text-slate-300"}`}
+                        onKeyDown={(e) => onCellKeyDown(e, rowIdx, colIdx)}
+                        aria-label={`${activity.name}, ${r.name}: ${code ? CODE_NAME[code] : "not assigned"}`}
+                        className={`h-8 w-8 rounded-lg font-mono text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${code ? CELL_STYLE[code] : "border border-dashed border-slate-300 text-slate-300"}`}
                       >
                         {code ? LETTER[code] : ""}
                       </button>

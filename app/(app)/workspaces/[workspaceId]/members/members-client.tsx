@@ -32,18 +32,18 @@ export function InviteForm({ workspaceId }: { workspaceId: string }) {
           });
         }}
       >
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-600">Email</label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Email
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-600">Access level</label>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Access level
           <select value={accessLevel} onChange={(e) => setAccessLevel(e.target.value as typeof accessLevel)} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm">
             <option value="VIEWER">Viewer</option>
             <option value="EDITOR">Editor</option>
             <option value="ADMIN">Admin</option>
           </select>
-        </div>
+        </label>
         <button type="submit" disabled={pending} className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
           Send invitation
         </button>
@@ -83,6 +83,7 @@ export function MemberRowActions({
   return (
     <div className="flex items-center justify-end gap-2">
       <select
+        aria-label="Access level"
         defaultValue={accessLevel}
         disabled={pending}
         onChange={(e) =>

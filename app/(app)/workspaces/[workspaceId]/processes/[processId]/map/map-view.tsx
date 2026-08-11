@@ -45,14 +45,15 @@ export function MapView({
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5" role="group" aria-label="Process Map view">
           {(["diagram", "list"] as const).map((m) => (
             <button
               key={m}
               type="button"
+              aria-pressed={mode === m}
               onClick={() => setMode(m)}
               className={`rounded-md px-3 py-1 text-xs font-semibold ${
-                mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
               }`}
             >
               {m === "diagram" ? "⌗ Diagram" : "☰ Steps List"}

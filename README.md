@@ -65,10 +65,14 @@ links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
   the accept page creates an account for brand-new invitees or signs an existing account in;
   access-level management, last-Admin protection
 - All business rules (`lib/domain/*`) are unit-tested first, per Constitution Principle III
+- Accessibility: keyboard node focus/move + ARIA labeling on the Process Map canvas, arrow-key
+  grid navigation + ARIA semantics on the RACI grid, and an automated axe-core scan
+  (`tests/e2e/accessibility.spec.ts`) covering the Process Map, RACI, and Authority pages with
+  zero violations
 
 ## Not yet built
 
-A full accessibility pass (keyboard navigation + ARIA labeling for the process-map canvas and
-RACI grid — tasks.md T030/T038/T058) and most of the Playwright E2E coverage beyond
-`tests/e2e/core-workflows.spec.ts`. See `specs/001-process-mapping-raci-authority/tasks.md` for
-the full remaining task list.
+A full manual screen-reader walkthrough (the accessibility pass so far is keyboard nav + ARIA +
+automated axe-core scanning, not hands-on assistive-tech testing), and most of the Playwright
+E2E coverage beyond `tests/e2e/core-workflows.spec.ts` and `tests/e2e/accessibility.spec.ts`.
+See `specs/001-process-mapping-raci-authority/tasks.md` for the full remaining task list.

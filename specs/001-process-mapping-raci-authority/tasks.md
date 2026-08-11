@@ -58,8 +58,19 @@ original task text, discovered while implementing:
   route handler; single-use tokens with a 7-day expiry).
 - **E2E coverage** (T031, T039, T046, T057): the core scenarios are covered, but consolidated
   into one `tests/e2e/core-workflows.spec.ts` rather than split into separate files.
-- **Accessibility pass** (T030, T038, T058): not done as a dedicated pass — basic semantic
-  HTML only. A real audit is still outstanding.
+- **Accessibility pass** (T030, T038, T058): built. Process Map: React Flow's built-in
+  keyboard node focus/move (Tab between nodes, arrow keys to move a selected one) plus
+  descriptive `ariaLabel`s on steps and connectors (`describeStep()` in
+  `process-map-canvas.tsx`); swimlane background nodes excluded via `focusable: false`.
+  RACI grid: `role="grid"`/`gridcell`, `scope="col"/"row"`, per-cell `aria-label`s, and a
+  roving-tabindex arrow-key/Home/End navigation implementation. Also fixed several
+  `<label>`/`<select>` pairs across the Add-Step, Authority-rule, and Invite-member forms that
+  weren't programmatically associated, and a handful of `text-slate-400`-on-white color-contrast
+  failures. Automated scan: `tests/e2e/accessibility.spec.ts` runs axe-core's default WCAG
+  2.0/2.1 A/AA ruleset against the Process Map (both views), RACI grid, and Authority Matrix —
+  all pass with zero violations as of this pass. Not covered: a full manual screen-reader
+  walkthrough, and the Members/Org/Processes list pages weren't run through axe (no findings
+  expected there given the same fixes, but unverified).
 
 ---
 
@@ -138,7 +149,7 @@ Scenario 1).
 - [x] T027 [P] [US1] Build Process list/create UI in `app/(app)/workspaces/[workspaceId]/processes/page.tsx`
 - [x] T028 [US1] Build Process Map canvas with `@xyflow/react` — custom Start/Task/Decision/End node types, swimlane-by-Role grouping — in `components/process-map/`
 - [ ] T029 [US1] Wire Process Map page with debounced autosave calling `saveProcessMap` and conflict ("changed elsewhere") handling in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/page.tsx` (depends on T025, T028)
-- [ ] T030 [US1] Add keyboard node selection/movement and ARIA labeling to the canvas per Constitution Principle IV (depends on T028)
+- [x] T030 [US1] Add keyboard node selection/movement and ARIA labeling to the canvas per Constitution Principle IV (depends on T028)
 - [x] T031 [US1] E2E test: quickstart.md Scenario 1 in `tests/e2e/process-map.spec.ts`
 
 ### Process Coding & Hierarchy (amendment 2026-08-09, US1)
@@ -178,7 +189,7 @@ Activity without an Accountable, run validation, confirm exactly that gap is fla
 - [x] T035 [US2] Implement `setRaciAssignment`, `validateRaciMatrix`, `finalizeRaciMatrix`, `reopenRaciMatrix` Server Actions in `app/actions/raci.ts` (depends on T034)
 - [x] T036 [US2] Build RACI grid on semantic `<table>` with TanStack Table in `components/raci-grid/`
 - [x] T037 [US2] Build RACI Matrix page with validation-issue banner and Finalize/Reopen actions in `app/(app)/workspaces/[workspaceId]/processes/[processId]/raci/page.tsx` (depends on T035, T036)
-- [ ] T038 [US2] Add arrow-key cell navigation and grid ARIA semantics to the RACI grid per Constitution Principle IV (depends on T036)
+- [x] T038 [US2] Add arrow-key cell navigation and grid ARIA semantics to the RACI grid per Constitution Principle IV (depends on T036)
 - [x] T039 [US2] E2E test: quickstart.md Scenario 2 in `tests/e2e/raci.spec.ts`
 
 **Checkpoint**: User Stories 1 and 2 both independently functional.
@@ -270,7 +281,7 @@ Builds the Firm Owner-facing side of the carve-out added to Foundational (T070-T
 
 **Purpose**: Quality gates that span every story, per Constitution Principles IV and VI
 
-- [ ] T058 [P] Automated accessibility scan (axe-core) across process-map, raci-grid, authority-grid components; fix violations
+- [x] T058 [P] Automated accessibility scan (axe-core) across process-map, raci-grid, authority-grid components; fix violations
 - [ ] T059 [P] Loading/empty/error states pass across all workspace pages
 - [ ] T060 Run the full `quickstart.md` walkthrough manually end-to-end against a fresh seeded database
 - [ ] T061 [P] Write `README.md` covering setup, environment variables, and `pnpm` scripts
