@@ -29,8 +29,8 @@ export function AddRoleForm({ workspaceId }: { workspaceId: string }) {
         });
       }}
     >
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">New role</label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        New role
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -38,7 +38,7 @@ export function AddRoleForm({ workspaceId }: { workspaceId: string }) {
           required
           className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
         />
-      </div>
+      </label>
       <button
         type="submit"
         disabled={pending}
@@ -64,7 +64,7 @@ export function ArchiveRoleButton({ workspaceId, roleId }: { workspaceId: string
           router.refresh();
         })
       }
-      className="text-xs font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
+      className="text-xs font-medium text-slate-600 hover:text-red-600 disabled:opacity-50"
     >
       Archive
     </button>
@@ -103,26 +103,26 @@ export function AddPersonForm({ workspaceId, roles }: { workspaceId: string; rol
         });
       }}
     >
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Name</label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Name
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
           className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Email</label>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Email
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Role</label>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Role
         <select
           value={roleId}
           onChange={(e) => setRoleId(e.target.value)}
@@ -135,7 +135,7 @@ export function AddPersonForm({ workspaceId, roles }: { workspaceId: string; rol
             </option>
           ))}
         </select>
-      </div>
+      </label>
       <button
         type="submit"
         disabled={pending}
@@ -161,7 +161,7 @@ export function ArchivePersonButton({ workspaceId, personId }: { workspaceId: st
           router.refresh();
         })
       }
-      className="text-xs font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
+      className="text-xs font-medium text-slate-600 hover:text-red-600 disabled:opacity-50"
     >
       Archive
     </button>

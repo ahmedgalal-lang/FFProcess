@@ -44,11 +44,11 @@ original task text, discovered while implementing:
   `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/`, not `components/process-map/`
   — Next.js App Router convention favors colocating route-specific components over a shared
   `components/` tree for single-use pieces.
-- **Export (T047-T050)**: built — PDF (`@react-pdf/renderer`) and Excel (`exceljs`) for
+- **Export (T047-T051)**: built — PDF (`@react-pdf/renderer`) and Excel (`exceljs`) for
   RACI/Authority, plus client-side PNG rasterization of the live Process Map canvas
   (`html-to-image`). Deviation: direct download links, no format-selection preview modal.
-  T051 (dedicated export E2E spec) still outstanding — covered only incidentally by manual
-  verification.
+  `tests/e2e/export.spec.ts` verifies every format's headers/magic-bytes and that the
+  routes reject unauthenticated requests.
 - **Drag-to-connect**: built — dragging between step handles on the canvas creates a
   `StepConnection` via `createStepConnection`; selecting an edge + Delete removes it via
   `deleteStepConnection`. Not a numbered task in the original breakdown (T028 only covered the
@@ -68,15 +68,28 @@ original task text, discovered while implementing:
   weren't programmatically associated, and a handful of `text-slate-400`-on-white color-contrast
   failures. Automated scan: `tests/e2e/accessibility.spec.ts` runs axe-core's default WCAG
   2.0/2.1 A/AA ruleset against the Process Map (both views), RACI grid, and Authority Matrix —
-  all pass with zero violations as of this pass. Not covered: a full manual screen-reader
-  walkthrough, and the Members/Org/Processes list pages weren't run through axe (no findings
-  expected there given the same fixes, but unverified).
+  all pass with zero violations as of this pass. Later extended to the Workspace picker,
+  Members, Org Directory, and Processes list pages too, which turned up (and fixed) three
+  more of the same defect classes: unlabeled `<select>`/`<input>` pairs in the Add Role/Add
+  Person/Create Process forms, empty `<th>` action-column headers (added `sr-only` text), and
+  more `text-slate-400`-on-white contrast failures. Not covered: a full manual screen-reader
+  walkthrough.
 - **Firm Owner management (T076-T079)**: built. `addFirmOwner`/`changeFirmMemberRole` were
   already implemented; added the missing UI at `/firm/settings` (promote any known User to
   Owner, demote an Owner back to Member, `LAST_OWNER` guard disables demoting the sole
   remaining Owner) plus a conditional "Firm Settings" header link. Deviation from T077: the
   "All Clients" list lives at `/workspaces` (branches on Firm Owner vs. regular access) rather
   than a separate `/firm/clients` route.
+- **Integration tests (T022, T033, T041, T052)**: built, against the real dev Postgres DB —
+  each test file spins up its own throwaway Firm/Workspace/Users (`tests/integration/fixtures.ts`)
+  so nothing collides with the seeded demo data the E2E suite depends on. Two infrastructure
+  gaps had to be worked around, both because Server Actions assume a live Next.js request:
+  `auth()` throws outside one (`headers() was called outside a request scope`) and
+  `revalidatePath()` throws similarly (`static generation store missing`) — both are mocked via
+  `vi.mock` (auth per test file with `vi.hoisted`; `next/cache` globally in
+  `tests/integration/setup.ts`). Separately, the `"server-only"` package Next.js's bundler
+  aliases away doesn't exist for Vitest's plain-Node resolution, so `vitest.config.mts` aliases
+  it to a no-op shim.
 
 ---
 
@@ -144,7 +157,7 @@ Scenario 1).
 ### Tests for User Story 1
 
 - [x] T021 [P] [US1] Unit test process-graph rules (connections must share `processId`, cycles permitted) in `tests/unit/process-graph.test.ts` — write first, must fail
-- [ ] T022 [P] [US1] Integration test `createProcess`/`saveProcessMap` optimistic-concurrency behavior in `tests/integration/process.test.ts`
+- [x] T022 [P] [US1] Integration test `createProcess`/`addProcessStep`/`createStepConnection` (incl. cross-process rejection) in `tests/integration/process.test.ts`. Deviation: no optimistic-concurrency case — `saveProcessMap`/`expectedUpdatedAt` was never built (see the earlier note)
 
 ### Implementation for User Story 1
 
@@ -187,7 +200,7 @@ Activity without an Accountable, run validation, confirm exactly that gap is fla
 ### Tests for User Story 2
 
 - [x] T032 [P] [US2] Unit test RACI rules — missing Accountable, multiple Accountable, missing Responsible — in `tests/unit/raci-validation.test.ts` — write first, must fail
-- [ ] T033 [P] [US2] Integration test `setRaciAssignment`/`validateRaciMatrix`/`finalizeRaciMatrix` in `tests/integration/raci.test.ts`
+- [x] T033 [P] [US2] Integration test `setRaciAssignment`/`finalizeRaciMatrix`/`reopenRaciMatrix` in `tests/integration/raci.test.ts`
 
 ### Implementation for User Story 2
 
@@ -214,7 +227,7 @@ rule, query several values, confirm correct approver(s) or a correctly flagged g
 ### Tests for User Story 3
 
 - [x] T040 [P] [US3] Unit test threshold resolution, co-approval triggering, gap detection, conflict detection (including inclusive-boundary edge case) in `tests/unit/authority-resolution.test.ts` — write first, must fail
-- [ ] T041 [P] [US3] Integration test `createApprovalRule`/`queryApprovers`/`validateAuthorityMatrix` in `tests/integration/authority.test.ts`
+- [x] T041 [P] [US3] Integration test `createApprovalRule`/`queryApprovers`/`validateAuthorityMatrix` in `tests/integration/authority.test.ts`
 
 ### Implementation for User Story 3
 
@@ -243,7 +256,7 @@ visually matches the on-screen matrix, including a not-final indicator if export
 - [x] T048 [P] [US4] Implement Excel renderers (RACI, Authority) with `exceljs` in `lib/export/xlsx.ts`
 - [x] T049 [US4] Implement route handlers `app/api/export/process-map/[id]/route.ts`, `app/api/export/raci/[id]/route.ts`, `app/api/export/authority/[id]/route.ts` (depends on T047, T048)
 - [x] T050 [US4] Wire export buttons into map/RACI/authority pages (PDF/Excel links on RACI + Authority pages; PNG export button on the Process Map canvas). Deviation: no format-selection preview modal or pre-download Draft/unresolved-issue banner (FR-013) — direct download links instead (depends on T049)
-- [ ] T051 [US4] E2E test: quickstart.md Scenario 4 in `tests/e2e/export.spec.ts`
+- [x] T051 [US4] E2E test in `tests/e2e/export.spec.ts`: RACI/Authority PDF+Excel and Process Map PDF+PNG downloads are well-formed files with correct headers, and export routes reject unauthenticated requests
 
 **Checkpoint**: All three artifact types can be produced as shareable files.
 
@@ -260,7 +273,7 @@ Scenario 5).
 
 ### Tests for User Story 5
 
-- [ ] T052 [P] [US5] Integration test `inviteMember`/`changeMemberAccessLevel`/`removeMember`, including `LAST_ADMIN` rejection (FR-016), in `tests/integration/membership.test.ts`
+- [x] T052 [P] [US5] Integration test `inviteMember`/`changeMemberAccessLevel`/`removeMember`, including `LAST_ADMIN` rejection (FR-016), in `tests/integration/membership.test.ts`
 
 ### Implementation for User Story 5
 

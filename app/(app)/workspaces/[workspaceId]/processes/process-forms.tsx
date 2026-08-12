@@ -44,8 +44,8 @@ export function CreateProcessForm({
         });
       }}
     >
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Code</label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Code
         <input
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -53,9 +53,9 @@ export function CreateProcessForm({
           required
           className="w-28 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-mono"
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Name</label>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Name
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -63,9 +63,9 @@ export function CreateProcessForm({
           required
           className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-600">Parent process</label>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Parent process
         <select
           value={parentProcessId}
           onChange={(e) => setParentProcessId(e.target.value)}
@@ -78,7 +78,7 @@ export function CreateProcessForm({
             </option>
           ))}
         </select>
-      </div>
+      </label>
       <button
         type="submit"
         disabled={pending}

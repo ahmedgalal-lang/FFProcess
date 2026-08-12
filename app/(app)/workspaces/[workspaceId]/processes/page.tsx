@@ -38,7 +38,9 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
               <th className="px-4 py-2">Process</th>
               <th className="px-4 py-2">Steps</th>
               <th className="px-4 py-2">RACI</th>
-              <th className="px-4 py-2 text-right"></th>
+              <th className="px-4 py-2 text-right">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -51,7 +53,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                 <td className="px-4 py-2 font-medium text-slate-900">
                   {p.name}
                   {p.parentProcessId && (
-                    <span className="ml-2 text-xs font-normal text-slate-400">
+                    <span className="ml-2 text-xs font-normal text-slate-500">
                       sub-process of {p.parentProcess?.code}
                     </span>
                   )}

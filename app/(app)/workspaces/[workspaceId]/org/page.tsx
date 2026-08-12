@@ -28,7 +28,9 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2">Role</th>
-                <th className="px-4 py-2 text-right"></th>
+                <th className="px-4 py-2 text-right">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -64,7 +66,9 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Roles</th>
-                <th className="px-4 py-2 text-right"></th>
+                <th className="px-4 py-2 text-right">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>

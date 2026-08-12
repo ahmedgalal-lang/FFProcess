@@ -59,6 +59,33 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Workspace picker has no automatically detectable violations", async ({ page }) => {
+    await page.waitForSelector("h1");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Members page has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/members");
+    await page.waitForSelector("h1");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Org Directory has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/org");
+    await page.waitForSelector("h1");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Processes list has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.waitForSelector("h1");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("RACI grid supports arrow-key cell navigation", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();

@@ -39,7 +39,7 @@ links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
 |---|---|
 | `pnpm dev` / `pnpm build` / `pnpm start` | Next.js dev / production build / start |
 | `pnpm lint` | ESLint |
-| `pnpm test` / `pnpm test:watch` | Vitest — business-rule unit tests (`tests/unit/`) |
+| `pnpm test` / `pnpm test:watch` | Vitest — business-rule unit tests (`tests/unit/`) and Server Action integration tests (`tests/integration/`) |
 | `pnpm test:e2e` | Playwright — end-to-end workflows (`tests/e2e/`), auto-starts the dev server |
 | `pnpm db:migrate` | `prisma migrate dev` |
 | `pnpm db:generate` | `prisma generate` (also runs on `postinstall`) |
@@ -66,15 +66,20 @@ links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
   `RESEND_API_KEY` is configured, otherwise shown directly in the UI as a shareable link;
   the accept page creates an account for brand-new invitees or signs an existing account in;
   access-level management, last-Admin protection
-- All business rules (`lib/domain/*`) are unit-tested first, per Constitution Principle III
+- All business rules (`lib/domain/*`) are unit-tested first, per Constitution Principle III;
+  the Server Action layer itself has integration tests (`tests/integration/`) against a real
+  Postgres DB, each using its own throwaway Firm/Workspace fixture
 - Accessibility: keyboard node focus/move + ARIA labeling on the Process Map canvas, arrow-key
   grid navigation + ARIA semantics on the RACI grid, and an automated axe-core scan
-  (`tests/e2e/accessibility.spec.ts`) covering the Process Map, RACI, and Authority pages with
-  zero violations
+  (`tests/e2e/accessibility.spec.ts`) covering the Process Map, RACI, Authority, Firm Settings,
+  Members, Org Directory, Processes, and Workspace picker pages with zero violations
+- Export downloads (PDF/Excel/PNG headers and file signatures, plus the unauthenticated-request
+  case) are covered by `tests/e2e/export.spec.ts`
 
 ## Not yet built
 
 A full manual screen-reader walkthrough (the accessibility pass so far is keyboard nav + ARIA +
-automated axe-core scanning, not hands-on assistive-tech testing), and most of the Playwright
-E2E coverage beyond `tests/e2e/core-workflows.spec.ts` and `tests/e2e/accessibility.spec.ts`.
-See `specs/001-process-mapping-raci-authority/tasks.md` for the full remaining task list.
+automated axe-core scanning, not hands-on assistive-tech testing), and optimistic-concurrency
+handling on the Process Map (two people editing the same map at once isn't detected — fine for
+the current single-editor-at-a-time assumption). See
+`specs/001-process-mapping-raci-authority/tasks.md` for the full remaining task list.

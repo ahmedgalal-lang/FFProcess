@@ -115,7 +115,7 @@ export function MemberRowActions({
             router.refresh();
           })
         }
-        className="text-xs font-medium text-slate-500 hover:text-red-600"
+        className="text-xs font-medium text-slate-600 hover:text-red-600"
       >
         Remove
       </button>

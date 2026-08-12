@@ -95,7 +95,7 @@ export function FirmMemberRowActions({
           disabled={pending || !canDemote}
           onClick={() => changeRole("MEMBER")}
           title={canDemote ? undefined : "The Firm must always have at least one Owner"}
-          className="text-xs font-medium text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+          className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Demote to Member
         </button>
@@ -104,7 +104,7 @@ export function FirmMemberRowActions({
           type="button"
           disabled={pending}
           onClick={() => changeRole("OWNER")}
-          className="text-xs font-medium text-slate-500 hover:text-slate-900"
+          className="text-xs font-medium text-slate-600 hover:text-slate-900"
         >
           Promote to Owner
         </button>
