@@ -51,6 +51,14 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Firm Settings has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/firm/settings");
+    await page.waitForSelector('h1:has-text("Firm Settings")');
+
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("RACI grid supports arrow-key cell navigation", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();

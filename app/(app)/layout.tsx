@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth, signOut } from "@/lib/auth/config";
+import { prisma } from "@/lib/db/client";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+
+  const firmMember = await prisma.firmMember.findUnique({ where: { userId: session.user.id! } });
+  const isFirmOwner = firmMember?.role === "OWNER";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -16,6 +20,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <span className="text-sm font-semibold text-slate-900">FFProcess</span>
         </Link>
         <div className="flex-1" />
+        {isFirmOwner && (
+          <Link href="/firm/settings" className="text-xs font-medium text-slate-500 hover:text-slate-900">
+            Firm Settings
+          </Link>
+        )}
         <span className="text-xs text-slate-500">{session.user.email}</span>
         <form
           action={async () => {

@@ -71,6 +71,12 @@ original task text, discovered while implementing:
   all pass with zero violations as of this pass. Not covered: a full manual screen-reader
   walkthrough, and the Members/Org/Processes list pages weren't run through axe (no findings
   expected there given the same fixes, but unverified).
+- **Firm Owner management (T076-T079)**: built. `addFirmOwner`/`changeFirmMemberRole` were
+  already implemented; added the missing UI at `/firm/settings` (promote any known User to
+  Owner, demote an Owner back to Member, `LAST_OWNER` guard disables demoting the sole
+  remaining Owner) plus a conditional "Firm Settings" header link. Deviation from T077: the
+  "All Clients" list lives at `/workspaces` (branches on Firm Owner vs. regular access) rather
+  than a separate `/firm/clients` route.
 
 ---
 
@@ -268,10 +274,10 @@ Scenario 5).
 
 Builds the Firm Owner-facing side of the carve-out added to Foundational (T070-T075).
 
-- [ ] T076 [US5] Implement `listAllWorkspaces`, `addFirmOwner`, `changeFirmMemberRole` Server Actions in `app/actions/organization.ts` per contracts/server-actions.md (depends on T072, T074)
-- [ ] T077 [US5] Build an "All Clients" view for Firm Owners listing every Workspace, tagging `MEMBER` vs `OWNER_CARVEOUT` access, in `app/(app)/firm/clients/page.tsx` (depends on T076)
-- [ ] T078 [US5] Build Firm Owners management UI (add/remove Owner, `LAST_OWNER` guard surfaced in the UI) in `app/(app)/firm/settings/page.tsx` (depends on T076)
-- [ ] T079 [US5] E2E test: a Firm Owner opens a Workspace with no explicit `Member` record and edits it; a non-Owner Firm Member without a `Member` record is denied, in `tests/e2e/firm-owner.spec.ts`
+- [x] T076 [US5] Implement `listAllWorkspaces`, `addFirmOwner`, `changeFirmMemberRole` Server Actions in `lib/actions/organization.ts` per contracts/server-actions.md (depends on T072, T074)
+- [x] T077 [US5] Build an "All Clients" view for Firm Owners listing every Workspace, tagging `MEMBER` vs `OWNER_CARVEOUT` access. Deviation: lives at `/workspaces` (the same page non-owners see, branching on role) rather than a separate `app/(app)/firm/clients/page.tsx` — one workspace-picker page for everyone was simpler than two (depends on T076)
+- [x] T078 [US5] Build Firm Owners management UI (promote/demote Owner, `LAST_OWNER` guard surfaced in the UI) in `app/(app)/firm/settings/page.tsx` — a "Firm Settings" link appears in the header only for Firm Owners; direct navigation by a non-owner 404s server-side (depends on T076)
+- [x] T079 [US5] E2E test in `tests/e2e/firm-owner.spec.ts`: a non-owner is denied `/firm/settings` (hidden link + 404 on direct nav), a Firm Owner promotes/demotes another user, and the `LAST_OWNER` guard blocks demoting the sole remaining Owner
 
 **Checkpoint**: All five user stories independently functional — feature-complete for v1 scope.
 

@@ -48,7 +48,9 @@ links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
 
 ## What's implemented
 
-- Auth (email/password via Credentials + JWT sessions), Firm Owner cross-workspace carve-out
+- Auth (email/password via Credentials + JWT sessions), Firm Owner cross-workspace carve-out;
+  Firm Settings page for Firm Owners to promote/demote other Firm Owners (`/firm/settings`,
+  linked from the header only when signed in as one), with a guard against removing the last one
 - Org Directory (Roles, People) with archive-not-delete semantics
 - Processes: creation with unique Process Codes, main/sub-process hierarchy, cross-process
   step links (one step can link to multiple other Processes)
