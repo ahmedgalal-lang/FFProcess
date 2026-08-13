@@ -18,6 +18,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // holds once a non-Credentials provider (OAuth/email) is added; documented as
   // a pragmatic adjustment discovered during implementation, not a silent change.
   session: { strategy: "jwt" },
+  // Required behind any reverse proxy/CDN (CranL, Vercel-alikes, etc.) — without
+  // this, Auth.js rejects the request's Host header and every /api/auth/* call
+  // fails with a generic "server configuration" error.
+  trustHost: true,
   pages: {
     signIn: "/login",
   },
