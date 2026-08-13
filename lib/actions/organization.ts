@@ -39,6 +39,70 @@ export async function listAllWorkspaces(): Promise<ActionResult<WorkspaceListEnt
   );
 }
 
+const createWorkspaceSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  currency: z.string().trim().min(1).max(10).optional(),
+});
+
+/** Firm Owner-only: create a new client Workspace under the caller's Firm. */
+export async function createWorkspace(
+  input: z.infer<typeof createWorkspaceSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = createWorkspaceSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireFirmOwner();
+  if (!access.ok) return access;
+
+  const firmMember = await prisma.firmMember.findUniqueOrThrow({ where: { userId: access.data.userId } });
+
+  const workspace = await prisma.workspace.create({
+    data: {
+      firmId: firmMember.firmId,
+      name: parsed.data.name,
+      currency: parsed.data.currency || undefined,
+    },
+  });
+
+  revalidatePath("/workspaces");
+  return ok({ id: workspace.id });
+}
+
+const deleteWorkspaceSchema = z.object({
+  workspaceId: z.string().min(1),
+  confirmName: z.string().min(1),
+});
+
+/**
+ * Firm Owner-only: permanently delete a Workspace and everything under it
+ * (Members, Roles, People, Processes, RACI/Authority data — all cascade). The
+ * caller must retype the Workspace's exact name to confirm, since this cannot
+ * be undone.
+ */
+export async function deleteWorkspace(
+  input: z.infer<typeof deleteWorkspaceSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteWorkspaceSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireFirmOwner();
+  if (!access.ok) return access;
+
+  const firmMember = await prisma.firmMember.findUniqueOrThrow({ where: { userId: access.data.userId } });
+
+  const workspace = await prisma.workspace.findUnique({ where: { id: parsed.data.workspaceId } });
+  if (!workspace || workspace.firmId !== firmMember.firmId) return validationError("Workspace not found");
+
+  if (workspace.name !== parsed.data.confirmName) {
+    return validationError(`Type "${workspace.name}" exactly to confirm deletion.`);
+  }
+
+  await prisma.workspace.delete({ where: { id: parsed.data.workspaceId } });
+
+  revalidatePath("/workspaces");
+  return ok({ id: parsed.data.workspaceId });
+}
+
 const addOwnerSchema = z.object({ userId: z.string().min(1) });
 
 export async function addFirmOwner(

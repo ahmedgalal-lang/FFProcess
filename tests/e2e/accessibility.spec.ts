@@ -65,6 +65,27 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Workspace picker's New Client form and delete-confirmation dialog have no violations", async ({ page }) => {
+    await page.waitForSelector("h1");
+    await page.click('button:has-text("+ New Client")');
+    let results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+
+    const name = `AxeTest ${Date.now()}`;
+    await page.fill('input[placeholder="e.g. Acme Industrial"]', name);
+    await page.click('button:has-text("Create")');
+    const card = page.locator("a", { hasText: name });
+    await card.locator(`button[aria-label="Delete ${name}"]`).click();
+    await page.waitForSelector("text=Delete permanently");
+
+    results = await new AxeBuilder({ page }).analyze(); // whole page — dialog is a fixed overlay outside <main>
+    expect(results.violations).toEqual([]);
+
+    await page.fill('label:has-text("Type") input', name);
+    await page.click('button:has-text("Delete permanently")');
+    await expect(card).toHaveCount(0);
+  });
+
   test("Members page has no automatically detectable violations", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/members");
     await page.waitForSelector("h1");

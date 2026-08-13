@@ -14,7 +14,7 @@ export function PromoteToOwnerForm({ users }: { users: UserRef[] }) {
 
   if (users.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-300 px-4 py-4 text-center text-sm text-slate-400">
+      <p className="rounded-xl border border-dashed border-slate-300 px-4 py-4 text-center text-sm text-slate-500">
         Everyone with an account is already a Firm Member or Owner.
       </p>
     );
