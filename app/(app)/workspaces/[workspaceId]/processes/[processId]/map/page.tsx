@@ -50,6 +50,10 @@ export default async function ProcessMapPage(
         {process.steps.length} step(s) ·{" "}
         <a href={`/workspaces/${workspaceId}/processes/${processId}/raci`} className="font-semibold text-slate-700 hover:text-slate-900">
           Build RACI →
+        </a>{" "}
+        ·{" "}
+        <a href={`/workspaces/${workspaceId}/processes/${processId}/review`} className="font-semibold text-slate-700 hover:text-slate-900">
+          AI Review →
         </a>
       </p>
 

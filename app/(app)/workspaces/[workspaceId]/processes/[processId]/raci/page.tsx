@@ -55,6 +55,12 @@ export default async function RaciMatrixPage(
           >
             Export Excel
           </a>
+          <a
+            href={`/workspaces/${workspaceId}/processes/${processId}/review`}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            AI Review →
+          </a>
         </div>
       </div>
       <h1 className="text-xl font-semibold text-slate-900">RACI Matrix</h1>

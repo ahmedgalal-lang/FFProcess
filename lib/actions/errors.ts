@@ -7,7 +7,8 @@ export type ActionError =
   | { ok: false; error: "VALIDATION_ERROR"; issues?: ZodIssue[]; message?: string }
   | { ok: false; error: "CONFLICT" }
   | { ok: false; error: "LAST_ADMIN" }
-  | { ok: false; error: "LAST_OWNER" };
+  | { ok: false; error: "LAST_OWNER" }
+  | { ok: false; error: "AI_UNAVAILABLE"; message: string };
 
 export type ActionResult<T> = { ok: true; data: T } | ActionError;
 
@@ -29,4 +30,8 @@ export function notFound(): ActionError {
 
 export function validationError(message: string, issues?: ZodIssue[]): ActionError {
   return { ok: false, error: "VALIDATION_ERROR", message, issues };
+}
+
+export function aiUnavailable(message: string): ActionError {
+  return { ok: false, error: "AI_UNAVAILABLE", message };
 }
