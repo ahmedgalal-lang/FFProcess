@@ -24,26 +24,30 @@ describe("process Server Actions", () => {
     await fixture.cleanup();
   });
 
-  it("rejects a duplicate Process Code within the same workspace", async () => {
-    const first = await createProcess({
-      workspaceId: fixture.workspace.id,
-      code: "PUR100",
-      name: "Purchase to Pay",
-    });
+  it("auto-generates sequential Process Codes with no code accepted from the caller", async () => {
+    const first = await createProcess({ workspaceId: fixture.workspace.id, name: "Purchase to Pay" });
     expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("setup failed");
+    expect(first.data.code).toBe("PUR100");
 
-    const duplicate = await createProcess({
+    // A second process sharing the same first word gets the next number, not a collision.
+    const second = await createProcess({ workspaceId: fixture.workspace.id, name: "Purchase Requisitions" });
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.data.code).toBe("PUR101");
+
+    // A sub-process inherits its parent's prefix instead of deriving one from its own name.
+    const child = await createProcess({
       workspaceId: fixture.workspace.id,
-      code: "pur100", // case-insensitive collision
-      name: "Duplicate",
+      name: "Vendor Onboarding",
+      parentProcessId: first.data.id,
     });
-    expect(duplicate.ok).toBe(false);
-    if (!duplicate.ok) expect(duplicate.error).toBe("VALIDATION_ERROR");
+    expect(child.ok).toBe(true);
+    if (child.ok) expect(child.data.code).toBe("PUR102");
   });
 
   it("adds a step, connects it, then rejects a connection across two different processes", async () => {
-    const processA = await createProcess({ workspaceId: fixture.workspace.id, code: "PA1", name: "Process A" });
-    const processB = await createProcess({ workspaceId: fixture.workspace.id, code: "PB1", name: "Process B" });
+    const processA = await createProcess({ workspaceId: fixture.workspace.id, name: "Process A" });
+    const processB = await createProcess({ workspaceId: fixture.workspace.id, name: "Process B" });
     if (!processA.ok || !processB.ok) throw new Error("setup failed");
 
     const step1 = await addProcessStep({
@@ -93,7 +97,7 @@ describe("process Server Actions", () => {
   });
 
   it("persists a drag-to-reposition", async () => {
-    const process = await createProcess({ workspaceId: fixture.workspace.id, code: "PC1", name: "Process C" });
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process C" });
     if (!process.ok) throw new Error("setup failed");
     const step = await addProcessStep({
       workspaceId: fixture.workspace.id,
@@ -116,14 +120,14 @@ describe("process Server Actions", () => {
     const { user: viewer } = await fixture.addMember("VIEWER");
     mockAuth.mockResolvedValue({ user: { id: viewer.id } });
 
-    const result = await createProcess({ workspaceId: fixture.workspace.id, code: "PD1", name: "Process D" });
+    const result = await createProcess({ workspaceId: fixture.workspace.id, name: "Process D" });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBe("FORBIDDEN");
   });
 
   it("rejects any action from an unauthenticated caller", async () => {
     mockAuth.mockResolvedValue(null);
-    const result = await createProcess({ workspaceId: fixture.workspace.id, code: "PE1", name: "Process E" });
+    const result = await createProcess({ workspaceId: fixture.workspace.id, name: "Process E" });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBe("UNAUTHORIZED");
   });

@@ -4,48 +4,73 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
-import { isCodeAvailable, wouldCreateCycle } from "@/lib/domain/process-hierarchy";
+import { generateProcessCode, isCodeAvailable, wouldCreateCycle } from "@/lib/domain/process-hierarchy";
 import { validateConnections } from "@/lib/domain/process-graph";
 import { laneY, nextStepX } from "@/lib/domain/process-layout";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
 const createProcessSchema = z.object({
   workspaceId: z.string().min(1),
-  code: z.string().trim().min(2).max(20),
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(2000).optional().or(z.literal("")),
   parentProcessId: z.string().min(1).optional().or(z.literal("")),
 });
 
+const MAX_CODE_GENERATION_ATTEMPTS = 5;
+
+/**
+ * The Process Code is always auto-generated (FR-020) — never accepted from
+ * the client — so there's nothing for a user to type or get wrong. Retries a
+ * few times against a fresh code list in the rare case two creates race each
+ * other to the same generated code.
+ */
 export async function createProcess(
   input: z.infer<typeof createProcessSchema>
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; code: string }>> {
   const parsed = createProcessSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid process input", parsed.error.issues);
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const existing = await prisma.process.findMany({
-    where: { workspaceId: parsed.data.workspaceId },
-    select: { code: true },
-  });
-  if (!isCodeAvailable(parsed.data.code, existing.map((p) => p.code))) {
-    return validationError(`Process Code "${parsed.data.code}" is already used in this workspace.`);
+  const parentProcessId = parsed.data.parentProcessId || undefined;
+  const parent = parentProcessId
+    ? await prisma.process.findUnique({ where: { id: parentProcessId }, select: { code: true } })
+    : null;
+  if (parentProcessId && !parent) return notFound();
+
+  for (let attempt = 0; attempt < MAX_CODE_GENERATION_ATTEMPTS; attempt++) {
+    const existing = await prisma.process.findMany({
+      where: { workspaceId: parsed.data.workspaceId },
+      select: { code: true },
+    });
+    const code = generateProcessCode({
+      name: parsed.data.name,
+      parentCode: parent?.code ?? null,
+      existingCodes: existing.map((p) => p.code),
+    });
+    if (!isCodeAvailable(code, existing.map((p) => p.code))) continue; // lost the race, retry
+
+    try {
+      const process = await prisma.process.create({
+        data: {
+          workspaceId: parsed.data.workspaceId,
+          code,
+          name: parsed.data.name,
+          description: parsed.data.description || undefined,
+          parentProcessId,
+        },
+      });
+      revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
+      return ok({ id: process.id, code: process.code });
+    } catch (error) {
+      const isUniqueConflict =
+        typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+      if (!isUniqueConflict || attempt === MAX_CODE_GENERATION_ATTEMPTS - 1) throw error;
+    }
   }
 
-  const process = await prisma.process.create({
-    data: {
-      workspaceId: parsed.data.workspaceId,
-      code: parsed.data.code.trim().toUpperCase(),
-      name: parsed.data.name,
-      description: parsed.data.description || undefined,
-      parentProcessId: parsed.data.parentProcessId || undefined,
-    },
-  });
-
-  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
-  return ok({ id: process.id });
+  return validationError("Could not generate a unique Process Code — please try again.");
 }
 
 const updateProcessSchema = z.object({

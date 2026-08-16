@@ -13,10 +13,10 @@ export function CreateProcessForm({
   workspaceId: string;
   processes: ProcessOption[];
 }) {
-  const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [parentProcessId, setParentProcessId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [lastCreatedCode, setLastCreatedCode] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -26,10 +26,10 @@ export function CreateProcessForm({
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
+        setLastCreatedCode(null);
         startTransition(async () => {
           const result = await createProcess({
             workspaceId,
-            code,
             name,
             parentProcessId: parentProcessId || undefined,
           });
@@ -37,23 +37,13 @@ export function CreateProcessForm({
             setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid input" : result.error);
             return;
           }
-          setCode("");
           setName("");
           setParentProcessId("");
+          setLastCreatedCode(result.data.code);
           router.refresh();
         });
       }}
     >
-      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-        Code
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="SAL101"
-          required
-          className="w-28 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-mono"
-        />
-      </label>
       <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
         Name
         <input
@@ -86,7 +76,13 @@ export function CreateProcessForm({
       >
         + New Process
       </button>
-      {error && <span className="self-center text-xs text-red-600">{error}</span>}
+      <span className="self-center text-xs text-slate-500">Codes are assigned automatically.</span>
+      {error && <span className="w-full text-xs text-red-600">{error}</span>}
+      {lastCreatedCode && (
+        <span className="w-full text-xs text-emerald-700">
+          Created as <span className="font-mono font-semibold">{lastCreatedCode}</span>.
+        </span>
+      )}
     </form>
   );
 }

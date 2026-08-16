@@ -25,7 +25,7 @@ describe("RACI Server Actions", () => {
     fixture = await createFixtureWorkspace();
     mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
 
-    const process = await createProcess({ workspaceId: fixture.workspace.id, code: "RC1", name: "RACI Test Process" });
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "RACI Test Process" });
     const roleA = await createRole({ workspaceId: fixture.workspace.id, name: "Clerk" });
     const roleB = await createRole({ workspaceId: fixture.workspace.id, name: "Manager" });
     if (!process.ok || !roleA.ok || !roleB.ok) throw new Error("setup failed");
