@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createWorkspace, deleteWorkspace } from "@/lib/actions/organization";
 
@@ -91,6 +92,10 @@ export function DeleteWorkspaceButton({ workspaceId, workspaceName }: { workspac
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
+  // The dialog is portaled to document.body (see below) so its clicks can never bubble
+  // into the workspace card's <Link>, which is what caused "Delete" to navigate into the
+  // workspace instead of deleting it. `open` only ever flips true from a click handler,
+  // so `document` is guaranteed to exist by then — no SSR/mount guard needed.
   function close() {
     setOpen(false);
     setConfirmName("");
@@ -119,66 +124,81 @@ export function DeleteWorkspaceButton({ workspaceId, workspaceName }: { workspac
         </svg>
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-workspace-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-          onClick={close}
-        >
+      {open &&
+        createPortal(
           <div
-            className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-workspace-title"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              close();
+            }}
           >
-            <h2 id="delete-workspace-title" className="text-sm font-semibold text-slate-900">
-              Delete {workspaceName}?
-            </h2>
-            <p className="mt-1.5 text-xs text-slate-500">
-              This permanently deletes the workspace and everything in it — members, roles, processes,
-              RACI matrices, and the authority matrix. This cannot be undone.
-            </p>
-            <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
-              Type <span className="font-mono font-semibold text-slate-900">{workspaceName}</span> to confirm
-              <input
-                value={confirmName}
-                onChange={(e) => setConfirmName(e.target.value)}
-                autoFocus
-                className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
-              />
-            </label>
-            {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={close}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={pending || confirmName !== workspaceName}
-                onClick={() =>
-                  startTransition(async () => {
-                    setError(null);
-                    const result = await deleteWorkspace({ workspaceId, confirmName });
-                    if (!result.ok) {
-                      setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Could not delete" : result.error);
-                      return;
-                    }
+            <div
+              className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-lg"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <h2 id="delete-workspace-title" className="text-sm font-semibold text-slate-900">
+                Delete {workspaceName}?
+              </h2>
+              <p className="mt-1.5 text-xs text-slate-500">
+                This permanently deletes the workspace and everything in it — members, roles, processes,
+                RACI matrices, and the authority matrix. This cannot be undone.
+              </p>
+              <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
+                Type <span className="font-mono font-semibold text-slate-900">{workspaceName}</span> to confirm
+                <input
+                  value={confirmName}
+                  onChange={(e) => setConfirmName(e.target.value)}
+                  autoFocus
+                  className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+                />
+              </label>
+              {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     close();
-                    router.refresh();
-                  })
-                }
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {pending ? "Deleting…" : "Delete permanently"}
-              </button>
+                  }}
+                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || confirmName !== workspaceName}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    startTransition(async () => {
+                      setError(null);
+                      const result = await deleteWorkspace({ workspaceId, confirmName });
+                      if (!result.ok) {
+                        setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Could not delete" : result.error);
+                        return;
+                      }
+                      close();
+                      router.refresh();
+                    });
+                  }}
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {pending ? "Deleting…" : "Delete permanently"}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
