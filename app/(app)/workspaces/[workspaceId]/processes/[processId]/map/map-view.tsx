@@ -1,15 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { ProcessMapCanvas } from "./process-map-canvas";
-
-const TYPE_STYLES: Record<string, string> = {
-  START: "bg-emerald-50 text-emerald-700",
-  END: "bg-emerald-50 text-emerald-700",
-  TASK: "bg-slate-100 text-slate-600",
-  DECISION: "bg-indigo-50 text-indigo-700",
-};
+import { StepListRow } from "./step-list-row";
 
 type RoleRef = { id: string; name: string };
 type StepT = {
@@ -30,16 +23,18 @@ export function MapView({
   processCode,
   steps,
   connections,
+  roles,
 }: {
   workspaceId: string;
   processId: string;
   processCode: string;
   steps: StepT[];
   connections: ConnectionT[];
+  roles: RoleRef[];
 }) {
   const [mode, setMode] = useState<"diagram" | "list">("diagram");
-  const predecessorOf = new Map<string, string>();
-  for (const c of connections) predecessorOf.set(c.toStepId, c.fromStepId);
+  const incomingConnectionOf = new Map<string, ConnectionT>();
+  for (const c of connections) incomingConnectionOf.set(c.toStepId, c);
   const stepById = new Map(steps.map((s) => [s.id, s]));
 
   return (
@@ -79,42 +74,22 @@ export function MapView({
       ) : (
         <div className="flex flex-col gap-2">
           {steps.map((step, i) => {
-            const predecessor = stepById.get(predecessorOf.get(step.id) ?? "");
+            const incomingConnection = incomingConnectionOf.get(step.id);
+            const predecessorStep = incomingConnection ? stepById.get(incomingConnection.fromStepId) : undefined;
+            const predecessor = predecessorStep ? { id: predecessorStep.id, label: predecessorStep.label } : undefined;
+            const stepOptions = steps.filter((s) => s.id !== step.id).map((s) => ({ id: s.id, label: s.label }));
             return (
-              <div key={step.id} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
-                <div className="flex h-6 w-6 flex-none items-center justify-center rounded-md bg-indigo-50 font-mono text-xs font-bold text-indigo-700">
-                  {i + 1}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${TYPE_STYLES[step.type]}`}>
-                      {step.type}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-900">{step.label}</span>
-                    {step.assignedRole && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        {step.assignedRole.name}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {predecessor ? `Connects from: ${predecessor.label}` : "Entry point — no predecessor"}
-                  </div>
-                  {step.links.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {step.links.map((link) => (
-                        <Link
-                          key={link.id}
-                          href={`/workspaces/${workspaceId}/processes/${link.targetProcessId}/map`}
-                          className="rounded-full border border-dashed border-indigo-300 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50"
-                        >
-                          🔗 {link.targetProcess.code} — {link.targetProcess.name}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <StepListRow
+                key={step.id}
+                workspaceId={workspaceId}
+                processId={processId}
+                index={i}
+                step={step}
+                predecessor={predecessor}
+                incomingConnection={incomingConnection}
+                roles={roles}
+                stepOptions={stepOptions}
+              />
             );
           })}
           {steps.length === 0 && (

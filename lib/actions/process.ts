@@ -216,6 +216,72 @@ export async function addProcessStep(
   return ok({ id: created.id });
 }
 
+const updateStepSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  stepId: z.string().min(1),
+  type: z.enum(["START", "TASK", "DECISION", "END"]),
+  label: z.string().trim().min(1).max(200),
+  assignedRoleId: z.string().min(1).optional().or(z.literal("")),
+  swimlaneRoleId: z.string().min(1).optional().or(z.literal("")),
+});
+
+/** Edits an existing step's name, type, and assigned/swimlane role. */
+export async function updateProcessStep(
+  input: z.infer<typeof updateStepSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateStepSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid step input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
+  if (!step || step.processId !== parsed.data.processId) return notFound();
+
+  const updated = await prisma.processStep.update({
+    where: { id: parsed.data.stepId },
+    data: {
+      type: parsed.data.type,
+      label: parsed.data.label,
+      assignedRoleId: parsed.data.assignedRoleId || null,
+      swimlaneRoleId: parsed.data.swimlaneRoleId || null,
+    },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ id: updated.id });
+}
+
+const deleteStepSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  stepId: z.string().min(1),
+});
+
+/**
+ * Removes a step entirely. Its connections and cross-process links cascade
+ * with it; any Activity that referenced it as relatedStep just loses that
+ * reference (FK is ON DELETE SET NULL) rather than being deleted itself.
+ */
+export async function deleteProcessStep(
+  input: z.infer<typeof deleteStepSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteStepSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
+  if (!step || step.processId !== parsed.data.processId) return notFound();
+
+  await prisma.processStep.delete({ where: { id: parsed.data.stepId } });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ id: parsed.data.stepId });
+}
+
 const createConnectionSchema = z.object({
   workspaceId: z.string().min(1),
   processId: z.string().min(1),

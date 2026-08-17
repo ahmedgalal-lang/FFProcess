@@ -9,8 +9,16 @@ vi.mock("@/lib/auth/config", () => ({
   handlers: {},
 }));
 
-const { createProcess, addProcessStep, createStepConnection, deleteStepConnection, updateStepPosition } =
-  await import("@/lib/actions/process");
+const {
+  createProcess,
+  addProcessStep,
+  createStepConnection,
+  deleteStepConnection,
+  updateStepPosition,
+  updateProcessStep,
+  deleteProcessStep,
+} = await import("@/lib/actions/process");
+const { createRole } = await import("@/lib/actions/org");
 
 describe("process Server Actions", () => {
   let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
@@ -114,6 +122,65 @@ describe("process Server Actions", () => {
       positionY: 250,
     });
     expect(moved.ok).toBe(true);
+  });
+
+  it("edits an existing step's name, type, and assigned role", async () => {
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process F" });
+    if (!process.ok) throw new Error("setup failed");
+    const role = await createRole({ workspaceId: fixture.workspace.id, name: "Reviewer" });
+    if (!role.ok) throw new Error("setup failed");
+    const step = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      step: { type: "TASK", label: "Draft label", linkedProcessIds: [] },
+    });
+    if (!step.ok) throw new Error("setup failed");
+
+    const updated = await updateProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      stepId: step.data.id,
+      type: "DECISION",
+      label: "Corrected label",
+      assignedRoleId: role.data.id,
+      swimlaneRoleId: role.data.id,
+    });
+    expect(updated.ok).toBe(true);
+  });
+
+  it("deletes a step along with its connections, without erroring", async () => {
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process G" });
+    if (!process.ok) throw new Error("setup failed");
+
+    const start = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      step: { type: "START", label: "Start", linkedProcessIds: [] },
+    });
+    if (!start.ok) throw new Error("setup failed");
+    const task = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      step: { type: "TASK", label: "Mistake", linkedProcessIds: [] },
+      fromStepId: start.data.id,
+    });
+    if (!task.ok) throw new Error("setup failed");
+
+    const deleted = await deleteProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      stepId: task.data.id,
+    });
+    expect(deleted.ok).toBe(true);
+
+    // Its incoming connection is gone too (cascaded), not left dangling.
+    const reconnect = await createStepConnection({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      fromStepId: start.data.id,
+      toStepId: task.data.id,
+    });
+    expect(reconnect.ok).toBe(false); // task no longer exists
   });
 
   it("rejects EDITOR-level actions from a caller with only VIEWER access", async () => {

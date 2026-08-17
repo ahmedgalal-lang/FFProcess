@@ -63,6 +63,7 @@ export default async function ProcessMapPage(
         processCode={process.code}
         steps={process.steps}
         connections={connections}
+        roles={roles.map((r) => ({ id: r.id, name: r.name }))}
       />
 
       <div className="mt-5">
