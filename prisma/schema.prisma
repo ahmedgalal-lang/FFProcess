@@ -288,7 +288,7 @@ model ProcessStepLink {
   targetProcessId  String
 
   step          ProcessStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  targetProcess Process     @relation("LinkTargetProcess", fields: [targetProcessId], references: [id])
+  targetProcess Process     @relation("LinkTargetProcess", fields: [targetProcessId], references: [id], onDelete: Cascade)
 
   @@unique([stepId, targetProcessId])
   @@map("process_step_links")
