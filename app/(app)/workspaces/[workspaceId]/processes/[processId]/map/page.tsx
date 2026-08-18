@@ -71,7 +71,7 @@ export default async function ProcessMapPage(
           workspaceId={workspaceId}
           processId={processId}
           roles={roles.map((r) => ({ id: r.id, name: r.name }))}
-          steps={process.steps.map((s) => ({ id: s.id, label: s.label }))}
+          steps={process.steps.map((s) => ({ id: s.id, label: s.label, type: s.type }))}
           otherProcesses={otherProcesses.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
         />
       </div>

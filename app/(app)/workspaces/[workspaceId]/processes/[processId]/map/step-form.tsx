@@ -4,9 +4,17 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addProcessStep } from "@/lib/actions/process";
 
+type StepType = "START" | "TASK" | "DECISION" | "END";
 type RoleOption = { id: string; name: string };
-type StepOption = { id: string; label: string };
+type StepOption = { id: string; label: string; type: StepType };
 type ProcessOption = { id: string; code: string; name: string };
+
+const STEP_TYPE_PREFIX: Record<StepType, string> = {
+  START: "Start",
+  TASK: "Task",
+  DECISION: "Decision",
+  END: "End",
+};
 
 export function AddStepForm({
   workspaceId,
@@ -106,7 +114,7 @@ export function AddStepForm({
             <option value="">— entry point —</option>
             {steps.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.label}
+                [{STEP_TYPE_PREFIX[s.type]}] {s.label}
               </option>
             ))}
           </select>

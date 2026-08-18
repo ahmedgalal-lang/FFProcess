@@ -76,8 +76,12 @@ export function MapView({
           {steps.map((step, i) => {
             const incomingConnection = incomingConnectionOf.get(step.id);
             const predecessorStep = incomingConnection ? stepById.get(incomingConnection.fromStepId) : undefined;
-            const predecessor = predecessorStep ? { id: predecessorStep.id, label: predecessorStep.label } : undefined;
-            const stepOptions = steps.filter((s) => s.id !== step.id).map((s) => ({ id: s.id, label: s.label }));
+            const predecessor = predecessorStep
+              ? { id: predecessorStep.id, label: predecessorStep.label, type: predecessorStep.type }
+              : undefined;
+            const stepOptions = steps
+              .filter((s) => s.id !== step.id)
+              .map((s) => ({ id: s.id, label: s.label, type: s.type }));
             return (
               <StepListRow
                 key={step.id}

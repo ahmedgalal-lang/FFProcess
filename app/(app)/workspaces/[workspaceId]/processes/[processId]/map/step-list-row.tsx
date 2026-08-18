@@ -17,6 +17,13 @@ const TYPE_STYLES: Record<string, string> = {
   DECISION: "bg-indigo-50 text-indigo-700",
 };
 
+const STEP_TYPE_PREFIX: Record<string, string> = {
+  START: "Start",
+  TASK: "Task",
+  DECISION: "Decision",
+  END: "End",
+};
+
 type RoleRef = { id: string; name: string };
 type StepType = "START" | "TASK" | "DECISION" | "END";
 type StepT = {
@@ -27,7 +34,7 @@ type StepT = {
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
-type StepOption = { id: string; label: string };
+type StepOption = { id: string; label: string; type: StepType };
 
 export function StepListRow({
   workspaceId,
@@ -181,7 +188,7 @@ export function StepListRow({
               <option value="">— entry point —</option>
               {stepOptions.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.label}
+                  [{STEP_TYPE_PREFIX[s.type]}] {s.label}
                 </option>
               ))}
             </select>
