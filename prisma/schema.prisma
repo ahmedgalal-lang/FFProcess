@@ -23,10 +23,10 @@ model User {
   image         String?
   passwordHash  String?
 
-  accounts     Account[]
-  sessions     Session[]
-  firmMember   FirmMember?
-  memberships  Member[]
+  accounts    Account[]
+  sessions    Session[]
+  firmMember  FirmMember?
+  memberships Member[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -85,8 +85,9 @@ model Firm {
   id   String @id @default(uuid())
   name String
 
-  members    FirmMember[]
-  workspaces Workspace[]
+  members           FirmMember[]
+  workspaces        Workspace[]
+  processCategories ProcessCategory[]
 
   createdAt DateTime @default(now())
 
@@ -124,10 +125,12 @@ enum MemberStatus {
 }
 
 model Workspace {
-  id       String @id @default(uuid())
-  firmId   String
-  name     String
-  currency String @default("USD")
+  id          String  @id @default(uuid())
+  firmId      String
+  name        String
+  currency    String  @default("USD")
+  industry    String?
+  description String?
 
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 
@@ -144,15 +147,15 @@ model Workspace {
 }
 
 model Member {
-  id            String       @id @default(uuid())
-  workspaceId   String
-  userId        String?
-  invitedEmail  String?
-  accessLevel   AccessLevel
-  status        MemberStatus @default(PENDING)
+  id           String       @id @default(uuid())
+  workspaceId  String
+  userId       String?
+  invitedEmail String?
+  accessLevel  AccessLevel
+  status       MemberStatus @default(PENDING)
 
-  inviteToken           String?   @unique
-  inviteTokenExpiresAt  DateTime?
+  inviteToken          String?   @unique
+  inviteTokenExpiresAt DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -177,12 +180,12 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles      PersonRole[]
-  processSteps     ProcessStep[]        @relation("StepAssignedRole")
-  swimlaneSteps    ProcessStep[]        @relation("StepSwimlaneRole")
-  raciAssignments  RaciAssignment[]
-  approverRules    ApprovalRule[]       @relation("ApproverRole")
-  coApproverRules  ApprovalRule[]       @relation("CoApproverRole")
+  personRoles     PersonRole[]
+  processSteps    ProcessStep[]    @relation("StepAssignedRole")
+  swimlaneSteps   ProcessStep[]    @relation("StepSwimlaneRole")
+  raciAssignments RaciAssignment[]
+  approverRules   ApprovalRule[]   @relation("ApproverRole")
+  coApproverRules ApprovalRule[]   @relation("CoApproverRole")
 
   createdAt DateTime @default(now())
 
@@ -225,17 +228,19 @@ model PersonRole {
 // ============================================================================
 
 model Process {
-  id               String   @id @default(uuid())
-  workspaceId      String
-  code             String
-  name             String
-  description      String?
-  parentProcessId  String?
-  archivedAt       DateTime?
+  id              String    @id @default(uuid())
+  workspaceId     String
+  categoryId      String?
+  code            String
+  name            String
+  description     String?
+  parentProcessId String?
+  archivedAt      DateTime?
 
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parentProcess Process?  @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
-  subProcesses  Process[] @relation("ProcessHierarchy")
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category      ProcessCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  parentProcess Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
+  subProcesses  Process[]        @relation("ProcessHierarchy")
 
   steps            ProcessStep[]
   activities       Activity[]
@@ -247,7 +252,27 @@ model Process {
 
   @@unique([workspaceId, code])
   @@index([workspaceId, parentProcessId])
+  @@index([categoryId])
   @@map("processes")
+}
+
+/**
+ * A standardized process-type label (HR, Sales, Procurement, ...), shared
+ * across every Workspace in a Firm rather than re-entered per client — the
+ * taxonomy is the same regardless of which engagement is using it.
+ */
+model ProcessCategory {
+  id     String @id @default(uuid())
+  firmId String
+  name   String
+
+  firm      Firm      @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  processes Process[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([firmId, name])
+  @@map("process_categories")
 }
 
 enum StepType {
@@ -258,23 +283,23 @@ enum StepType {
 }
 
 model ProcessStep {
-  id              String   @id @default(uuid())
-  processId       String
-  type            StepType
-  label           String
-  assignedRoleId  String?
-  swimlaneRoleId  String?
-  positionX       Float    @default(0)
-  positionY       Float    @default(0)
+  id             String   @id @default(uuid())
+  processId      String
+  type           StepType
+  label          String
+  assignedRoleId String?
+  swimlaneRoleId String?
+  positionX      Float    @default(0)
+  positionY      Float    @default(0)
 
-  process       Process @relation(fields: [processId], references: [id], onDelete: Cascade)
-  assignedRole  Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])
-  swimlaneRole  Role?   @relation("StepSwimlaneRole", fields: [swimlaneRoleId], references: [id])
+  process      Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  assignedRole Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])
+  swimlaneRole Role?   @relation("StepSwimlaneRole", fields: [swimlaneRoleId], references: [id])
 
-  links           ProcessStepLink[]
-  outgoingEdges   StepConnection[]  @relation("FromStep")
-  incomingEdges   StepConnection[]  @relation("ToStep")
-  activities      Activity[]
+  links         ProcessStepLink[]
+  outgoingEdges StepConnection[]  @relation("FromStep")
+  incomingEdges StepConnection[]  @relation("ToStep")
+  activities    Activity[]
 
   createdAt DateTime @default(now())
 
@@ -283,9 +308,9 @@ model ProcessStep {
 }
 
 model ProcessStepLink {
-  id               String @id @default(uuid())
-  stepId           String
-  targetProcessId  String
+  id              String @id @default(uuid())
+  stepId          String
+  targetProcessId String
 
   step          ProcessStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
   targetProcess Process     @relation("LinkTargetProcess", fields: [targetProcessId], references: [id], onDelete: Cascade)
@@ -295,11 +320,11 @@ model ProcessStepLink {
 }
 
 model StepConnection {
-  id          String  @id @default(uuid())
-  processId   String
-  fromStepId  String
-  toStepId    String
-  label       String?
+  id         String  @id @default(uuid())
+  processId  String
+  fromStepId String
+  toStepId   String
+  label      String?
 
   fromStep ProcessStep @relation("FromStep", fields: [fromStepId], references: [id], onDelete: Cascade)
   toStep   ProcessStep @relation("ToStep", fields: [toStepId], references: [id], onDelete: Cascade)
@@ -356,10 +381,10 @@ enum RaciStatus {
 }
 
 model RaciMatrixStatus {
-  processId            String     @id
-  status               RaciStatus @default(DRAFT)
-  finalizedAt          DateTime?
-  finalizedByMemberId  String?
+  processId           String     @id
+  status              RaciStatus @default(DRAFT)
+  finalizedAt         DateTime?
+  finalizedByMemberId String?
 
   process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
 
@@ -393,10 +418,10 @@ model ApprovalRule {
   coApprovalAboveThreshold Decimal? @db.Decimal(14, 2)
   coApprovalRoleId         String?
 
-  decisionType    DecisionType @relation(fields: [decisionTypeId], references: [id], onDelete: Cascade)
-  approverRole    Role?        @relation("ApproverRole", fields: [approverRoleId], references: [id])
-  approverPerson  Person?      @relation("ApproverPerson", fields: [approverPersonId], references: [id])
-  coApproverRole  Role?        @relation("CoApproverRole", fields: [coApprovalRoleId], references: [id])
+  decisionType   DecisionType @relation(fields: [decisionTypeId], references: [id], onDelete: Cascade)
+  approverRole   Role?        @relation("ApproverRole", fields: [approverRoleId], references: [id])
+  approverPerson Person?      @relation("ApproverPerson", fields: [approverPersonId], references: [id])
+  coApproverRole Role?        @relation("CoApproverRole", fields: [coApprovalRoleId], references: [id])
 
   createdAt DateTime @default(now())
 

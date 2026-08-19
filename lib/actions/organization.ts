@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
-import { requireFirmOwner } from "@/lib/auth/workspace";
+import { requireFirmOwner, requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { canChangeLastFirmOwner } from "@/lib/domain/access-control";
 import { ok, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
@@ -41,7 +41,8 @@ export async function listAllWorkspaces(): Promise<ActionResult<WorkspaceListEnt
 
 const createWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  currency: z.string().trim().min(1).max(10).optional(),
+  industry: z.string().trim().max(120).optional().or(z.literal("")),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
 /** Firm Owner-only: create a new client Workspace under the caller's Firm. */
@@ -60,11 +61,45 @@ export async function createWorkspace(
     data: {
       firmId: firmMember.firmId,
       name: parsed.data.name,
-      currency: parsed.data.currency || undefined,
+      industry: parsed.data.industry || undefined,
+      description: parsed.data.description || undefined,
     },
   });
 
   revalidatePath("/workspaces");
+  return ok({ id: workspace.id });
+}
+
+const updateWorkspaceProfileSchema = z.object({
+  workspaceId: z.string().min(1),
+  industry: z.string().trim().max(120).optional().or(z.literal("")),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+/**
+ * Updates a Workspace's industry/context notes — the free-text background
+ * an AI review draws on for sector-appropriate suggestions. Workspace
+ * ADMIN-level, not Firm Owner-only: this is ordinary engagement upkeep, not
+ * the structural create/delete of the Workspace itself.
+ */
+export async function updateWorkspaceProfile(
+  input: z.infer<typeof updateWorkspaceProfileSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateWorkspaceProfileSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "ADMIN");
+  if (!access.ok) return access;
+
+  const workspace = await prisma.workspace.update({
+    where: { id: parsed.data.workspaceId },
+    data: {
+      industry: parsed.data.industry || null,
+      description: parsed.data.description || null,
+    },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}`);
   return ok({ id: workspace.id });
 }
 

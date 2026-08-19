@@ -8,7 +8,8 @@ import { createWorkspace, deleteWorkspace } from "@/lib/actions/organization";
 export function NewClientForm() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [industry, setIndustry] = useState("");
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -27,60 +28,76 @@ export function NewClientForm() {
 
   return (
     <form
-      className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-slate-300 p-3"
+      className="flex flex-col gap-3 rounded-xl border border-dashed border-slate-300 p-3"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
         startTransition(async () => {
-          const result = await createWorkspace({ name, currency });
+          const result = await createWorkspace({ name, industry, description });
           if (!result.ok) {
             setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid input" : result.error);
             return;
           }
           setName("");
+          setIndustry("");
+          setDescription("");
           setOpen(false);
           router.refresh();
         });
       }}
     >
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Client name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Acme Industrial"
+            required
+            autoFocus
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Industry / sector
+          <input
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            placeholder="e.g. Manufacturing"
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          />
+        </label>
+      </div>
       <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-        Client name
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Acme Industrial"
-          required
-          autoFocus
+        About this organization <span className="font-normal text-slate-500">(optional)</span>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Size, specific practices, sector nuances — helps AI Review tailor its suggestions to this client."
+          rows={2}
           className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
         />
       </label>
-      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-        Currency
-        <input
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-          maxLength={10}
-          className="w-20 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
-        />
-      </label>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-      >
-        {pending ? "Creating…" : "Create"}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(false);
-          setError(null);
-        }}
-        className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"
-      >
-        Cancel
-      </button>
-      {error && <span className="w-full text-xs text-red-600">{error}</span>}
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {pending ? "Creating…" : "Create"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setError(null);
+          }}
+          className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"
+        >
+          Cancel
+        </button>
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </div>
     </form>
   );
 }

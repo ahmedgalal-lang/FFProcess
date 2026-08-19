@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { prisma } from "@/lib/db/client";
 import { createFixtureWorkspace } from "./fixtures";
 
 const { mockAuth } = vi.hoisted(() => ({ mockAuth: vi.fn() }));
@@ -12,6 +13,7 @@ vi.mock("@/lib/auth/config", () => ({
 const {
   createProcess,
   addProcessStep,
+  addProcessStepsBulk,
   createStepConnection,
   deleteStepConnection,
   updateStepPosition,
@@ -19,6 +21,7 @@ const {
   deleteProcessStep,
 } = await import("@/lib/actions/process");
 const { createRole } = await import("@/lib/actions/org");
+const { createProcessCategory } = await import("@/lib/actions/process-category");
 
 describe("process Server Actions", () => {
   let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
@@ -181,6 +184,92 @@ describe("process Server Actions", () => {
       toStepId: task.data.id,
     });
     expect(reconnect.ok).toBe(false); // task no longer exists
+  });
+
+  it("assigns a process to a category, and get-or-creates a category by name", async () => {
+    const first = await createProcessCategory({ workspaceId: fixture.workspace.id, name: "HR" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("setup failed");
+
+    // Creating "HR" again returns the same category instead of erroring or duplicating.
+    const second = await createProcessCategory({ workspaceId: fixture.workspace.id, name: "HR" });
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.data.id).toBe(first.data.id);
+
+    const process = await createProcess({
+      workspaceId: fixture.workspace.id,
+      name: "Hire to Retire",
+      categoryId: first.data.id,
+    });
+    expect(process.ok).toBe(true);
+  });
+
+  it("rejects a category id from a different Firm", async () => {
+    const otherFixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: otherFixture.adminUser.id } });
+    const otherCategory = await createProcessCategory({ workspaceId: otherFixture.workspace.id, name: "Sales" });
+    if (!otherCategory.ok) throw new Error("setup failed");
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const result = await createProcess({
+      workspaceId: fixture.workspace.id,
+      name: "Cross-firm category attempt",
+      categoryId: otherCategory.data.id,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+
+    await otherFixture.cleanup();
+  });
+
+  it("bulk-adds a chain of Task steps from a pasted list", async () => {
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process H" });
+    if (!process.ok) throw new Error("setup failed");
+
+    const result = await addProcessStepsBulk({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      labels: ["Receive requisition", "Check budget", "Approve or reject"],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.ids).toHaveLength(3);
+
+    const steps = await prisma.processStep.findMany({ where: { id: { in: result.data.ids } } });
+    expect(steps.every((s) => s.type === "TASK")).toBe(true);
+    expect(steps.map((s) => s.label).sort()).toEqual(
+      ["Receive requisition", "Check budget", "Approve or reject"].sort()
+    );
+
+    const connections = await prisma.stepConnection.findMany({ where: { processId: process.data.id } });
+    expect(connections).toHaveLength(2); // three steps, chained pairwise
+    const [a, b, c] = result.data.ids;
+    expect(connections).toContainEqual(expect.objectContaining({ fromStepId: a, toStepId: b }));
+    expect(connections).toContainEqual(expect.objectContaining({ fromStepId: b, toStepId: c }));
+  });
+
+  it("chains a bulk-add onto whatever step was already last in the map", async () => {
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process I" });
+    if (!process.ok) throw new Error("setup failed");
+    const existing = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      step: { type: "START", label: "Start", linkedProcessIds: [] },
+    });
+    if (!existing.ok) throw new Error("setup failed");
+
+    const bulk = await addProcessStepsBulk({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      labels: ["First bulk step"],
+    });
+    expect(bulk.ok).toBe(true);
+    if (!bulk.ok) return;
+
+    const connections = await prisma.stepConnection.findMany({ where: { processId: process.data.id } });
+    expect(connections).toContainEqual(
+      expect.objectContaining({ fromStepId: existing.data.id, toStepId: bulk.data.ids[0] })
+    );
   });
 
   it("rejects EDITOR-level actions from a caller with only VIEWER access", async () => {

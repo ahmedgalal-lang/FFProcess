@@ -129,6 +129,43 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Processes list search results and new-category form have no automatically detectable violations", async ({
+    page,
+  }) => {
+    await page.goto("/workspaces/workspace-acme/processes?q=Purchase");
+    await page.waitForSelector("h1");
+    let results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.click('button:has-text("+ New category")');
+    results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Workspace dashboard, including the profile edit form, has no automatically detectable violations", async ({
+    page,
+  }) => {
+    await page.goto("/workspaces/workspace-acme");
+    await page.waitForSelector("h1");
+    let results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+
+    await page.click('button:has-text("Edit")');
+    results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Bulk-add-steps form has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
+    await page.waitForURL("**/map");
+    await page.click('button:has-text("+ Add multiple steps at once")');
+
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("RACI grid supports arrow-key cell navigation", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
-import { AddStepForm } from "./step-form";
+import { AddStepForm, BulkAddStepsForm } from "./step-form";
 import { MapView } from "./map-view";
 
 export default async function ProcessMapPage(
@@ -66,7 +66,7 @@ export default async function ProcessMapPage(
         roles={roles.map((r) => ({ id: r.id, name: r.name }))}
       />
 
-      <div className="mt-5">
+      <div className="mt-5 flex flex-col gap-3">
         <AddStepForm
           workspaceId={workspaceId}
           processId={processId}
@@ -74,6 +74,7 @@ export default async function ProcessMapPage(
           steps={process.steps.map((s) => ({ id: s.id, label: s.label, type: s.type }))}
           otherProcesses={otherProcesses.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
         />
+        <BulkAddStepsForm workspaceId={workspaceId} processId={processId} />
       </div>
     </main>
   );

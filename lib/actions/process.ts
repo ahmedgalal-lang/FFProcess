@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { generateProcessCode, isCodeAvailable, wouldCreateCycle } from "@/lib/domain/process-hierarchy";
 import { validateConnections } from "@/lib/domain/process-graph";
-import { laneY, nextStepX } from "@/lib/domain/process-layout";
+import { laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
 const createProcessSchema = z.object({
@@ -14,6 +14,7 @@ const createProcessSchema = z.object({
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(2000).optional().or(z.literal("")),
   parentProcessId: z.string().min(1).optional().or(z.literal("")),
+  categoryId: z.string().min(1).optional().or(z.literal("")),
 });
 
 const MAX_CODE_GENERATION_ATTEMPTS = 5;
@@ -39,6 +40,13 @@ export async function createProcess(
     : null;
   if (parentProcessId && !parent) return notFound();
 
+  const categoryId = parsed.data.categoryId || undefined;
+  if (categoryId) {
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: parsed.data.workspaceId } });
+    const category = await prisma.processCategory.findUnique({ where: { id: categoryId } });
+    if (!category || category.firmId !== workspace.firmId) return notFound();
+  }
+
   for (let attempt = 0; attempt < MAX_CODE_GENERATION_ATTEMPTS; attempt++) {
     const existing = await prisma.process.findMany({
       where: { workspaceId: parsed.data.workspaceId },
@@ -59,6 +67,7 @@ export async function createProcess(
           name: parsed.data.name,
           description: parsed.data.description || undefined,
           parentProcessId,
+          categoryId,
         },
       });
       revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
@@ -214,6 +223,67 @@ export async function addProcessStep(
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${processId}/map`);
   return ok({ id: created.id });
+}
+
+const addStepsBulkSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  labels: z.array(z.string().trim().min(1).max(200)).min(1).max(50),
+});
+
+/**
+ * Adds several plain TASK steps at once from a pasted list — one per line —
+ * chaining each to the one before it (and the first to whatever was already
+ * last in the map) so they show up as an editable draft chain immediately.
+ * The caller is expected to go back through the Steps List editor afterward
+ * to set each one's real type, role, and connector label.
+ */
+export async function addProcessStepsBulk(
+  input: z.infer<typeof addStepsBulkSchema>
+): Promise<ActionResult<{ ids: string[] }>> {
+  const parsed = addStepsBulkSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid step list", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const { processId, labels } = parsed.data;
+
+  const stepsInProcess = await prisma.processStep.findMany({
+    where: { processId },
+    select: { id: true, positionX: true, swimlaneRoleId: true, assignedRoleId: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const laneOrder: string[] = [];
+  for (const s of stepsInProcess) {
+    const roleId = s.swimlaneRoleId ?? s.assignedRoleId;
+    if (roleId && !laneOrder.includes(roleId)) laneOrder.push(roleId);
+  }
+  const positionY = laneY(null, laneOrder);
+  let nextX = nextStepX(stepsInProcess.map((s) => s.positionX));
+  let previousStepId = stepsInProcess.at(-1)?.id;
+
+  const ids = await prisma.$transaction(async (tx) => {
+    const createdIds: string[] = [];
+    for (const label of labels) {
+      const newStep = await tx.processStep.create({
+        data: { processId, type: "TASK", label, positionX: nextX, positionY },
+      });
+      if (previousStepId) {
+        await tx.stepConnection.create({
+          data: { processId, fromStepId: previousStepId, toStepId: newStep.id },
+        });
+      }
+      previousStepId = newStep.id;
+      nextX += STEP_X_SPACING;
+      createdIds.push(newStep.id);
+    }
+    return createdIds;
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${processId}/map`);
+  return ok({ ids });
 }
 
 const updateStepSchema = z.object({
