@@ -13,6 +13,7 @@ type StepT = {
   positionY: number;
   assignedRole: RoleRef | null;
   swimlaneRole: RoleRef | null;
+  reviewNotes: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };

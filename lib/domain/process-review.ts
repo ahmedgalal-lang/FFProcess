@@ -78,6 +78,7 @@ function describeRaciIssue(issue: RaciIssue, activityNameById: Map<string, strin
 
 export type ProcessReviewContext = {
   workspaceName: string;
+  workspaceIndustry: string | null;
   processCode: string;
   processName: string;
   processDescription: string | null;
@@ -114,6 +115,7 @@ export function buildProcessReviewPrompt(context: ProcessReviewContext): string 
 
   lines.push(`# Process: ${context.processCode} — ${context.processName}`);
   lines.push(`Workspace: ${context.workspaceName}`);
+  lines.push(`Industry / sector: ${context.workspaceIndustry ?? "not specified"}`);
   if (context.processDescription) lines.push(`Description: ${context.processDescription}`);
   lines.push("");
 

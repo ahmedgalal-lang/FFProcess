@@ -89,6 +89,7 @@ describe("findStructuralGaps", () => {
 describe("buildProcessReviewPrompt", () => {
   const baseContext: ProcessReviewContext = {
     workspaceName: "Acme Consulting",
+    workspaceIndustry: "Industrial Manufacturing",
     processCode: "PUR100",
     processName: "Purchase to Pay",
     processDescription: null,
@@ -124,6 +125,13 @@ describe("buildProcessReviewPrompt", () => {
     expect(prompt).toContain("## Process Map");
     expect(prompt).toContain("## RACI Matrix");
     expect(prompt).toContain("## Authority Matrix");
+  });
+
+  it("includes the workspace industry, or says it's unspecified when null", () => {
+    expect(buildProcessReviewPrompt(baseContext)).toContain("Industry / sector: Industrial Manufacturing");
+    expect(buildProcessReviewPrompt({ ...baseContext, workspaceIndustry: null })).toContain(
+      "Industry / sector: not specified"
+    );
   });
 
   it("renders steps, RACI assignments, and authority rules by name", () => {

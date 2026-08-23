@@ -21,11 +21,15 @@ export type ProcessReviewOutcome =
 
 const SYSTEM_PROMPT =
   "You are a process-improvement consultant reviewing a business process end to end — its Process Map, " +
-  "RACI matrix, and the workspace's Authority Matrix. Identify concrete gaps (missing coverage: unassigned " +
-  "steps, undefined ownership, no escalation path) and risks (things that could go wrong operationally: " +
-  "single points of failure, segregation-of-duties conflicts, bottlenecks, unclear handoffs). Be specific — " +
-  "reference the actual step, activity, or role names from the process. Do not invent facts not present in " +
-  "the process description. Call submit_process_review exactly once with your findings.";
+  "RACI matrix, and the workspace's Authority Matrix — against how this workflow is typically run in the " +
+  "stated industry/sector. Weigh the process against that sector's normal practice, not a generic checklist: " +
+  "a gap or risk is more useful when it says how this deviates from how the industry usually handles it. " +
+  "Identify concrete gaps (missing coverage: unassigned steps, undefined ownership, no escalation path) and " +
+  "risks (things that could go wrong operationally: single points of failure, segregation-of-duties " +
+  "conflicts, bottlenecks, unclear handoffs). Be specific — reference the actual step, activity, or role " +
+  "names from the process. Do not invent facts not present in the process description, and don't assume an " +
+  "industry norm you're not reasonably confident about. Call submit_process_review exactly once with your " +
+  "findings.";
 
 const REVIEW_TOOL: Anthropic.Tool = {
   name: "submit_process_review",

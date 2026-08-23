@@ -251,6 +251,7 @@ model Process {
   activities       Activity[]
   raciMatrixStatus RaciMatrixStatus?
   linkedFromSteps  ProcessStepLink[] @relation("LinkTargetProcess")
+  reviewFindings   ReviewFinding[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -297,15 +298,17 @@ model ProcessStep {
   positionX      Float    @default(0)
   positionY      Float    @default(0)
   raciSkipped    Boolean  @default(false)
+  reviewNotes    String?
 
   process      Process @relation(fields: [processId], references: [id], onDelete: Cascade)
   assignedRole Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])
   swimlaneRole Role?   @relation("StepSwimlaneRole", fields: [swimlaneRoleId], references: [id])
 
-  links         ProcessStepLink[]
-  outgoingEdges StepConnection[]  @relation("FromStep")
-  incomingEdges StepConnection[]  @relation("ToStep")
-  activities    Activity[]
+  links          ProcessStepLink[]
+  outgoingEdges  StepConnection[]  @relation("FromStep")
+  incomingEdges  StepConnection[]  @relation("ToStep")
+  activities     Activity[]
+  reviewFindings ReviewFinding[]
 
   createdAt DateTime @default(now())
 
@@ -395,6 +398,64 @@ model RaciMatrixStatus {
   process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
 
   @@map("raci_matrix_statuses")
+}
+
+// ============================================================================
+// AI Review — persisted findings from runProcessReview, editable/dismissible,
+// and optionally integrated back into the Process Map.
+// ============================================================================
+
+enum ReviewFindingCategory {
+  GAP
+  RISK
+}
+
+enum ReviewFindingArea {
+  PROCESS_MAP
+  RACI
+  AUTHORITY
+  GENERAL
+}
+
+enum ReviewFindingSeverity {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ReviewFindingStatus {
+  OPEN
+  EDITED
+  INTEGRATED
+  DISMISSED
+}
+
+enum ReviewFindingIntegrationMode {
+  MERGED
+  REPLACED
+}
+
+model ReviewFinding {
+  id               String                        @id @default(uuid())
+  processId        String
+  category         ReviewFindingCategory
+  area             ReviewFindingArea
+  severity         ReviewFindingSeverity
+  title            String
+  description      String
+  recommendation   String
+  status           ReviewFindingStatus           @default(OPEN)
+  integratedStepId String?
+  integrationMode  ReviewFindingIntegrationMode?
+
+  process        Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
+  integratedStep ProcessStep? @relation(fields: [integratedStepId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([processId])
+  @@map("review_findings")
 }
 
 // ============================================================================

@@ -31,6 +31,7 @@ type StepT = {
   type: StepType;
   label: string;
   assignedRole: RoleRef | null;
+  reviewNotes: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
@@ -250,6 +251,11 @@ export function StepListRow({
             ? `Connects from: ${predecessor.label}${incomingConnection?.label ? ` (${incomingConnection.label})` : ""}`
             : "Entry point — no predecessor"}
         </div>
+        {step.reviewNotes && (
+          <div className="mt-2 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 px-2.5 py-1.5 text-xs text-indigo-800">
+            <span className="font-semibold">AI Review note:</span> {step.reviewNotes}
+          </div>
+        )}
         {step.links.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {step.links.map((link) => (
