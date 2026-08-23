@@ -156,6 +156,29 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Org Chart page has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/org/chart");
+    await page.waitForSelector(".react-flow__node");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Clone-process dialog has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.waitForSelector("h1");
+    await page.locator('button:has-text("Clone")').first().click();
+    await page.waitForSelector('[role="dialog"]');
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Generate-from-best-practice form has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.click('button:has-text("Generate from best practice")');
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("Bulk-add-steps form has no automatically detectable violations", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();

@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createRole, archiveRole, createPerson, archivePerson } from "@/lib/actions/org";
+import { createRole, archiveRole, createPerson, archivePerson, updatePersonManager } from "@/lib/actions/org";
 
 type RoleOption = { id: string; name: string };
+type PersonOption = { id: string; name: string };
 
 export function AddRoleForm({ workspaceId }: { workspaceId: string }) {
   const [name, setName] = useState("");
@@ -71,10 +72,19 @@ export function ArchiveRoleButton({ workspaceId, roleId }: { workspaceId: string
   );
 }
 
-export function AddPersonForm({ workspaceId, roles }: { workspaceId: string; roles: RoleOption[] }) {
+export function AddPersonForm({
+  workspaceId,
+  roles,
+  people,
+}: {
+  workspaceId: string;
+  roles: RoleOption[];
+  people: PersonOption[];
+}) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [roleId, setRoleId] = useState("");
+  const [managerId, setManagerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -91,6 +101,7 @@ export function AddPersonForm({ workspaceId, roles }: { workspaceId: string; rol
             name,
             email,
             roleIds: roleId ? [roleId] : [],
+            managerId: managerId || undefined,
           });
           if (!result.ok) {
             setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid input" : result.error);
@@ -99,6 +110,7 @@ export function AddPersonForm({ workspaceId, roles }: { workspaceId: string; rol
           setName("");
           setEmail("");
           setRoleId("");
+          setManagerId("");
           router.refresh();
         });
       }}
@@ -136,6 +148,21 @@ export function AddPersonForm({ workspaceId, roles }: { workspaceId: string; rol
           ))}
         </select>
       </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Reports to
+        <select
+          value={managerId}
+          onChange={(e) => setManagerId(e.target.value)}
+          className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+        >
+          <option value="">— no manager —</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <button
         type="submit"
         disabled={pending}
@@ -145,6 +172,58 @@ export function AddPersonForm({ workspaceId, roles }: { workspaceId: string; rol
       </button>
       {error && <span className="self-center text-xs text-red-600">{error}</span>}
     </form>
+  );
+}
+
+export function ManagerPicker({
+  workspaceId,
+  personId,
+  personName,
+  managerId,
+  people,
+}: {
+  workspaceId: string;
+  personId: string;
+  personName: string;
+  managerId: string | null;
+  people: PersonOption[];
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <select
+        aria-label={`${personName}'s manager`}
+        defaultValue={managerId ?? ""}
+        disabled={pending}
+        onChange={(e) => {
+          setError(null);
+          const value = e.target.value || null;
+          startTransition(async () => {
+            const result = await updatePersonManager({ workspaceId, personId, managerId: value });
+            if (!result.ok) {
+              setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Could not update" : result.error);
+              e.target.value = managerId ?? ""; // revert the select on failure
+              return;
+            }
+            router.refresh();
+          });
+        }}
+        className="rounded-lg border border-slate-300 px-2 py-1 text-xs disabled:opacity-60"
+      >
+        <option value="">— no manager —</option>
+        {people
+          .filter((p) => p.id !== personId)
+          .map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+      </select>
+      {error && <span className="text-[11px] text-red-600">{error}</span>}
+    </div>
   );
 }
 

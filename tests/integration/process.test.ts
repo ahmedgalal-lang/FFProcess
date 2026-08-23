@@ -12,8 +12,10 @@ vi.mock("@/lib/auth/config", () => ({
 
 const {
   createProcess,
+  cloneProcess,
   addProcessStep,
   addProcessStepsBulk,
+  createActivity,
   createStepConnection,
   deleteStepConnection,
   updateStepPosition,
@@ -21,6 +23,7 @@ const {
   deleteProcessStep,
 } = await import("@/lib/actions/process");
 const { createRole } = await import("@/lib/actions/org");
+const { setRaciAssignment } = await import("@/lib/actions/raci");
 const { createProcessCategory } = await import("@/lib/actions/process-category");
 
 describe("process Server Actions", () => {
@@ -270,6 +273,105 @@ describe("process Server Actions", () => {
     expect(connections).toContainEqual(
       expect.objectContaining({ fromStepId: existing.data.id, toStepId: bulk.data.ids[0] })
     );
+  });
+
+  it("clones a process's steps, connections, links, and RACI assignments", async () => {
+    const role = await createRole({ workspaceId: fixture.workspace.id, name: "Approver" });
+    if (!role.ok) throw new Error("setup failed");
+
+    const source = await createProcess({ workspaceId: fixture.workspace.id, name: "Process J" });
+    const otherProcess = await createProcess({ workspaceId: fixture.workspace.id, name: "Process K" });
+    if (!source.ok || !otherProcess.ok) throw new Error("setup failed");
+
+    const start = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: source.data.id,
+      step: { type: "START", label: "Start", assignedRoleId: role.data.id, linkedProcessIds: [] },
+    });
+    if (!start.ok) throw new Error("setup failed");
+    const task = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: source.data.id,
+      step: { type: "TASK", label: "Do the thing", linkedProcessIds: [otherProcess.data.id] },
+      fromStepId: start.data.id,
+      connectionLabel: "Go",
+    });
+    if (!task.ok) throw new Error("setup failed");
+
+    const activity = await createActivity({
+      workspaceId: fixture.workspace.id,
+      processId: source.data.id,
+      name: "Review the thing",
+      relatedStepId: task.data.id,
+    });
+    if (!activity.ok) throw new Error("setup failed");
+    await setRaciAssignment({
+      workspaceId: fixture.workspace.id,
+      activityId: activity.data.id,
+      roleId: role.data.id,
+      code: "ACCOUNTABLE",
+    });
+
+    const clone = await cloneProcess({
+      workspaceId: fixture.workspace.id,
+      sourceProcessId: source.data.id,
+      name: "Process J (Copy)",
+    });
+    expect(clone.ok).toBe(true);
+    if (!clone.ok) return;
+    expect(clone.data.code).not.toBe(source.data.code); // fresh auto-generated code
+
+    const clonedSteps = await prisma.processStep.findMany({
+      where: { processId: clone.data.id },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(clonedSteps).toHaveLength(2);
+    expect(clonedSteps.map((s) => s.label)).toEqual(["Start", "Do the thing"]);
+    expect(clonedSteps[1]!.assignedRoleId).toBeNull();
+    expect(clonedSteps[0]!.assignedRoleId).toBe(role.data.id); // same-workspace Role carries over
+
+    const clonedConnections = await prisma.stepConnection.findMany({ where: { processId: clone.data.id } });
+    expect(clonedConnections).toHaveLength(1);
+    expect(clonedConnections[0]!.label).toBe("Go");
+    // The connection references the CLONED steps, not the originals.
+    expect(clonedConnections[0]!.fromStepId).toBe(clonedSteps[0]!.id);
+    expect(clonedConnections[0]!.toStepId).toBe(clonedSteps[1]!.id);
+
+    const clonedLinks = await prisma.processStepLink.findMany({ where: { stepId: clonedSteps[1]!.id } });
+    expect(clonedLinks).toHaveLength(1);
+    expect(clonedLinks[0]!.targetProcessId).toBe(otherProcess.data.id);
+
+    const clonedActivities = await prisma.activity.findMany({
+      where: { processId: clone.data.id },
+      include: { raciAssignments: true },
+    });
+    expect(clonedActivities).toHaveLength(1);
+    expect(clonedActivities[0]!.relatedStepId).toBe(clonedSteps[1]!.id);
+    expect(clonedActivities[0]!.raciAssignments).toEqual([
+      expect.objectContaining({ roleId: role.data.id, code: "ACCOUNTABLE" }),
+    ]);
+
+    // Original process is untouched.
+    const originalSteps = await prisma.processStep.count({ where: { processId: source.data.id } });
+    expect(originalSteps).toBe(2);
+  });
+
+  it("rejects cloning a process from a different workspace", async () => {
+    const otherFixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: otherFixture.adminUser.id } });
+    const otherProcess = await createProcess({ workspaceId: otherFixture.workspace.id, name: "Foreign process" });
+    if (!otherProcess.ok) throw new Error("setup failed");
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const result = await cloneProcess({
+      workspaceId: fixture.workspace.id,
+      sourceProcessId: otherProcess.data.id,
+      name: "Attempted cross-workspace clone",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+
+    await otherFixture.cleanup();
   });
 
   it("rejects EDITOR-level actions from a caller with only VIEWER access", async () => {

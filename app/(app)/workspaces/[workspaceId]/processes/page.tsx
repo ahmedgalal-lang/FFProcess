@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
-import { CreateProcessForm } from "./process-forms";
+import { CreateProcessForm, CloneProcessButton } from "./process-forms";
+import { GenerateTemplateForm } from "./template-form";
 
 export default async function ProcessesPage(props: PageProps<"/workspaces/[workspaceId]/processes">) {
   const { workspaceId } = await props.params;
@@ -135,12 +136,21 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                   )}
                 </td>
                 <td className="px-4 py-2 text-right">
-                  <Link
-                    href={`/workspaces/${workspaceId}/processes/${p.id}/map`}
-                    className="text-xs font-semibold text-slate-700 hover:text-slate-900"
-                  >
-                    Open →
-                  </Link>
+                  <div className="flex items-center justify-end gap-3">
+                    <CloneProcessButton
+                      workspaceId={workspaceId}
+                      sourceProcessId={p.id}
+                      sourceName={p.name}
+                      sourceParentProcessId={p.parentProcessId}
+                      processes={processes.map((proc) => ({ id: proc.id, code: proc.code, name: proc.name }))}
+                    />
+                    <Link
+                      href={`/workspaces/${workspaceId}/processes/${p.id}/map`}
+                      className="text-xs font-semibold text-slate-700 hover:text-slate-900"
+                    >
+                      Open →
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -155,12 +165,13 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
         </table>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 flex flex-col gap-3">
         <CreateProcessForm
           workspaceId={workspaceId}
           processes={processes.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
         />
+        <GenerateTemplateForm workspaceId={workspaceId} />
       </div>
     </main>
   );

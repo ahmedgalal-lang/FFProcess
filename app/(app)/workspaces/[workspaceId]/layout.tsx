@@ -29,7 +29,7 @@ export default async function WorkspaceLayout(
     <div className="flex flex-1">
       <nav className="w-56 flex-none border-r border-slate-200 bg-white px-3 py-5">
         <div className="mb-4 px-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Workspace
           </div>
           <div className="truncate text-sm font-semibold text-slate-900">{workspace.name}</div>

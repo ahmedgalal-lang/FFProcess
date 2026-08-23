@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db/client";
-import { AddPersonForm, AddRoleForm, ArchivePersonButton, ArchiveRoleButton } from "./org-forms";
+import { AddPersonForm, AddRoleForm, ArchivePersonButton, ArchiveRoleButton, ManagerPicker } from "./org-forms";
 
 export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[workspaceId]/org">) {
   const { workspaceId } = await props.params;
@@ -12,10 +13,19 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
       orderBy: { name: "asc" },
     }),
   ]);
+  const personOptions = people.map((p) => ({ id: p.id, name: p.name }));
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="text-xl font-semibold text-slate-900">Org Directory</h1>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-slate-900">Org Directory</h1>
+        <Link
+          href={`/workspaces/${workspaceId}/org/chart`}
+          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          View Org Chart →
+        </Link>
+      </div>
       <p className="mt-1 text-sm text-slate-500">
         Roles and people are shared across every process map, RACI matrix, and authority matrix in
         this workspace.
@@ -66,6 +76,7 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Roles</th>
+                <th className="px-4 py-2">Reports to</th>
                 <th className="px-4 py-2 text-right">
                   <span className="sr-only">Actions</span>
                 </th>
@@ -86,6 +97,15 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
                       </span>
                     ))}
                   </td>
+                  <td className="px-4 py-2">
+                    <ManagerPicker
+                      workspaceId={workspaceId}
+                      personId={person.id}
+                      personName={person.name}
+                      managerId={person.managerId}
+                      people={personOptions}
+                    />
+                  </td>
                   <td className="px-4 py-2 text-right">
                     <ArchivePersonButton workspaceId={workspaceId} personId={person.id} />
                   </td>
@@ -93,7 +113,7 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
               ))}
               {people.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-4 text-center text-slate-400">
+                  <td colSpan={5} className="px-4 py-4 text-center text-slate-400">
                     No people yet.
                   </td>
                 </tr>
@@ -102,7 +122,11 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
           </table>
         </div>
         <div className="mt-3">
-          <AddPersonForm workspaceId={workspaceId} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
+          <AddPersonForm
+            workspaceId={workspaceId}
+            roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+            people={personOptions}
+          />
         </div>
       </section>
     </main>

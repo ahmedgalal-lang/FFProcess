@@ -82,6 +82,139 @@ export async function createProcess(
   return validationError("Could not generate a unique Process Code — please try again.");
 }
 
+const cloneProcessSchema = z.object({
+  workspaceId: z.string().min(1),
+  sourceProcessId: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  parentProcessId: z.string().min(1).optional().or(z.literal("")),
+});
+
+/**
+ * Deep-copies a Process (steps, connections, cross-process links, RACI
+ * activities and assignments) into a new Process in the same Workspace, with
+ * a freshly auto-generated code. Same-workspace only — a cloned step's
+ * assigned Role only means something if that Role exists where the clone
+ * lands, and Roles aren't shared across Workspaces.
+ */
+export async function cloneProcess(
+  input: z.infer<typeof cloneProcessSchema>
+): Promise<ActionResult<{ id: string; code: string }>> {
+  const parsed = cloneProcessSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const source = await prisma.process.findUnique({
+    where: { id: parsed.data.sourceProcessId },
+    include: { steps: true, activities: { include: { raciAssignments: true } } },
+  });
+  if (!source || source.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  const parentProcessId = parsed.data.parentProcessId || undefined;
+  const parent = parentProcessId
+    ? await prisma.process.findUnique({ where: { id: parentProcessId }, select: { code: true } })
+    : null;
+  if (parentProcessId && !parent) return notFound();
+
+  const sourceStepIds = source.steps.map((s) => s.id);
+  const [connections, links] = await Promise.all([
+    prisma.stepConnection.findMany({ where: { processId: source.id } }),
+    prisma.processStepLink.findMany({ where: { stepId: { in: sourceStepIds } } }),
+  ]);
+
+  for (let attempt = 0; attempt < MAX_CODE_GENERATION_ATTEMPTS; attempt++) {
+    const existing = await prisma.process.findMany({
+      where: { workspaceId: parsed.data.workspaceId },
+      select: { code: true },
+    });
+    const code = generateProcessCode({
+      name: parsed.data.name,
+      parentCode: parent?.code ?? null,
+      existingCodes: existing.map((p) => p.code),
+    });
+    if (!isCodeAvailable(code, existing.map((p) => p.code))) continue;
+
+    try {
+      const cloned = await prisma.$transaction(async (tx) => {
+        const newProcess = await tx.process.create({
+          data: {
+            workspaceId: parsed.data.workspaceId,
+            code,
+            name: parsed.data.name,
+            description: source.description,
+            parentProcessId,
+            categoryId: source.categoryId,
+          },
+        });
+
+        const stepIdMap = new Map<string, string>();
+        for (const s of source.steps) {
+          const newStep = await tx.processStep.create({
+            data: {
+              processId: newProcess.id,
+              type: s.type,
+              label: s.label,
+              assignedRoleId: s.assignedRoleId,
+              swimlaneRoleId: s.swimlaneRoleId,
+              positionX: s.positionX,
+              positionY: s.positionY,
+            },
+          });
+          stepIdMap.set(s.id, newStep.id);
+        }
+
+        for (const c of connections) {
+          await tx.stepConnection.create({
+            data: {
+              processId: newProcess.id,
+              fromStepId: stepIdMap.get(c.fromStepId)!,
+              toStepId: stepIdMap.get(c.toStepId)!,
+              label: c.label,
+            },
+          });
+        }
+
+        for (const l of links) {
+          await tx.processStepLink.create({
+            data: { stepId: stepIdMap.get(l.stepId)!, targetProcessId: l.targetProcessId },
+          });
+        }
+
+        for (const a of source.activities) {
+          const newActivity = await tx.activity.create({
+            data: {
+              processId: newProcess.id,
+              name: a.name,
+              relatedStepId: a.relatedStepId ? stepIdMap.get(a.relatedStepId) : undefined,
+              order: a.order,
+            },
+          });
+          for (const ra of a.raciAssignments) {
+            await tx.raciAssignment.create({
+              data: { activityId: newActivity.id, roleId: ra.roleId, code: ra.code },
+            });
+          }
+        }
+        // RACI matrix status intentionally not cloned — a copy starts as an
+        // unfinalized DRAFT even if the source was FINAL, since it's new,
+        // unreviewed data.
+
+        return newProcess;
+      });
+
+      revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
+      return ok({ id: cloned.id, code: cloned.code });
+    } catch (error) {
+      const isUniqueConflict =
+        typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+      if (!isUniqueConflict || attempt === MAX_CODE_GENERATION_ATTEMPTS - 1) throw error;
+    }
+  }
+
+  return validationError("Could not generate a unique Process Code — please try again.");
+}
+
 const updateProcessSchema = z.object({
   processId: z.string().min(1),
   workspaceId: z.string().min(1),

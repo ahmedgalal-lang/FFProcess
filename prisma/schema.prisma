@@ -198,9 +198,12 @@ model Person {
   workspaceId String
   name        String
   email       String?
+  managerId   String?
   archivedAt  DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  manager   Person?   @relation("PersonManager", fields: [managerId], references: [id])
+  reports   Person[]  @relation("PersonManager")
 
   personRoles   PersonRole[]
   approverRules ApprovalRule[] @relation("ApproverPerson")
@@ -208,6 +211,7 @@ model Person {
   createdAt DateTime @default(now())
 
   @@index([workspaceId])
+  @@index([managerId])
   @@map("people")
 }
 
