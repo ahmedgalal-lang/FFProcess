@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
+import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
 import { AddStepForm, BulkAddStepsForm } from "./step-form";
 import { MapView } from "./map-view";
+import { ProcessStepper } from "../process-stepper";
 
 export default async function ProcessMapPage(
   props: PageProps<"/workspaces/[workspaceId]/processes/[processId]/map">
@@ -24,13 +26,14 @@ export default async function ProcessMapPage(
   });
   if (!process || process.workspaceId !== workspaceId) notFound();
 
-  const [roles, otherProcesses, connections] = await Promise.all([
+  const [roles, otherProcesses, connections, stepperCounts] = await Promise.all([
     prisma.role.findMany({ where: { workspaceId, archivedAt: null }, orderBy: { name: "asc" } }),
     prisma.process.findMany({
       where: { workspaceId, archivedAt: null, id: { not: processId } },
       orderBy: { code: "asc" },
     }),
     prisma.stepConnection.findMany({ where: { processId } }),
+    getProcessStepperCounts(processId),
   ]);
 
   return (
@@ -56,6 +59,8 @@ export default async function ProcessMapPage(
           AI Review →
         </a>
       </p>
+
+      <ProcessStepper workspaceId={workspaceId} processId={processId} {...stepperCounts} />
 
       <MapView
         workspaceId={workspaceId}

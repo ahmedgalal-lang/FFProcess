@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
+import { partitionRaciQueue } from "@/lib/domain/raci-queue";
+import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
 import { RaciGrid } from "./raci-grid";
 import { AddActivityForm } from "./activity-form";
+import { RaciStepQueue } from "./raci-step-queue";
+import { ProcessStepper } from "../process-stepper";
 
 export default async function RaciMatrixPage(
   props: PageProps<"/workspaces/[workspaceId]/processes/[processId]/raci">
@@ -12,7 +16,7 @@ export default async function RaciMatrixPage(
   const process = await prisma.process.findUnique({ where: { id: processId } });
   if (!process || process.workspaceId !== workspaceId) notFound();
 
-  const [roles, activities, matrixStatus] = await Promise.all([
+  const [roles, activities, matrixStatus, steps, stepperCounts] = await Promise.all([
     prisma.role.findMany({ where: { workspaceId, archivedAt: null }, orderBy: { name: "asc" } }),
     prisma.activity.findMany({
       where: { processId },
@@ -20,6 +24,12 @@ export default async function RaciMatrixPage(
       orderBy: { order: "asc" },
     }),
     prisma.raciMatrixStatus.findUnique({ where: { processId } }),
+    prisma.processStep.findMany({
+      where: { processId },
+      select: { id: true, type: true, label: true, raciSkipped: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    getProcessStepperCounts(processId),
   ]);
 
   const activitiesForGrid = activities.map((a) => ({
@@ -35,6 +45,11 @@ export default async function RaciMatrixPage(
       assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
     }))
   );
+
+  const stepIdsWithActivity = new Set(
+    activities.map((a) => a.relatedStepId).filter((id): id is string => id !== null)
+  );
+  const { pending, skipped } = partitionRaciQueue(steps, stepIdsWithActivity);
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -64,9 +79,21 @@ export default async function RaciMatrixPage(
         </div>
       </div>
       <h1 className="text-xl font-semibold text-slate-900">RACI Matrix</h1>
-      <p className="mt-1 mb-5 text-sm text-slate-500">
+      <p className="mt-1 mb-4 text-sm text-slate-500">
         Click a cell to cycle Responsible → Accountable → Consulted → Informed → clear.
       </p>
+
+      <ProcessStepper workspaceId={workspaceId} processId={processId} {...stepperCounts} />
+
+      <RaciStepQueue
+        workspaceId={workspaceId}
+        processId={processId}
+        roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+        pendingSteps={pending.map((s) => ({ id: s.id, type: s.type, label: s.label }))}
+        skippedSteps={skipped.map((s) => ({ id: s.id, type: s.type, label: s.label }))}
+        handledCount={steps.length - pending.length - skipped.length}
+        totalCount={steps.length}
+      />
 
       <RaciGrid
         workspaceId={workspaceId}

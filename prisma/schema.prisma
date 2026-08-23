@@ -131,6 +131,7 @@ model Workspace {
   currency    String  @default("USD")
   industry    String?
   description String?
+  logoUrl     String?
 
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 
@@ -295,6 +296,7 @@ model ProcessStep {
   swimlaneRoleId String?
   positionX      Float    @default(0)
   positionY      Float    @default(0)
+  raciSkipped    Boolean  @default(false)
 
   process      Process @relation(fields: [processId], references: [id], onDelete: Cascade)
   assignedRole Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])
