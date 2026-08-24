@@ -5,6 +5,7 @@ import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { RaciPdfDocument } from "@/lib/export/pdf/raci-pdf";
 import { buildRaciWorkbook } from "@/lib/export/xlsx";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
+import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { auth } from "@/lib/auth/config";
 
 export async function GET(
@@ -23,7 +24,7 @@ export async function GET(
     return NextResponse.json(access, { status });
   }
 
-  const [workspace, roles, activities, matrixStatus, session] = await Promise.all([
+  const [workspace, roles, activities, steps, matrixStatus, session] = await Promise.all([
     prisma.workspace.findUnique({ where: { id: process.workspaceId } }),
     prisma.role.findMany({ where: { workspaceId: process.workspaceId, archivedAt: null }, orderBy: { name: "asc" } }),
     prisma.activity.findMany({
@@ -31,21 +32,37 @@ export async function GET(
       include: { raciAssignments: true },
       orderBy: { order: "asc" },
     }),
+    prisma.processStep.findMany({
+      where: { processId },
+      select: { id: true, type: true, label: true, raciSkipped: true },
+      orderBy: { createdAt: "asc" },
+    }),
     prisma.raciMatrixStatus.findUnique({ where: { processId } }),
     auth(),
   ]);
 
-  const activitiesForExport = activities.map((a) => ({
-    id: a.id,
-    name: a.name,
-    assignments: Object.fromEntries(a.raciAssignments.map((ra) => [ra.roleId, ra.code])),
+  const rows = buildRaciTableRows(
+    steps,
+    activities.map((a) => ({
+      id: a.id,
+      name: a.name,
+      relatedStepId: a.relatedStepId,
+      order: a.order,
+      assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
+    }))
+  ).filter((r) => !r.skipped);
+
+  const activitiesForExport = rows.map((r) => ({
+    id: r.id,
+    name: r.label,
+    assignments: r.assignments,
   }));
   const status = matrixStatus?.status ?? "DRAFT";
   const issueCount = validateRaciMatrix(
-    activities.map((a) => ({
-      activityId: a.id,
-      name: a.name,
-      assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
+    rows.map((r) => ({
+      activityId: r.id,
+      name: r.label,
+      assignments: Object.entries(r.assignments).map(([roleId, code]) => ({ roleId, code })),
     }))
   ).length;
   const generatedFor = session?.user?.email ?? "Unknown";

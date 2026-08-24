@@ -11,7 +11,7 @@ vi.mock("@/lib/auth/config", () => ({
 
 const { createProcess, createActivity, addProcessStep } = await import("@/lib/actions/process");
 const { createRole } = await import("@/lib/actions/org");
-const { setRaciAssignment, finalizeRaciMatrix, reopenRaciMatrix, assignStepRaci, skipStepRaci, unskipStepRaci } = await import(
+const { setRaciAssignment, finalizeRaciMatrix, reopenRaciMatrix, setStepRaciCell, skipStepRaci, unskipStepRaci } = await import(
   "@/lib/actions/raci"
 );
 const { prisma } = await import("@/lib/db/client");
@@ -85,9 +85,38 @@ describe("RACI Server Actions", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBe("FORBIDDEN");
   });
+
+  it("blocks finalization when an unskipped Process Map step has no RACI row yet at all", async () => {
+    // Fully assign both existing (freestanding) Activities...
+    await setRaciAssignment({ workspaceId: fixture.workspace.id, activityId: activity1Id, roleId: roleAId, code: "RESPONSIBLE" });
+    await setRaciAssignment({ workspaceId: fixture.workspace.id, activityId: activity1Id, roleId: roleBId, code: "ACCOUNTABLE" });
+    await setRaciAssignment({ workspaceId: fixture.workspace.id, activityId: activity2Id, roleId: roleAId, code: "RESPONSIBLE" });
+    await setRaciAssignment({ workspaceId: fixture.workspace.id, activityId: activity2Id, roleId: roleBId, code: "ACCOUNTABLE" });
+
+    // ...but a step on the Process Map has never had RACI touched — no Activity exists for it at all.
+    const step = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId,
+      step: { type: "TASK", label: "Untouched step", linkedProcessIds: [] },
+    });
+    if (!step.ok) throw new Error("setup failed");
+
+    const blocked = await finalizeRaciMatrix({ workspaceId: fixture.workspace.id, processId });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok && blocked.error === "VALIDATION_FAILED") {
+      expect(blocked.issues.some((i) => i.activityId === step.data.id && i.type === "MISSING_ACCOUNTABLE")).toBe(true);
+    }
+
+    // Skipping it removes it from validation entirely.
+    const skipped = await skipStepRaci({ workspaceId: fixture.workspace.id, processId, stepId: step.data.id });
+    expect(skipped.ok).toBe(true);
+
+    const finalized = await finalizeRaciMatrix({ workspaceId: fixture.workspace.id, processId });
+    expect(finalized.ok).toBe(true);
+  });
 });
 
-describe("Process Map step → RACI queue actions", () => {
+describe("Process Map step RACI cell actions", () => {
   let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
   let processId: string;
   let stepId: string;
@@ -119,15 +148,13 @@ describe("Process Map step → RACI queue actions", () => {
     await fixture.cleanup();
   });
 
-  it("creates an Activity linked to the step and assigns RACI codes", async () => {
-    const result = await assignStepRaci({
+  it("creates an Activity linked to the step on the first cell edit", async () => {
+    const result = await setStepRaciCell({
       workspaceId: fixture.workspace.id,
       processId,
       stepId,
-      assignments: [
-        { roleId: roleAId, code: "RESPONSIBLE" },
-        { roleId: roleBId, code: "ACCOUNTABLE" },
-      ],
+      roleId: roleAId,
+      code: "RESPONSIBLE",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -138,31 +165,37 @@ describe("Process Map step → RACI queue actions", () => {
     });
     expect(activity?.relatedStepId).toBe(stepId);
     expect(activity?.name).toBe("Receive goods");
-    expect(activity?.raciAssignments).toHaveLength(2);
+    expect(activity?.raciAssignments).toHaveLength(1);
+    expect(activity?.raciAssignments[0]?.code).toBe("RESPONSIBLE");
   });
 
-  it("reuses the same Activity and replaces assignments on a repeat call", async () => {
-    const first = await assignStepRaci({
-      workspaceId: fixture.workspace.id,
-      processId,
-      stepId,
-      assignments: [{ roleId: roleAId, code: "RESPONSIBLE" }],
-    });
+  it("reuses the same Activity across multiple cell edits on the same step", async () => {
+    const first = await setStepRaciCell({ workspaceId: fixture.workspace.id, processId, stepId, roleId: roleAId, code: "RESPONSIBLE" });
     expect(first.ok).toBe(true);
     if (!first.ok) return;
 
-    const second = await assignStepRaci({
-      workspaceId: fixture.workspace.id,
-      processId,
-      stepId,
-      assignments: [{ roleId: roleBId, code: "ACCOUNTABLE" }],
-    });
+    const second = await setStepRaciCell({ workspaceId: fixture.workspace.id, processId, stepId, roleId: roleBId, code: "ACCOUNTABLE" });
     expect(second.ok).toBe(true);
     if (!second.ok) return;
 
     expect(second.data.activityId).toBe(first.data.activityId);
     const activity = await prisma.activity.findUnique({
       where: { id: first.data.activityId },
+      include: { raciAssignments: true },
+    });
+    expect(activity?.raciAssignments).toHaveLength(2);
+  });
+
+  it("clears one role's code without touching the others, when set to null", async () => {
+    await setStepRaciCell({ workspaceId: fixture.workspace.id, processId, stepId, roleId: roleAId, code: "RESPONSIBLE" });
+    const created = await setStepRaciCell({ workspaceId: fixture.workspace.id, processId, stepId, roleId: roleBId, code: "ACCOUNTABLE" });
+    if (!created.ok) throw new Error("setup failed");
+
+    const cleared = await setStepRaciCell({ workspaceId: fixture.workspace.id, processId, stepId, roleId: roleAId, code: null });
+    expect(cleared.ok).toBe(true);
+
+    const activity = await prisma.activity.findUnique({
+      where: { id: created.data.activityId },
       include: { raciAssignments: true },
     });
     expect(activity?.raciAssignments).toHaveLength(1);
@@ -184,12 +217,7 @@ describe("Process Map step → RACI queue actions", () => {
   it("clears raciSkipped when a previously-skipped step is assigned instead", async () => {
     await skipStepRaci({ workspaceId: fixture.workspace.id, processId, stepId });
 
-    const result = await assignStepRaci({
-      workspaceId: fixture.workspace.id,
-      processId,
-      stepId,
-      assignments: [{ roleId: roleAId, code: "RESPONSIBLE" }],
-    });
+    const result = await setStepRaciCell({ workspaceId: fixture.workspace.id, processId, stepId, roleId: roleAId, code: "RESPONSIBLE" });
     expect(result.ok).toBe(true);
 
     const step = await prisma.processStep.findUnique({ where: { id: stepId } });
@@ -200,23 +228,24 @@ describe("Process Map step → RACI queue actions", () => {
     const otherProcess = await createProcess({ workspaceId: fixture.workspace.id, name: "Other Process" });
     if (!otherProcess.ok) throw new Error("setup failed");
 
-    const result = await assignStepRaci({
+    const result = await setStepRaciCell({
       workspaceId: fixture.workspace.id,
       processId: otherProcess.data.id,
       stepId,
-      assignments: [],
+      roleId: roleAId,
+      code: "RESPONSIBLE",
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBe("NOT_FOUND");
   });
 
-  it("rejects a VIEWER attempting to assign or skip a step", async () => {
+  it("rejects a VIEWER attempting to set a cell or skip a step", async () => {
     const { user: viewer } = await fixture.addMember("VIEWER");
     mockAuth.mockResolvedValue({ user: { id: viewer.id } });
 
-    const assignResult = await assignStepRaci({ workspaceId: fixture.workspace.id, processId, stepId, assignments: [] });
-    expect(assignResult.ok).toBe(false);
-    if (!assignResult.ok) expect(assignResult.error).toBe("FORBIDDEN");
+    const cellResult = await setStepRaciCell({ workspaceId: fixture.workspace.id, processId, stepId, roleId: roleAId, code: "RESPONSIBLE" });
+    expect(cellResult.ok).toBe(false);
+    if (!cellResult.ok) expect(cellResult.error).toBe("FORBIDDEN");
 
     const skipResult = await skipStepRaci({ workspaceId: fixture.workspace.id, processId, stepId });
     expect(skipResult.ok).toBe(false);

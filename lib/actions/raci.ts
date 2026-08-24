@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { validateRaciMatrix, type RaciActivity, type RaciIssue } from "@/lib/domain/raci-validation";
+import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { ok, notFound, validationError, type ActionResult } from "@/lib/actions/errors";
 
 const setAssignmentSchema = z.object({
@@ -43,34 +44,32 @@ export async function setRaciAssignment(
   return ok({ cleared: code === null });
 }
 
-const assignStepRaciSchema = z.object({
+const setStepRaciCellSchema = z.object({
   workspaceId: z.string().min(1),
   processId: z.string().min(1),
   stepId: z.string().min(1),
-  assignments: z.array(
-    z.object({
-      roleId: z.string().min(1),
-      code: z.enum(["RESPONSIBLE", "ACCOUNTABLE", "CONSULTED", "INFORMED"]),
-    })
-  ),
+  roleId: z.string().min(1),
+  code: z.enum(["RESPONSIBLE", "ACCOUNTABLE", "CONSULTED", "INFORMED"]).nullable(),
 });
 
 /**
- * Hands a Process Map step off into the RACI matrix: creates (or reuses) the
- * Activity linked to it and replaces its assignments wholesale with the
- * given set. Clears raciSkipped, in case this step was previously skipped
- * and is now being assigned instead.
+ * Sets one role's RACI code for a Process Map step that doesn't have a
+ * linked Activity yet — creating one (reusing it if it already exists) the
+ * first time a cell on that step's row is filled in. Clears raciSkipped,
+ * in case the step was previously skipped and is now being assigned
+ * instead. This is what makes every step in the RACI table immediately
+ * assignable without a separate "add to RACI" step first.
  */
-export async function assignStepRaci(
-  input: z.infer<typeof assignStepRaciSchema>
+export async function setStepRaciCell(
+  input: z.infer<typeof setStepRaciCellSchema>
 ): Promise<ActionResult<{ activityId: string }>> {
-  const parsed = assignStepRaciSchema.safeParse(input);
+  const parsed = setStepRaciCellSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const { processId, stepId, assignments } = parsed.data;
+  const { processId, stepId, roleId, code } = parsed.data;
 
   const step = await prisma.processStep.findUnique({ where: { id: stepId } });
   if (!step || step.processId !== processId) return notFound();
@@ -84,10 +83,13 @@ export async function assignStepRaci(
       });
     }
 
-    await tx.raciAssignment.deleteMany({ where: { activityId: activity.id } });
-    if (assignments.length > 0) {
-      await tx.raciAssignment.createMany({
-        data: assignments.map((a) => ({ activityId: activity!.id, roleId: a.roleId, code: a.code })),
+    if (code === null) {
+      await tx.raciAssignment.deleteMany({ where: { activityId: activity.id, roleId } });
+    } else {
+      await tx.raciAssignment.upsert({
+        where: { activityId_roleId: { activityId: activity.id, roleId } },
+        update: { code },
+        create: { activityId: activity.id, roleId, code },
       });
     }
 
@@ -146,18 +148,47 @@ export async function unskipStepRaci(
   return ok({ stepId: step.id });
 }
 
+/**
+ * Loads the same unified row set the RACI table renders — every step (its
+ * linked Activity if it has one, otherwise an empty assignable row) plus
+ * any freestanding Activity — and shapes it for validateRaciMatrix. A
+ * skipped step's row is excluded, same as it's excluded from the table's
+ * "needs RACI" set. Used by both validateRaciMatrixAction and
+ * finalizeRaciMatrix so finalizing is blocked by any unassigned,
+ * unskipped step — not just ones that already happen to have an Activity.
+ */
 async function loadRaciActivities(processId: string): Promise<RaciActivity[]> {
-  const activities = await prisma.activity.findMany({
-    where: { processId },
-    include: { raciAssignments: true },
-    orderBy: { order: "asc" },
-  });
+  const [steps, activities] = await Promise.all([
+    prisma.processStep.findMany({
+      where: { processId },
+      select: { id: true, type: true, label: true, raciSkipped: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.activity.findMany({
+      where: { processId },
+      include: { raciAssignments: true },
+      orderBy: { order: "asc" },
+    }),
+  ]);
 
-  return activities.map((a) => ({
-    activityId: a.id,
-    name: a.name,
-    assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
-  }));
+  const rows = buildRaciTableRows(
+    steps,
+    activities.map((a) => ({
+      id: a.id,
+      name: a.name,
+      relatedStepId: a.relatedStepId,
+      order: a.order,
+      assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
+    }))
+  );
+
+  return rows
+    .filter((r) => !r.skipped)
+    .map((r) => ({
+      activityId: r.id,
+      name: r.label,
+      assignments: Object.entries(r.assignments).map(([roleId, code]) => ({ roleId, code })),
+    }));
 }
 
 const processIdSchema = z.object({

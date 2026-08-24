@@ -1,11 +1,10 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
-import { partitionRaciQueue } from "@/lib/domain/raci-queue";
+import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
-import { RaciGrid } from "./raci-grid";
+import { RaciTable } from "./raci-table";
 import { AddActivityForm } from "./activity-form";
-import { RaciStepQueue } from "./raci-step-queue";
 import { ProcessStepper } from "../process-stepper";
 
 export default async function RaciMatrixPage(
@@ -32,24 +31,26 @@ export default async function RaciMatrixPage(
     getProcessStepperCounts(processId),
   ]);
 
-  const activitiesForGrid = activities.map((a) => ({
-    id: a.id,
-    name: a.name,
-    assignments: Object.fromEntries(a.raciAssignments.map((ra) => [ra.roleId, ra.code])),
-  }));
-
-  const issues = validateRaciMatrix(
+  const rows = buildRaciTableRows(
+    steps,
     activities.map((a) => ({
-      activityId: a.id,
+      id: a.id,
       name: a.name,
+      relatedStepId: a.relatedStepId,
+      order: a.order,
       assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
     }))
   );
 
-  const stepIdsWithActivity = new Set(
-    activities.map((a) => a.relatedStepId).filter((id): id is string => id !== null)
+  const issues = validateRaciMatrix(
+    rows
+      .filter((r) => !r.skipped)
+      .map((r) => ({
+        activityId: r.id,
+        name: r.label,
+        assignments: Object.entries(r.assignments).map(([roleId, code]) => ({ roleId, code })),
+      }))
   );
-  const { pending, skipped } = partitionRaciQueue(steps, stepIdsWithActivity);
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -80,26 +81,17 @@ export default async function RaciMatrixPage(
       </div>
       <h1 className="text-xl font-semibold text-slate-900">RACI Matrix</h1>
       <p className="mt-1 mb-4 text-sm text-slate-500">
-        Click a cell to cycle Responsible → Accountable → Consulted → Informed → clear.
+        Every Process Map step is already a row — click a cell to cycle Responsible → Accountable → Consulted →
+        Informed → clear, or Skip a step that doesn&apos;t need RACI.
       </p>
 
       <ProcessStepper workspaceId={workspaceId} processId={processId} {...stepperCounts} />
 
-      <RaciStepQueue
+      <RaciTable
         workspaceId={workspaceId}
         processId={processId}
         roles={roles.map((r) => ({ id: r.id, name: r.name }))}
-        pendingSteps={pending.map((s) => ({ id: s.id, type: s.type, label: s.label }))}
-        skippedSteps={skipped.map((s) => ({ id: s.id, type: s.type, label: s.label }))}
-        handledCount={steps.length - pending.length - skipped.length}
-        totalCount={steps.length}
-      />
-
-      <RaciGrid
-        workspaceId={workspaceId}
-        processId={processId}
-        roles={roles.map((r) => ({ id: r.id, name: r.name }))}
-        initialActivities={activitiesForGrid}
+        initialRows={rows}
         initialIssues={issues}
         initialStatus={matrixStatus?.status ?? "DRAFT"}
       />
