@@ -85,6 +85,10 @@ model Firm {
   id   String @id @default(uuid())
   name String
 
+  /// Company logo shown in the app header on every page, as a data: URL
+  /// (small enough to store inline — see validateLogoDataUrl for the size cap).
+  logoDataUrl String? @db.Text
+
   members           FirmMember[]
   workspaces        Workspace[]
   processCategories ProcessCategory[]

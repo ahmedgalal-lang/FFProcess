@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireFirmOwner, requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { canChangeLastFirmOwner } from "@/lib/domain/access-control";
+import { validateLogoDataUrl } from "@/lib/domain/firm-logo";
 import { ok, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
 export type WorkspaceListEntry = {
@@ -136,6 +137,35 @@ export async function deleteWorkspace(
 
   revalidatePath("/workspaces");
   return ok({ id: parsed.data.workspaceId });
+}
+
+const updateFirmLogoSchema = z.object({ logoDataUrl: z.string().min(1).nullable() });
+
+/** Firm Owner-only: set or clear the company logo shown in the header on every page. */
+export async function updateFirmLogo(
+  input: z.infer<typeof updateFirmLogoSchema>
+): Promise<ActionResult<{ logoDataUrl: string | null }>> {
+  const parsed = updateFirmLogoSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireFirmOwner();
+  if (!access.ok) return access;
+
+  if (parsed.data.logoDataUrl !== null) {
+    const validation = validateLogoDataUrl(parsed.data.logoDataUrl);
+    if (!validation.ok) return validationError(validation.message);
+  }
+
+  const firmMember = await prisma.firmMember.findUniqueOrThrow({ where: { userId: access.data.userId } });
+
+  await prisma.firm.update({
+    where: { id: firmMember.firmId },
+    data: { logoDataUrl: parsed.data.logoDataUrl },
+  });
+
+  revalidatePath("/firm/settings");
+  revalidatePath("/", "layout");
+  return ok({ logoDataUrl: parsed.data.logoDataUrl });
 }
 
 const addOwnerSchema = z.object({ userId: z.string().min(1) });
