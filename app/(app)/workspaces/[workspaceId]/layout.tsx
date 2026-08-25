@@ -40,7 +40,22 @@ export default async function WorkspaceLayout(
         logoDataUrl={workspace.logoDataUrl}
         isFirmOwnerAccess={access.data.accessVia === "OWNER_CARVEOUT"}
       />
-      <div className="min-w-0 flex-1">{props.children}</div>
+      <div className="relative min-w-0 flex-1">
+        {workspace.logoDataUrl && (
+          // Sits in the margin next to every page's centered content — every
+          // workspace page shares the same "mx-auto max-w-4xl" wrapper, so
+          // this gutter exists everywhere. Only wide enough to fit it without
+          // touching that content on narrower viewports, so it's hidden below
+          // the 2xl breakpoint rather than risk an overlap.
+          // eslint-disable-next-line @next/next/no-img-element -- user-uploaded data: URL, not an optimizable static asset
+          <img
+            src={workspace.logoDataUrl}
+            alt=""
+            className="pointer-events-none absolute left-8 top-8 hidden h-28 w-28 object-contain 2xl:block"
+          />
+        )}
+        {props.children}
+      </div>
     </div>
   );
 }
