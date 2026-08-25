@@ -8,6 +8,13 @@ import { validateRaciMatrix, type RaciActivity, type RaciIssue } from "@/lib/dom
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { ok, notFound, validationError, type ActionResult } from "@/lib/actions/errors";
 
+/** Verifies processId actually belongs to workspaceId, not just that the caller can access workspaceId. */
+async function loadProcessInWorkspace(workspaceId: string, processId: string) {
+  const process = await prisma.process.findUnique({ where: { id: processId } });
+  if (!process || process.workspaceId !== workspaceId) return null;
+  return process;
+}
+
 const setAssignmentSchema = z.object({
   workspaceId: z.string().min(1),
   activityId: z.string().min(1),
@@ -26,6 +33,9 @@ export async function setRaciAssignment(
 
   const { activityId, roleId, code } = parsed.data;
 
+  const activity = await prisma.activity.findUnique({ where: { id: activityId }, include: { process: true } });
+  if (!activity || activity.process.workspaceId !== parsed.data.workspaceId) return notFound();
+
   if (code === null) {
     await prisma.raciAssignment.deleteMany({ where: { activityId, roleId } });
   } else {
@@ -36,10 +46,6 @@ export async function setRaciAssignment(
     });
   }
 
-  const activity = await prisma.activity.findUniqueOrThrow({
-    where: { id: activityId },
-    select: { processId: true },
-  });
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${activity.processId}/raci`);
   return ok({ cleared: code === null });
 }
@@ -70,6 +76,9 @@ export async function setStepRaciCell(
   if (!access.ok) return access;
 
   const { processId, stepId, roleId, code } = parsed.data;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, processId);
+  if (!process) return notFound();
 
   const step = await prisma.processStep.findUnique({ where: { id: stepId } });
   if (!step || step.processId !== processId) return notFound();
@@ -120,6 +129,9 @@ export async function skipStepRaci(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
   const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
   if (!step || step.processId !== parsed.data.processId) return notFound();
 
@@ -139,6 +151,9 @@ export async function unskipStepRaci(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
   const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
   if (!step || step.processId !== parsed.data.processId) return notFound();
 
@@ -146,6 +161,69 @@ export async function unskipStepRaci(
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/raci`);
   return ok({ stepId: step.id });
+}
+
+const updateActivitySchema = z.object({
+  workspaceId: z.string().min(1),
+  activityId: z.string().min(1),
+  name: z.string().trim().min(1).max(160),
+});
+
+/** Renames a RACI Activity — whether it's linked to a Process Map step or freestanding. */
+export async function updateActivity(
+  input: z.infer<typeof updateActivitySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateActivitySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const activity = await prisma.activity.findUnique({
+    where: { id: parsed.data.activityId },
+    include: { process: true },
+  });
+  if (!activity || activity.process.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  const updated = await prisma.activity.update({
+    where: { id: activity.id },
+    data: { name: parsed.data.name },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${activity.processId}/raci`);
+  return ok({ id: updated.id });
+}
+
+const deleteActivitySchema = z.object({
+  workspaceId: z.string().min(1),
+  activityId: z.string().min(1),
+});
+
+/**
+ * Deletes a RACI Activity and its assignments. If it was linked to a
+ * Process Map step, that step reverts to a plain unassigned row in the
+ * table (the step itself is untouched — deleting a step happens on the
+ * Process Map page, not here).
+ */
+export async function deleteActivity(
+  input: z.infer<typeof deleteActivitySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteActivitySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const activity = await prisma.activity.findUnique({
+    where: { id: parsed.data.activityId },
+    include: { process: true },
+  });
+  if (!activity || activity.process.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  await prisma.activity.delete({ where: { id: activity.id } });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${activity.processId}/raci`);
+  return ok({ id: activity.id });
 }
 
 /**
@@ -205,6 +283,9 @@ export async function validateRaciMatrixAction(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "VIEWER");
   if (!access.ok) return access;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
   const activities = await loadRaciActivities(parsed.data.processId);
   return ok({ issues: validateRaciMatrix(activities) });
 }
@@ -217,6 +298,9 @@ export async function finalizeRaciMatrix(
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access as never;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound() as never;
 
   const activities = await loadRaciActivities(parsed.data.processId);
   const issues = validateRaciMatrix(activities);
@@ -242,6 +326,9 @@ export async function reopenRaciMatrix(
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
 
   await prisma.raciMatrixStatus.upsert({
     where: { processId: parsed.data.processId },

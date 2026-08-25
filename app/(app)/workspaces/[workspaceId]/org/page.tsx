@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
-import { AddPersonForm, AddRoleForm, ArchivePersonButton, ArchiveRoleButton, ManagerPicker } from "./org-forms";
+import { AddPersonForm, AddRoleForm, PersonRow, RoleRow } from "./org-forms";
 
 export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[workspaceId]/org">) {
   const { workspaceId } = await props.params;
@@ -45,12 +45,7 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
             </thead>
             <tbody>
               {roles.map((role) => (
-                <tr key={role.id} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-900">{role.name}</td>
-                  <td className="px-4 py-2 text-right">
-                    <ArchiveRoleButton workspaceId={workspaceId} roleId={role.id} />
-                  </td>
-                </tr>
+                <RoleRow key={role.id} workspaceId={workspaceId} role={{ id: role.id, name: role.name }} />
               ))}
               {roles.length === 0 && (
                 <tr>
@@ -84,32 +79,19 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
             </thead>
             <tbody>
               {people.map((person) => (
-                <tr key={person.id} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-900">{person.name}</td>
-                  <td className="px-4 py-2 text-slate-500">{person.email ?? "—"}</td>
-                  <td className="px-4 py-2">
-                    {person.personRoles.map((pr) => (
-                      <span
-                        key={pr.roleId}
-                        className="mr-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
-                      >
-                        {pr.role.name}
-                      </span>
-                    ))}
-                  </td>
-                  <td className="px-4 py-2">
-                    <ManagerPicker
-                      workspaceId={workspaceId}
-                      personId={person.id}
-                      personName={person.name}
-                      managerId={person.managerId}
-                      people={personOptions}
-                    />
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <ArchivePersonButton workspaceId={workspaceId} personId={person.id} />
-                  </td>
-                </tr>
+                <PersonRow
+                  key={person.id}
+                  workspaceId={workspaceId}
+                  person={{
+                    id: person.id,
+                    name: person.name,
+                    email: person.email,
+                    managerId: person.managerId,
+                    roleIds: person.personRoles.map((pr) => pr.roleId),
+                  }}
+                  allRoles={roles.map((r) => ({ id: r.id, name: r.name }))}
+                  people={personOptions}
+                />
               ))}
               {people.length === 0 && (
                 <tr>

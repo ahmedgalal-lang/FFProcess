@@ -2,7 +2,16 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { setRaciAssignment, setStepRaciCell, skipStepRaci, unskipStepRaci, finalizeRaciMatrix, reopenRaciMatrix } from "@/lib/actions/raci";
+import {
+  setRaciAssignment,
+  setStepRaciCell,
+  skipStepRaci,
+  unskipStepRaci,
+  updateActivity,
+  deleteActivity,
+  finalizeRaciMatrix,
+  reopenRaciMatrix,
+} from "@/lib/actions/raci";
 import type { RaciIssue } from "@/lib/domain/raci-validation";
 import type { RaciTableRow } from "@/lib/domain/raci-table";
 
@@ -49,6 +58,9 @@ export function RaciTable({
   const [status, setStatus] = useState(initialStatus);
   const [pending, startTransition] = useTransition();
   const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const router = useRouter();
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -144,6 +156,34 @@ export function RaciTable({
     });
   }
 
+  function startRename(row: RaciTableRow) {
+    setEditingRowId(row.id);
+    setRenameValue(row.label);
+  }
+
+  function saveRename(row: RaciTableRow) {
+    const name = renameValue.trim();
+    if (!name) return;
+    const nextRows = rows.map((r) => (r.id === row.id ? { ...r, label: name } : r));
+    setRows(nextRows);
+    setEditingRowId(null);
+
+    startTransition(async () => {
+      await updateActivity({ workspaceId, activityId: row.id, name });
+      router.refresh();
+    });
+  }
+
+  function removeActivity(row: RaciTableRow) {
+    setRows(rows.filter((r) => r.id !== row.id));
+    setConfirmingDeleteId(null);
+
+    startTransition(async () => {
+      await deleteActivity({ workspaceId, activityId: row.id });
+      router.refresh();
+    });
+  }
+
   const flaggedRowIds = new Set(issues.map((i) => i.activityId));
 
   return (
@@ -219,7 +259,7 @@ export function RaciTable({
                 </th>
               ))}
               <th scope="col" className="px-3 py-2 text-center">
-                Needed?
+                Actions
               </th>
             </tr>
           </thead>
@@ -232,14 +272,43 @@ export function RaciTable({
                     scope="row"
                     className={`sticky left-0 z-10 bg-white px-4 py-2 text-left font-medium text-slate-900 ${flagged ? "shadow-[inset_3px_0_0_0_theme(colors.red.400)]" : ""}`}
                   >
-                    <div className="flex items-center gap-2">
-                      {row.stepType && (
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">
-                          {row.stepType}
-                        </span>
-                      )}
-                      <span>{row.label}</span>
-                    </div>
+                    {editingRowId === row.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveRename(row);
+                            if (e.key === "Escape") setEditingRowId(null);
+                          }}
+                          className="w-40 rounded-md border border-slate-300 px-2 py-1 text-sm font-normal"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => saveRename(row)}
+                          className="rounded-md bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingRowId(null)}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {row.stepType && (
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                            {row.stepType}
+                          </span>
+                        )}
+                        <span>{row.label}</span>
+                      </div>
+                    )}
                     {flagged && <span className="sr-only"> — has a validation issue</span>}
                   </th>
                   {roles.map((r, colIdx) => {
@@ -265,7 +334,7 @@ export function RaciTable({
                     );
                   })}
                   <td className="px-3 py-2 text-center">
-                    {row.kind === "step" && (
+                    {row.kind === "step" ? (
                       <button
                         type="button"
                         onClick={() => toggleSkip(row)}
@@ -273,6 +342,41 @@ export function RaciTable({
                       >
                         Skip
                       </button>
+                    ) : confirmingDeleteId === row.id ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-xs text-slate-500">Delete?</span>
+                        <button
+                          type="button"
+                          onClick={() => removeActivity(row)}
+                          className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingDeleteId(null)}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700"
+                        >
+                          No
+                        </button>
+                      </span>
+                    ) : editingRowId === row.id ? null : (
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => startRename(row)}
+                          className="rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingDeleteId(row.id)}
+                          className="rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          Delete
+                        </button>
+                      </span>
                     )}
                   </td>
                 </tr>

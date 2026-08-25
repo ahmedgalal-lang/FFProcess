@@ -11,9 +11,17 @@ vi.mock("@/lib/auth/config", () => ({
 
 const { createProcess, createActivity, addProcessStep } = await import("@/lib/actions/process");
 const { createRole } = await import("@/lib/actions/org");
-const { setRaciAssignment, finalizeRaciMatrix, reopenRaciMatrix, setStepRaciCell, skipStepRaci, unskipStepRaci } = await import(
-  "@/lib/actions/raci"
-);
+const {
+  setRaciAssignment,
+  finalizeRaciMatrix,
+  reopenRaciMatrix,
+  setStepRaciCell,
+  skipStepRaci,
+  unskipStepRaci,
+  updateActivity,
+  deleteActivity,
+  validateRaciMatrixAction,
+} = await import("@/lib/actions/raci");
 const { prisma } = await import("@/lib/db/client");
 
 describe("RACI Server Actions", () => {
@@ -250,5 +258,205 @@ describe("Process Map step RACI cell actions", () => {
     const skipResult = await skipStepRaci({ workspaceId: fixture.workspace.id, processId, stepId });
     expect(skipResult.ok).toBe(false);
     if (!skipResult.ok) expect(skipResult.error).toBe("FORBIDDEN");
+  });
+});
+
+describe("updateActivity / deleteActivity", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let processId: string;
+  let activityId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Activity Edit Process" });
+    if (!process.ok) throw new Error("setup failed");
+    processId = process.data.id;
+
+    const activity = await createActivity({ workspaceId: fixture.workspace.id, processId, name: "Match Invoice to PO" });
+    if (!activity.ok) throw new Error("setup failed");
+    activityId = activity.data.id;
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  it("renames an activity", async () => {
+    const result = await updateActivity({ workspaceId: fixture.workspace.id, activityId, name: "Match Invoice to Order" });
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.activity.findUnique({ where: { id: activityId } });
+    expect(row?.name).toBe("Match Invoice to Order");
+  });
+
+  it("deletes an activity and its RACI assignments", async () => {
+    const role = await createRole({ workspaceId: fixture.workspace.id, name: "Clerk" });
+    if (!role.ok) throw new Error("setup failed");
+    await setRaciAssignment({ workspaceId: fixture.workspace.id, activityId, roleId: role.data.id, code: "RESPONSIBLE" });
+
+    const result = await deleteActivity({ workspaceId: fixture.workspace.id, activityId });
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.activity.findUnique({ where: { id: activityId } });
+    expect(row).toBeNull();
+    const assignments = await prisma.raciAssignment.findMany({ where: { activityId } });
+    expect(assignments).toHaveLength(0);
+  });
+
+  it("reverts a step to a plain unassigned row after its linked activity is deleted", async () => {
+    const step = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId,
+      step: { type: "TASK", label: "Receive goods", linkedProcessIds: [] },
+    });
+    if (!step.ok) throw new Error("setup failed");
+    const role = await createRole({ workspaceId: fixture.workspace.id, name: "Clerk" });
+    if (!role.ok) throw new Error("setup failed");
+
+    const cell = await setStepRaciCell({
+      workspaceId: fixture.workspace.id,
+      processId,
+      stepId: step.data.id,
+      roleId: role.data.id,
+      code: "RESPONSIBLE",
+    });
+    if (!cell.ok) throw new Error("setup failed");
+
+    await deleteActivity({ workspaceId: fixture.workspace.id, activityId: cell.data.activityId });
+
+    const remaining = await prisma.activity.findUnique({ where: { id: cell.data.activityId } });
+    expect(remaining).toBeNull();
+    const stepRow = await prisma.processStep.findUnique({ where: { id: step.data.id } });
+    expect(stepRow).not.toBeNull(); // the step itself is untouched
+  });
+
+  it("rejects a VIEWER attempting to rename or delete an activity", async () => {
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+
+    const renameResult = await updateActivity({ workspaceId: fixture.workspace.id, activityId, name: "x" });
+    expect(renameResult.ok).toBe(false);
+    if (!renameResult.ok) expect(renameResult.error).toBe("FORBIDDEN");
+
+    const deleteResult = await deleteActivity({ workspaceId: fixture.workspace.id, activityId });
+    expect(deleteResult.ok).toBe(false);
+    if (!deleteResult.ok) expect(deleteResult.error).toBe("FORBIDDEN");
+  });
+
+  it("rejects renaming or deleting an activity that belongs to a different workspace, even with valid EDITOR access on the caller's own workspace", async () => {
+    const otherFixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: otherFixture.adminUser.id } });
+    const otherProcess = await createProcess({ workspaceId: otherFixture.workspace.id, name: "Outsider Process" });
+    if (!otherProcess.ok) throw new Error("setup failed");
+    const otherActivity = await createActivity({
+      workspaceId: otherFixture.workspace.id,
+      processId: otherProcess.data.id,
+      name: "Outsider Activity",
+    });
+    if (!otherActivity.ok) throw new Error("setup failed");
+
+    // Back to the original fixture's admin, but targeting the OTHER workspace's activity.
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const renameResult = await updateActivity({
+      workspaceId: fixture.workspace.id,
+      activityId: otherActivity.data.id,
+      name: "Hijacked",
+    });
+    expect(renameResult.ok).toBe(false);
+    if (!renameResult.ok) expect(renameResult.error).toBe("NOT_FOUND");
+
+    const deleteResult = await deleteActivity({ workspaceId: fixture.workspace.id, activityId: otherActivity.data.id });
+    expect(deleteResult.ok).toBe(false);
+    if (!deleteResult.ok) expect(deleteResult.error).toBe("NOT_FOUND");
+
+    await otherFixture.cleanup();
+  });
+});
+
+describe("cross-workspace isolation on existing RACI actions", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let otherFixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let otherProcessId: string;
+  let otherActivityId: string;
+  let otherStepId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    otherFixture = await createFixtureWorkspace();
+
+    mockAuth.mockResolvedValue({ user: { id: otherFixture.adminUser.id } });
+    const otherProcess = await createProcess({ workspaceId: otherFixture.workspace.id, name: "Outsider Process" });
+    if (!otherProcess.ok) throw new Error("setup failed");
+    otherProcessId = otherProcess.data.id;
+
+    const otherActivity = await createActivity({
+      workspaceId: otherFixture.workspace.id,
+      processId: otherProcessId,
+      name: "Outsider Activity",
+    });
+    if (!otherActivity.ok) throw new Error("setup failed");
+    otherActivityId = otherActivity.data.id;
+
+    const otherStep = await addProcessStep({
+      workspaceId: otherFixture.workspace.id,
+      processId: otherProcessId,
+      step: { type: "TASK", label: "Outsider step", linkedProcessIds: [] },
+    });
+    if (!otherStep.ok) throw new Error("setup failed");
+    otherStepId = otherStep.data.id;
+
+    // Now act as the FIRST fixture's admin, who has EDITOR access on their own
+    // workspace but none at all on otherFixture's workspace.
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+    await otherFixture.cleanup();
+  });
+
+  it("setRaciAssignment rejects an activityId from a different workspace", async () => {
+    const roleResult = await createRole({ workspaceId: fixture.workspace.id, name: "Clerk" });
+    if (!roleResult.ok) throw new Error("setup failed");
+
+    const result = await setRaciAssignment({
+      workspaceId: fixture.workspace.id,
+      activityId: otherActivityId,
+      roleId: roleResult.data.id,
+      code: "RESPONSIBLE",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+  });
+
+  it("setStepRaciCell rejects a processId/stepId pair from a different workspace", async () => {
+    const roleResult = await createRole({ workspaceId: fixture.workspace.id, name: "Clerk" });
+    if (!roleResult.ok) throw new Error("setup failed");
+
+    const result = await setStepRaciCell({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      stepId: otherStepId,
+      roleId: roleResult.data.id,
+      code: "RESPONSIBLE",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+  });
+
+  it("finalizeRaciMatrix, reopenRaciMatrix, and validateRaciMatrixAction reject a processId from a different workspace", async () => {
+    const finalizeResult = await finalizeRaciMatrix({ workspaceId: fixture.workspace.id, processId: otherProcessId });
+    expect(finalizeResult.ok).toBe(false);
+    if (!finalizeResult.ok) expect(finalizeResult.error).toBe("NOT_FOUND");
+
+    const reopenResult = await reopenRaciMatrix({ workspaceId: fixture.workspace.id, processId: otherProcessId });
+    expect(reopenResult.ok).toBe(false);
+    if (!reopenResult.ok) expect(reopenResult.error).toBe("NOT_FOUND");
+
+    const validateResult = await validateRaciMatrixAction({ workspaceId: fixture.workspace.id, processId: otherProcessId });
+    expect(validateResult.ok).toBe(false);
+    if (!validateResult.ok) expect(validateResult.error).toBe("NOT_FOUND");
   });
 });
