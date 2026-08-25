@@ -62,6 +62,20 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Export Report picker has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/export");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("Export Report preview has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/export/preview?ids=7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8");
+    await page.waitForSelector("text=Authority Matrix");
+
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("AI Review page has no automatically detectable violations", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();

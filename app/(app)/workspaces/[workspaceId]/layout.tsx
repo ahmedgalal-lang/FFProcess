@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/org", label: "Org Directory" },
   { href: "/processes", label: "Processes" },
   { href: "/members", label: "Members" },
+  { href: "/export", label: "Export Report" },
 ];
 
 export default async function WorkspaceLayout(

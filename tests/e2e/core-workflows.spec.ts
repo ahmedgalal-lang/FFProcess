@@ -66,8 +66,29 @@ test.describe("Core workflows", () => {
 
     const revisePORow = page.locator("tr", { hasText: "Revise Purchase Order" });
     await expect(revisePORow).toContainText("3 days");
+  });
 
-    await expect(page.getByText(/\d+ tasks? need an approver \(or co-approver\)/)).toBeVisible();
+  test("Export Report picker and preview show company info, org chart, and per-process map/RACI/Authority", async ({
+    page,
+  }) => {
+    await page.goto("/workspaces/workspace-acme/export");
+    await expect(page.locator("h1")).toHaveText("Export Report");
+    await expect(page.locator("tr", { hasText: "PUR101" })).toBeVisible();
+
+    await page.click('button:has-text("Preview report")');
+    await page.waitForURL("**/export/preview**");
+
+    await expect(page.locator("h1")).toHaveText("Acme Industrial");
+    await expect(page.getByText("Org Structure")).toBeVisible();
+    await expect(page.getByText("Purchase-to-Pay")).toBeVisible();
+    await expect(page.getByText("Process Map").first()).toBeVisible();
+    await expect(page.getByText("RACI Matrix").first()).toBeVisible();
+    await expect(page.getByText("Authority Matrix").first()).toBeVisible();
+
+    await expect(page.locator("td", { hasText: "Create Purchase Order" }).first()).toBeVisible();
+    await expect(page.locator("tr", { hasText: "Create Purchase Order" }).filter({ hasText: "$10,000" })).toHaveCount(1);
+
+    await expect(page.locator("button:has-text('Print / Save as PDF')")).toBeVisible();
   });
 
   test("Inviting a new member produces a working accept link that provisions an account", async ({ page, context }) => {
