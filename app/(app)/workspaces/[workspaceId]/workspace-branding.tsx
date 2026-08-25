@@ -72,8 +72,8 @@ export function WorkspaceBranding({
       <div className="flex-1">
         <div className="text-sm font-semibold text-slate-800">Client logo &amp; accent color</div>
         <p className="mt-0.5 text-xs text-slate-500">
-          Shown in this Workspace&rsquo;s sidebar and used for a few accent touches — only while you&rsquo;re working
-          in this client&rsquo;s Workspace. PNG, JPEG, WebP, or SVG, under 300KB.
+          Shown in the header and this Workspace&rsquo;s sidebar, and used for a few accent touches — only while
+          you&rsquo;re working in this client&rsquo;s Workspace. PNG, JPEG, WebP, or SVG, under 300KB.
         </p>
         <div className="mt-2 flex items-center gap-3">
           <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
