@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "", label: "Dashboard" },
@@ -14,12 +15,15 @@ const NAV_ITEMS = [
 export function WorkspaceSidebar({
   workspaceId,
   workspaceName,
+  logoDataUrl,
   isFirmOwnerAccess,
 }: {
   workspaceId: string;
   workspaceName: string;
+  logoDataUrl: string | null;
   isFirmOwnerAccess: boolean;
 }) {
+  const pathname = usePathname();
   // Plain component state — this sidebar doesn't remount when navigating between
   // pages within the same Workspace (they share this layout), so the collapsed
   // choice already survives page-to-page navigation without needing to persist it.
@@ -39,7 +43,13 @@ export function WorkspaceSidebar({
         <div className="w-56 px-3 py-5">
           <div className="mb-4 px-2">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Workspace</div>
-            <div className="truncate text-sm font-semibold text-slate-900">{workspaceName}</div>
+            <div className="mt-1 flex items-center gap-2">
+              {logoDataUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- user-uploaded data: URL, not an optimizable static asset
+                <img src={logoDataUrl} alt="" className="h-6 w-6 flex-none rounded object-contain" />
+              )}
+              <div className="truncate text-sm font-semibold text-slate-900">{workspaceName}</div>
+            </div>
             {isFirmOwnerAccess && (
               <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                 ★ Firm Owner access
@@ -47,16 +57,24 @@ export function WorkspaceSidebar({
             )}
           </div>
           <ul className="flex flex-col gap-0.5">
-            {NAV_ITEMS.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={`/workspaces/${workspaceId}${item.href}`}
-                  className="block rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const fullHref = `/workspaces/${workspaceId}${item.href}`;
+              const isActive = item.href === "" ? pathname === fullHref : pathname?.startsWith(fullHref);
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={fullHref}
+                    className={`block rounded-lg border-l-2 py-1.5 pl-2 pr-2.5 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "border-[var(--accent)] bg-slate-50 text-[var(--accent)]"
+                        : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
           <div className="mt-4 border-t border-slate-200 pt-3">
             <Link

@@ -3,6 +3,8 @@ import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { prisma } from "@/lib/db/client";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
+const DEFAULT_ACCENT = "#334155"; // slate-700 — a workspace with no logo/accent set yet
+
 export default async function WorkspaceLayout(
   props: LayoutProps<"/workspaces/[workspaceId]">
 ) {
@@ -18,10 +20,14 @@ export default async function WorkspaceLayout(
   if (!workspace) nextNotFound();
 
   return (
-    <div className="flex flex-1">
+    <div
+      className="flex flex-1"
+      style={{ "--accent": workspace.accentColor ?? DEFAULT_ACCENT } as React.CSSProperties}
+    >
       <WorkspaceSidebar
         workspaceId={workspaceId}
         workspaceName={workspace.name}
+        logoDataUrl={workspace.logoDataUrl}
         isFirmOwnerAccess={access.data.accessVia === "OWNER_CARVEOUT"}
       />
       <div className="min-w-0 flex-1">{props.children}</div>

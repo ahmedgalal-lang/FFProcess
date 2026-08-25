@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireFirmOwner, requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { canChangeLastFirmOwner } from "@/lib/domain/access-control";
-import { validateLogoDataUrl } from "@/lib/domain/firm-logo";
+import { validateLogoDataUrl, isValidHexColor } from "@/lib/domain/logo";
 import { ok, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
 export type WorkspaceListEntry = {
@@ -139,33 +139,43 @@ export async function deleteWorkspace(
   return ok({ id: parsed.data.workspaceId });
 }
 
-const updateFirmLogoSchema = z.object({ logoDataUrl: z.string().min(1).nullable() });
+const updateWorkspaceBrandingSchema = z.object({
+  workspaceId: z.string().min(1),
+  logoDataUrl: z.string().min(1).nullable(),
+  accentColor: z.string().min(1).nullable(),
+});
 
-/** Firm Owner-only: set or clear the company logo shown in the header on every page. */
-export async function updateFirmLogo(
-  input: z.infer<typeof updateFirmLogoSchema>
-): Promise<ActionResult<{ logoDataUrl: string | null }>> {
-  const parsed = updateFirmLogoSchema.safeParse(input);
+/**
+ * Sets or clears this client's logo and accent color — shown in the
+ * Workspace sidebar and used for a few brand touches on every page of this
+ * Workspace only, so a consultant sees the UI shift as they switch between
+ * client engagements. ADMIN-level, not Firm Owner-only: ordinary engagement
+ * upkeep, same as updateWorkspaceProfile.
+ */
+export async function updateWorkspaceBranding(
+  input: z.infer<typeof updateWorkspaceBrandingSchema>
+): Promise<ActionResult<{ logoDataUrl: string | null; accentColor: string | null }>> {
+  const parsed = updateWorkspaceBrandingSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
 
-  const access = await requireFirmOwner();
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "ADMIN");
   if (!access.ok) return access;
 
   if (parsed.data.logoDataUrl !== null) {
     const validation = validateLogoDataUrl(parsed.data.logoDataUrl);
     if (!validation.ok) return validationError(validation.message);
   }
+  if (parsed.data.accentColor !== null && !isValidHexColor(parsed.data.accentColor)) {
+    return validationError("Accent color must be a hex value like #2563eb.");
+  }
 
-  const firmMember = await prisma.firmMember.findUniqueOrThrow({ where: { userId: access.data.userId } });
-
-  await prisma.firm.update({
-    where: { id: firmMember.firmId },
-    data: { logoDataUrl: parsed.data.logoDataUrl },
+  await prisma.workspace.update({
+    where: { id: parsed.data.workspaceId },
+    data: { logoDataUrl: parsed.data.logoDataUrl, accentColor: parsed.data.accentColor },
   });
 
-  revalidatePath("/firm/settings");
-  revalidatePath("/", "layout");
-  return ok({ logoDataUrl: parsed.data.logoDataUrl });
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}`, "layout");
+  return ok({ logoDataUrl: parsed.data.logoDataUrl, accentColor: parsed.data.accentColor });
 }
 
 const addOwnerSchema = z.object({ userId: z.string().min(1) });

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireFirmOwner } from "@/lib/auth/workspace";
 import { prisma } from "@/lib/db/client";
-import { PromoteToOwnerForm, FirmMemberRowActions, LogoUploadForm } from "./firm-settings-client";
+import { PromoteToOwnerForm, FirmMemberRowActions } from "./firm-settings-client";
 
 export default async function FirmSettingsPage() {
   const access = await requireFirmOwner();
@@ -11,10 +11,9 @@ export default async function FirmSettingsPage() {
     notFound();
   }
 
-  const [firmMembers, allUsers, callerFirmMember] = await Promise.all([
+  const [firmMembers, allUsers] = await Promise.all([
     prisma.firmMember.findMany({ include: { user: true }, orderBy: { createdAt: "asc" } }),
     prisma.user.findMany({ orderBy: { name: "asc" } }),
-    prisma.firmMember.findUniqueOrThrow({ where: { userId: access.data.userId }, include: { firm: true } }),
   ]);
 
   const ownerCount = firmMembers.filter((m) => m.role === "OWNER").length;
@@ -31,8 +30,6 @@ export default async function FirmSettingsPage() {
         Firm Owners can reach every client Workspace without an explicit Member record
         (Constitution Principle V). At least one Firm Owner must always exist.
       </p>
-
-      <LogoUploadForm logoDataUrl={callerFirmMember.firm.logoDataUrl} />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">

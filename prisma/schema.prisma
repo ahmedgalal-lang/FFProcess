@@ -85,10 +85,6 @@ model Firm {
   id   String @id @default(uuid())
   name String
 
-  /// Company logo shown in the app header on every page, as a data: URL
-  /// (small enough to store inline — see validateLogoDataUrl for the size cap).
-  logoDataUrl String? @db.Text
-
   members           FirmMember[]
   workspaces        Workspace[]
   processCategories ProcessCategory[]
@@ -135,7 +131,19 @@ model Workspace {
   currency    String  @default("USD")
   industry    String?
   description String?
-  logoUrl     String?
+
+  /// This client's logo, shown in the workspace sidebar on every page of
+  /// this workspace, as a data: URL (see validateLogoDataUrl for the size
+  /// cap). Per-Workspace rather than per-Firm so each client engagement gets
+  /// its own identity as a consultant switches between them.
+  logoDataUrl String? @db.Text
+
+  /// A hex accent color (e.g. "#2563eb") sampled from logoDataUrl at upload
+  /// time (client-side — see extractDominantColor), used for a few small
+  /// brand touches in this workspace's UI (the sidebar's active nav item,
+  /// its accent bar). Editable independently of the logo since automatic
+  /// extraction can pick a color a consultant doesn't want.
+  accentColor String?
 
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 

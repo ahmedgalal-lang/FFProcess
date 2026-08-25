@@ -2,16 +2,12 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth, signOut } from "@/lib/auth/config";
 import { prisma } from "@/lib/db/client";
-import { getFirmLogoForUser } from "@/lib/data/firm-branding";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [firmMember, logoDataUrl] = await Promise.all([
-    prisma.firmMember.findUnique({ where: { userId: session.user.id! } }),
-    getFirmLogoForUser(session.user.id!),
-  ]);
+  const firmMember = await prisma.firmMember.findUnique({ where: { userId: session.user.id! } });
   const isFirmOwner = firmMember?.role === "OWNER";
 
   return (
@@ -21,13 +17,6 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 font-mono text-[11px] font-bold text-white">
             FF
           </div>
-          {logoDataUrl && (
-            <>
-              <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
-              {/* eslint-disable-next-line @next/next/no-img-element -- user-uploaded data: URL, not an optimizable static asset */}
-              <img src={logoDataUrl} alt="Company logo" className="h-8 w-auto max-w-[150px] object-contain" />
-            </>
-          )}
           <span className="text-sm font-semibold text-slate-900">FFProcess</span>
         </Link>
         <div className="flex-1" />

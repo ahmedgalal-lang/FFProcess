@@ -1,6 +1,7 @@
 /**
- * Validates an uploaded company logo before it's stored as a data: URL on the
- * Firm record. Pure and framework-free (Constitution Principle III).
+ * Validates an uploaded Workspace logo and its accent color before they're
+ * stored on the Workspace record. Pure and framework-free (Constitution
+ * Principle III).
  */
 
 const MAX_LOGO_DATA_URL_LENGTH = 400_000; // ~300KB raw file, base64-inflated
@@ -16,4 +17,8 @@ export function validateLogoDataUrl(dataUrl: string): { ok: true } | { ok: false
     return { ok: false, message: "Logo file is too large — please use an image under 300KB." };
   }
   return { ok: true };
+}
+
+export function isValidHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
 }
