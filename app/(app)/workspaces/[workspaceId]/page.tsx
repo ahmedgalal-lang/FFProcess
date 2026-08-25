@@ -28,6 +28,8 @@ export default async function WorkspaceDashboardPage(
           workspaceId={workspaceId}
           logoDataUrl={workspace?.logoDataUrl ?? null}
           accentColor={workspace?.accentColor ?? null}
+          accentColorSecondary={workspace?.accentColorSecondary ?? null}
+          accentColorTertiary={workspace?.accentColorTertiary ?? null}
         />
       </div>
 

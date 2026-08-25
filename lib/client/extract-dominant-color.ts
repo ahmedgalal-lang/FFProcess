@@ -1,13 +1,15 @@
+import { pickDistinctColors, type ColorBucket } from "@/lib/domain/color-extraction";
+
 /**
- * Samples a dominant accent color out of an uploaded logo image, client-side
+ * Samples accent color candidates out of an uploaded logo image, client-side
  * (needs canvas/DOM — there's no server-side equivalent). Quantizes pixels
- * into coarse RGB buckets and picks the most common bucket that isn't
- * near-white, near-black, or low-saturation gray, since those are almost
- * always background rather than brand color. Returns null if the image has
- * no such pixels (e.g. a pure black-and-white logo) — the caller falls back
- * to a neutral default.
+ * into coarse RGB buckets, skips near-white, near-black, or low-saturation
+ * gray pixels (almost always background rather than brand color), and picks
+ * up to `max` distinct colors by frequency (see pickDistinctColors). Returns
+ * fewer than `max` — down to an empty array — if the image doesn't have that
+ * many distinct non-background colors (e.g. a monochrome logo).
  */
-export function extractDominantColor(imageUrl: string): Promise<string | null> {
+export function extractDominantColors(imageUrl: string, max = 3): Promise<string[]> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -18,12 +20,12 @@ export function extractDominantColor(imageUrl: string): Promise<string | null> {
         canvas.width = size;
         canvas.height = size;
         const ctx = canvas.getContext("2d");
-        if (!ctx) return resolve(null);
+        if (!ctx) return resolve([]);
 
         ctx.drawImage(img, 0, 0, size, size);
         const { data } = ctx.getImageData(0, 0, size, size);
 
-        const buckets = new Map<string, { count: number; r: number; g: number; b: number }>();
+        const buckets = new Map<string, ColorBucket>();
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i];
           const g = data[i + 1];
@@ -31,10 +33,11 @@ export function extractDominantColor(imageUrl: string): Promise<string | null> {
           const a = data[i + 3];
           if (a < 200) continue; // skip transparent pixels
 
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          const lightness = (max + min) / 2 / 255;
-          const saturation = max === min ? 0 : (max - min) / (255 - Math.abs(max + min - 255));
+          const channelMax = Math.max(r, g, b);
+          const channelMin = Math.min(r, g, b);
+          const lightness = (channelMax + channelMin) / 2 / 255;
+          const saturation =
+            channelMax === channelMin ? 0 : (channelMax - channelMin) / (255 - Math.abs(channelMax + channelMin - 255));
           if (lightness < 0.12 || lightness > 0.92 || saturation < 0.25) continue; // near-black/white/gray
 
           const key = `${r >> 4}-${g >> 4}-${b >> 4}`; // 16 levels per channel
@@ -43,19 +46,17 @@ export function extractDominantColor(imageUrl: string): Promise<string | null> {
           buckets.set(key, bucket);
         }
 
-        let best: { count: number; r: number; g: number; b: number } | null = null;
-        for (const bucket of buckets.values()) {
-          if (!best || bucket.count > best.count) best = bucket;
-        }
-        if (!best) return resolve(null);
-
-        const toHex = (n: number) => n.toString(16).padStart(2, "0");
-        resolve(`#${toHex(best.r)}${toHex(best.g)}${toHex(best.b)}`);
+        resolve(pickDistinctColors([...buckets.values()], max));
       } catch {
-        resolve(null);
+        resolve([]);
       }
     };
-    img.onerror = () => resolve(null);
+    img.onerror = () => resolve([]);
     img.src = imageUrl;
   });
+}
+
+export async function extractDominantColor(imageUrl: string): Promise<string | null> {
+  const [first] = await extractDominantColors(imageUrl, 1);
+  return first ?? null;
 }

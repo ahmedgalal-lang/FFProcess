@@ -143,18 +143,28 @@ const updateWorkspaceBrandingSchema = z.object({
   workspaceId: z.string().min(1),
   logoDataUrl: z.string().min(1).nullable(),
   accentColor: z.string().min(1).nullable(),
+  accentColorSecondary: z.string().min(1).nullable(),
+  accentColorTertiary: z.string().min(1).nullable(),
 });
 
+type WorkspaceBrandingResult = {
+  logoDataUrl: string | null;
+  accentColor: string | null;
+  accentColorSecondary: string | null;
+  accentColorTertiary: string | null;
+};
+
 /**
- * Sets or clears this client's logo and accent color — shown in the
- * Workspace sidebar and used for a few brand touches on every page of this
- * Workspace only, so a consultant sees the UI shift as they switch between
- * client engagements. ADMIN-level, not Firm Owner-only: ordinary engagement
- * upkeep, same as updateWorkspaceProfile.
+ * Sets or clears this client's logo and up to three named accent colors
+ * (Primary/Secondary/Tertiary) — shown in the Workspace sidebar and used for
+ * a few brand touches on every page of this Workspace only, so a consultant
+ * sees the UI shift as they switch between client engagements. ADMIN-level,
+ * not Firm Owner-only: ordinary engagement upkeep, same as
+ * updateWorkspaceProfile.
  */
 export async function updateWorkspaceBranding(
   input: z.infer<typeof updateWorkspaceBrandingSchema>
-): Promise<ActionResult<{ logoDataUrl: string | null; accentColor: string | null }>> {
+): Promise<ActionResult<WorkspaceBrandingResult>> {
   const parsed = updateWorkspaceBrandingSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
 
@@ -165,17 +175,29 @@ export async function updateWorkspaceBranding(
     const validation = validateLogoDataUrl(parsed.data.logoDataUrl);
     if (!validation.ok) return validationError(validation.message);
   }
-  if (parsed.data.accentColor !== null && !isValidHexColor(parsed.data.accentColor)) {
-    return validationError("Accent color must be a hex value like #2563eb.");
+  for (const color of [parsed.data.accentColor, parsed.data.accentColorSecondary, parsed.data.accentColorTertiary]) {
+    if (color !== null && !isValidHexColor(color)) {
+      return validationError("Accent color must be a hex value like #2563eb.");
+    }
   }
 
   await prisma.workspace.update({
     where: { id: parsed.data.workspaceId },
-    data: { logoDataUrl: parsed.data.logoDataUrl, accentColor: parsed.data.accentColor },
+    data: {
+      logoDataUrl: parsed.data.logoDataUrl,
+      accentColor: parsed.data.accentColor,
+      accentColorSecondary: parsed.data.accentColorSecondary,
+      accentColorTertiary: parsed.data.accentColorTertiary,
+    },
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}`, "layout");
-  return ok({ logoDataUrl: parsed.data.logoDataUrl, accentColor: parsed.data.accentColor });
+  return ok({
+    logoDataUrl: parsed.data.logoDataUrl,
+    accentColor: parsed.data.accentColor,
+    accentColorSecondary: parsed.data.accentColorSecondary,
+    accentColorTertiary: parsed.data.accentColorTertiary,
+  });
 }
 
 const addOwnerSchema = z.object({ userId: z.string().min(1) });

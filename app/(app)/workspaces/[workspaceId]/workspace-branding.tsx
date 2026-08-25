@@ -3,33 +3,57 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateWorkspaceBranding } from "@/lib/actions/organization";
-import { extractDominantColor } from "@/lib/client/extract-dominant-color";
+import { extractDominantColors } from "@/lib/client/extract-dominant-color";
 
-const DEFAULT_ACCENT = "#334155"; // slate-700 — used when a logo has no clear dominant color
+const DEFAULT_PRIMARY = "#334155"; // slate-700 — used when a logo has no clear dominant color
+const DEFAULT_SECONDARY = "#4338ca"; // indigo-700 — matches this app's existing accent look
+const DEFAULT_TERTIARY = "#4338ca";
+
+type Accents = { primary: string; secondary: string; tertiary: string };
+type PersistedAccents = { primary: string | null; secondary: string | null; tertiary: string | null };
 
 export function WorkspaceBranding({
   workspaceId,
   logoDataUrl,
   accentColor,
+  accentColorSecondary,
+  accentColorTertiary,
 }: {
   workspaceId: string;
   logoDataUrl: string | null;
   accentColor: string | null;
+  accentColorSecondary: string | null;
+  accentColorTertiary: string | null;
 }) {
   const [preview, setPreview] = useState<string | null>(logoDataUrl);
-  const [color, setColor] = useState(accentColor ?? DEFAULT_ACCENT);
+  const [accents, setAccents] = useState<Accents>({
+    primary: accentColor ?? DEFAULT_PRIMARY,
+    secondary: accentColorSecondary ?? DEFAULT_SECONDARY,
+    tertiary: accentColorTertiary ?? DEFAULT_TERTIARY,
+  });
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
-  function save(nextLogo: string | null, nextColor: string | null, revertLogo: string | null, revertColor: string) {
+  function save(
+    nextLogo: string | null,
+    persisted: PersistedAccents,
+    revertLogo: string | null,
+    revertAccents: Accents
+  ) {
     setError(null);
     startTransition(async () => {
-      const result = await updateWorkspaceBranding({ workspaceId, logoDataUrl: nextLogo, accentColor: nextColor });
+      const result = await updateWorkspaceBranding({
+        workspaceId,
+        logoDataUrl: nextLogo,
+        accentColor: persisted.primary,
+        accentColorSecondary: persisted.secondary,
+        accentColorTertiary: persisted.tertiary,
+      });
       if (!result.ok) {
         setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save") : result.error);
         setPreview(revertLogo);
-        setColor(revertColor);
+        setAccents(revertAccents);
         return;
       }
       router.refresh();
@@ -41,26 +65,33 @@ export function WorkspaceBranding({
     reader.onload = async () => {
       const dataUrl = reader.result as string;
       setPreview(dataUrl);
-      const extracted = (await extractDominantColor(dataUrl)) ?? DEFAULT_ACCENT;
-      setColor(extracted);
-      save(dataUrl, extracted, preview, color);
+      const [primary, secondary, tertiary] = await extractDominantColors(dataUrl, 3);
+      const nextAccents: Accents = {
+        primary: primary ?? DEFAULT_PRIMARY,
+        secondary: secondary ?? DEFAULT_SECONDARY,
+        tertiary: tertiary ?? DEFAULT_TERTIARY,
+      };
+      setAccents(nextAccents);
+      save(dataUrl, nextAccents, preview, accents);
     };
     reader.readAsDataURL(file);
   }
 
-  function handleColorChange(next: string) {
-    setColor(next);
-    save(preview, next, preview, color);
+  function handleAccentChange(role: keyof Accents, next: string) {
+    const nextAccents = { ...accents, [role]: next };
+    setAccents(nextAccents);
+    save(preview, nextAccents, preview, accents);
   }
 
   function handleRemove() {
+    const displayDefaults: Accents = { primary: DEFAULT_PRIMARY, secondary: DEFAULT_SECONDARY, tertiary: DEFAULT_TERTIARY };
     setPreview(null);
-    setColor(DEFAULT_ACCENT);
-    save(null, null, preview, color);
+    setAccents(displayDefaults);
+    save(null, { primary: null, secondary: null, tertiary: null }, preview, accents);
   }
 
   return (
-    <div className="mb-6 flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4">
+    <div className="mb-6 flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element -- user-uploaded data: URL, not an optimizable static asset
@@ -70,12 +101,12 @@ export function WorkspaceBranding({
         )}
       </div>
       <div className="flex-1">
-        <div className="text-sm font-semibold text-slate-800">Client logo &amp; accent color</div>
+        <div className="text-sm font-semibold text-slate-800">Client logo &amp; accent colors</div>
         <p className="mt-0.5 text-xs text-slate-500">
           Shown in the header and this Workspace&rsquo;s sidebar, and used for a few accent touches — only while
           you&rsquo;re working in this client&rsquo;s Workspace. PNG, JPEG, WebP, or SVG, under 300KB.
         </p>
-        <div className="mt-2 flex items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
             {preview ? "Replace logo" : "Upload logo"}
             <input
@@ -90,17 +121,19 @@ export function WorkspaceBranding({
               }}
             />
           </label>
-          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-            Accent
-            <input
-              type="color"
-              value={color}
-              disabled={pending}
-              onChange={(e) => handleColorChange(e.target.value)}
-              className="h-6 w-8 cursor-pointer rounded border border-slate-300 p-0"
-              aria-label="Workspace accent color"
-            />
-          </label>
+          {(["primary", "secondary", "tertiary"] as const).map((role) => (
+            <label key={role} className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+              {role === "primary" ? "Primary" : role === "secondary" ? "Secondary" : "Tertiary"}
+              <input
+                type="color"
+                value={accents[role]}
+                disabled={pending}
+                onChange={(e) => handleAccentChange(role, e.target.value)}
+                className="h-6 w-8 cursor-pointer rounded border border-slate-300 p-0"
+                aria-label={`Workspace ${role} accent color`}
+              />
+            </label>
+          ))}
           {preview && (
             <button
               type="button"

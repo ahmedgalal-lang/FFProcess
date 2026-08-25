@@ -92,7 +92,7 @@ export function WorkspaceProfile({
     <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
       <div className="min-w-0">
         {industry ? (
-          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-[var(--accent-tertiary)]">
             {industry}
           </span>
         ) : (

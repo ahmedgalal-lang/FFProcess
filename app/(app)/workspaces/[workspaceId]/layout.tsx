@@ -5,6 +5,8 @@ import { WorkspaceSidebar } from "./workspace-sidebar";
 import { HeaderLogoPortal } from "./header-logo-portal";
 
 const DEFAULT_ACCENT = "#334155"; // slate-700 — a workspace with no logo/accent set yet
+const DEFAULT_ACCENT_SECONDARY = "#4338ca"; // indigo-700 — matches this app's existing accent look
+const DEFAULT_ACCENT_TERTIARY = "#4338ca";
 
 export default async function WorkspaceLayout(
   props: LayoutProps<"/workspaces/[workspaceId]">
@@ -23,7 +25,13 @@ export default async function WorkspaceLayout(
   return (
     <div
       className="flex flex-1"
-      style={{ "--accent": workspace.accentColor ?? DEFAULT_ACCENT } as React.CSSProperties}
+      style={
+        {
+          "--accent": workspace.accentColor ?? DEFAULT_ACCENT,
+          "--accent-secondary": workspace.accentColorSecondary ?? DEFAULT_ACCENT_SECONDARY,
+          "--accent-tertiary": workspace.accentColorTertiary ?? DEFAULT_ACCENT_TERTIARY,
+        } as React.CSSProperties
+      }
     >
       <HeaderLogoPortal logoDataUrl={workspace.logoDataUrl} workspaceName={workspace.name} />
       <WorkspaceSidebar

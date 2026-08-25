@@ -138,12 +138,15 @@ model Workspace {
   /// its own identity as a consultant switches between them.
   logoDataUrl String? @db.Text
 
-  /// A hex accent color (e.g. "#2563eb") sampled from logoDataUrl at upload
-  /// time (client-side — see extractDominantColor), used for a few small
-  /// brand touches in this workspace's UI (the sidebar's active nav item,
-  /// its accent bar). Editable independently of the logo since automatic
-  /// extraction can pick a color a consultant doesn't want.
-  accentColor String?
+  /// Up to three hex accent colors (e.g. "#2563eb") auto-suggested from
+  /// logoDataUrl at upload time (client-side — see extractDominantColors)
+  /// and each independently editable. Primary/Secondary/Tertiary are named
+  /// roles, not a free palette: Primary marks the sidebar's active nav item;
+  /// Secondary/Tertiary are used for a couple more small brand touches
+  /// (the Export Report's document labels, the dashboard's industry chip).
+  accentColor          String?
+  accentColorSecondary String?
+  accentColorTertiary  String?
 
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 

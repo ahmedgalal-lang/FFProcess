@@ -105,7 +105,9 @@ export function ExportPreview({
 
       <main className="mx-auto w-full max-w-5xl px-6 py-8">
         <section className="print-page min-h-[70vh]">
-          <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Company Report</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
+            Company Report
+          </div>
           <h1 className="mt-1 text-3xl font-bold text-slate-900">{companyName}</h1>
           {industry && <p className="mt-2 text-sm font-semibold text-slate-500">{industry}</p>}
           {description ? (
@@ -152,7 +154,7 @@ function todayIso(): string {
 function SectionHeading({ num, title }: { num: string; title: string }) {
   return (
     <h3 className="mt-8 mb-2 flex items-baseline gap-2 border-b border-slate-200 pb-2 text-lg font-bold text-slate-900">
-      <span className="text-indigo-700">{num}</span> {title}
+      <span className="text-[var(--accent-secondary)]">{num}</span> {title}
     </h3>
   );
 }
@@ -204,7 +206,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
   return (
     <section className="print-page">
       <div className="border-b-2 border-slate-300 pb-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+        <div className="text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
           Business Process Documentation &amp; Procedure Standard
         </div>
         <h2 className="mt-1 text-2xl font-bold text-slate-900">{process.name}</h2>
