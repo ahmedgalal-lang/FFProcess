@@ -68,7 +68,7 @@ test.describe("Core workflows", () => {
     await expect(revisePORow).toContainText("3 days");
   });
 
-  test("Export Report picker and preview show company info, org chart, and per-process map/RACI/Authority", async ({
+  test("Export Report picker and preview show company info, org chart, and a per-process documentation report", async ({
     page,
   }) => {
     await page.goto("/workspaces/workspace-acme/export");
@@ -81,12 +81,22 @@ test.describe("Core workflows", () => {
     await expect(page.locator("h1")).toHaveText("Acme Industrial");
     await expect(page.getByText("Org Structure")).toBeVisible();
     await expect(page.getByText("Purchase-to-Pay")).toBeVisible();
-    await expect(page.getByText("Process Map").first()).toBeVisible();
-    await expect(page.getByText("RACI Matrix").first()).toBeVisible();
-    await expect(page.getByText("Authority Matrix").first()).toBeVisible();
+    await expect(page.getByText("Business Process Documentation & Procedure Standard").first()).toBeVisible();
+    await expect(page.getByText("Process Purpose").first()).toBeVisible();
+    await expect(page.getByText("Process Trigger").first()).toBeVisible();
+    await expect(page.getByText("Involved Parties & Ecosystem").first()).toBeVisible();
 
-    await expect(page.locator("td", { hasText: "Create Purchase Order" }).first()).toBeVisible();
+    // RACI and Authority are combined into one matrix, with real seeded data.
+    await expect(page.getByText("Delegated Authority & Limits").first()).toBeVisible();
     await expect(page.locator("tr", { hasText: "Create Purchase Order" }).filter({ hasText: "$10,000" })).toHaveCount(1);
+
+    // Key Control Points, derived from real co-approval data, surface a real gap in the seed.
+    await expect(page.getByText("Key Control Points").first()).toBeVisible();
+    await expect(page.getByText(/no co-approver is assigned/).first()).toBeVisible();
+
+    // AI draft button is present and gracefully reports when ANTHROPIC_API_KEY isn't configured.
+    await page.locator('button:has-text("Draft narrative with AI")').first().click();
+    await expect(page.getByText(/isn't configured/i).first()).toBeVisible();
 
     await expect(page.locator("button:has-text('Print / Save as PDF')")).toBeVisible();
   });

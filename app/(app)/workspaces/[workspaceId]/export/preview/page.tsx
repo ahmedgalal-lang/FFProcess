@@ -2,6 +2,13 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { buildAuthorityTableRows } from "@/lib/domain/authority-table";
+import {
+  buildCombinedMatrixRows,
+  deriveControlPoints,
+  deriveProcessOwnerRoleId,
+  involvedRoleIds,
+  describeRoleInvolvement,
+} from "@/lib/domain/process-report";
 import { ExportPreview, type ExportProcessData } from "./export-preview";
 
 export default async function ExportPreviewPage(
@@ -57,7 +64,7 @@ export default async function ExportPreviewPage(
           order: a.order,
           assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
         }))
-      ).filter((r) => !r.skipped);
+      );
 
       const authorityRows = buildAuthorityTableRows(
         steps,
@@ -67,21 +74,15 @@ export default async function ExportPreviewPage(
           threshold: a.threshold === null ? null : Number(a.threshold),
           coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
         }))
-      )
-        .filter((r) => !r.skipped)
-        .map((r) => ({
-          id: r.id,
-          label: r.label,
-          unit: r.unit,
-          threshold: r.threshold,
-          approverLabel: r.approverRoleId
-            ? (roleNameById.get(r.approverRoleId) ?? null)
-            : r.approverPersonId
-              ? (personNameById.get(r.approverPersonId) ?? null)
-              : null,
-          coApprovalAboveThreshold: r.coApprovalAboveThreshold,
-          coApproverLabel: r.coApproverRoleId ? (roleNameById.get(r.coApproverRoleId) ?? null) : null,
-        }));
+      );
+
+      const combinedRows = buildCombinedMatrixRows(raciRows, authorityRows);
+      const controlPoints = deriveControlPoints(combinedRows, roleNameById);
+      const ownerRoleId = deriveProcessOwnerRoleId(combinedRows);
+      const matrixRoleIds = roles
+        .filter((r) => combinedRows.some((row) => row.raciAssignments[r.id]))
+        .map((r) => r.id);
+      const involved = involvedRoleIds(combinedRows);
 
       return {
         id: process.id,
@@ -103,11 +104,31 @@ export default async function ExportPreviewPage(
           })),
         })),
         connections: connections.map((c) => ({ id: c.id, fromStepId: c.fromStepId, toStepId: c.toStepId, label: c.label })),
-        raciRoles: roles
-          .filter((r) => raciRows.some((row) => row.assignments[r.id]))
-          .map((r) => ({ id: r.id, name: r.name })),
-        raciRows: raciRows.map((r) => ({ id: r.id, label: r.label, stepType: r.stepType, assignments: r.assignments })),
-        authorityRows,
+        matrixRoles: matrixRoleIds.map((id) => ({ id, name: roleNameById.get(id) ?? "Unknown" })),
+        combinedRows: combinedRows.map((row) => ({
+          rowId: row.rowId,
+          label: row.label,
+          stepType: row.stepType,
+          raci: row.raciAssignments,
+          unit: row.unit,
+          threshold: row.threshold,
+          approverLabel: row.approverRoleId
+            ? (roleNameById.get(row.approverRoleId) ?? null)
+            : row.approverPersonId
+              ? (personNameById.get(row.approverPersonId) ?? null)
+              : null,
+          coApprovalAboveThreshold: row.coApprovalAboveThreshold,
+          coApproverLabel: row.coApproverRoleId ? (roleNameById.get(row.coApproverRoleId) ?? null) : null,
+        })),
+        involvedRoles: involved.map((roleId) => ({
+          id: roleId,
+          name: roleNameById.get(roleId) ?? "Unknown",
+          involvement: describeRoleInvolvement(combinedRows, roleId),
+        })),
+        controlPoints,
+        processOwnerName: ownerRoleId ? (roleNameById.get(ownerRoleId) ?? null) : null,
+        triggerLabel: steps.find((s) => s.type === "START")?.label ?? null,
+        outputLabel: steps.find((s) => s.type === "END")?.label ?? null,
       };
     })
   );
