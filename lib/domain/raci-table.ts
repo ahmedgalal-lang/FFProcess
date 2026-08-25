@@ -81,3 +81,28 @@ export function buildRaciTableRows(steps: TableStep[], activities: TableActivity
 
   return [...stepRows, ...freestandingRows];
 }
+
+/**
+ * Which Role columns the RACI table should actually show. A workspace can
+ * have far more Roles than any single process needs (e.g. every section head
+ * across a whole plant), so the table defaults to only the Roles already in
+ * use here — anything with at least one RACI assignment among these rows —
+ * plus whatever's been explicitly pinned via "+ Add title" (pinnedRoleIds,
+ * Process.raciVisibleRoleIds), even before it has an assignment yet. If
+ * neither set has anything (a brand-new, never-touched matrix), falls back
+ * to every workspace Role so the table is never columnless.
+ */
+export function computeVisibleRoleIds(
+  allRoleIds: string[],
+  rows: RaciTableRow[],
+  pinnedRoleIds: string[]
+): string[] {
+  const usedRoleIds = new Set<string>();
+  for (const row of rows) {
+    for (const roleId of Object.keys(row.assignments)) usedRoleIds.add(roleId);
+  }
+
+  const visible = new Set([...usedRoleIds, ...pinnedRoleIds]);
+  if (visible.size === 0) return allRoleIds;
+  return allRoleIds.filter((id) => visible.has(id));
+}

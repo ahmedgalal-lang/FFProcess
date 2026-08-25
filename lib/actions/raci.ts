@@ -226,6 +226,45 @@ export async function deleteActivity(
   return ok({ id: activity.id });
 }
 
+const pinRaciRoleSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  roleId: z.string().min(1),
+});
+
+/**
+ * Pins a Role as a visible RACI table column for this process ("+ Add
+ * title"), even before it has any assignment — a plain workspace-wide Role
+ * list can run to dozens of titles across a large org, most irrelevant to
+ * any one process, so the table defaults to only what's actually in use
+ * (see computeVisibleRoleIds) and this is how you explicitly widen that set.
+ */
+export async function pinRaciRole(
+  input: z.infer<typeof pinRaciRoleSchema>
+): Promise<ActionResult<{ processId: string }>> {
+  const parsed = pinRaciRoleSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  const role = await prisma.role.findUnique({ where: { id: parsed.data.roleId } });
+  if (!role || role.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  if (!process.raciVisibleRoleIds.includes(role.id)) {
+    await prisma.process.update({
+      where: { id: process.id },
+      data: { raciVisibleRoleIds: { push: role.id } },
+    });
+  }
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${process.id}/raci`);
+  return ok({ processId: process.id });
+}
+
 /**
  * Loads the same unified row set the RACI table renders — every step (its
  * linked Activity if it has one, otherwise an empty assignable row) plus

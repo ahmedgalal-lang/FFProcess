@@ -9,9 +9,11 @@ import {
   unskipStepRaci,
   updateActivity,
   deleteActivity,
+  pinRaciRole,
   finalizeRaciMatrix,
   reopenRaciMatrix,
 } from "@/lib/actions/raci";
+import { createRole } from "@/lib/actions/org";
 import type { RaciIssue } from "@/lib/domain/raci-validation";
 import type { RaciTableRow } from "@/lib/domain/raci-table";
 
@@ -41,14 +43,16 @@ type RoleT = { id: string; name: string };
 export function RaciTable({
   workspaceId,
   processId,
-  roles,
+  allRoles,
+  initialVisibleRoles,
   initialRows,
   initialIssues,
   initialStatus,
 }: {
   workspaceId: string;
   processId: string;
-  roles: RoleT[];
+  allRoles: RoleT[];
+  initialVisibleRoles: RoleT[];
   initialRows: RaciTableRow[];
   initialIssues: RaciIssue[];
   initialStatus: "DRAFT" | "FINAL";
@@ -56,15 +60,22 @@ export function RaciTable({
   const [rows, setRows] = useState(initialRows);
   const [issues, setIssues] = useState(initialIssues);
   const [status, setStatus] = useState(initialStatus);
+  const [visibleRoles, setVisibleRoles] = useState(initialVisibleRoles);
   const [pending, startTransition] = useTransition();
   const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [addingTitle, setAddingTitle] = useState(false);
+  const [pickRoleId, setPickRoleId] = useState("");
+  const [newTitleName, setNewTitleName] = useState("");
+  const [addTitleError, setAddTitleError] = useState<string | null>(null);
   const router = useRouter();
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
 
+  const roles = visibleRoles;
   const visibleRows = rows.filter((r) => !r.skipped);
+  const hiddenRoles = allRoles.filter((r) => !visibleRoles.some((v) => v.id === r.id));
 
   function cellKey(rowIdx: number, colIdx: number) {
     return `${rowIdx}:${colIdx}`;
@@ -184,11 +195,43 @@ export function RaciTable({
     });
   }
 
+  function addExistingTitle() {
+    if (!pickRoleId) return;
+    const role = hiddenRoles.find((r) => r.id === pickRoleId);
+    if (!role) return;
+    setVisibleRoles((prev) => [...prev, role]);
+    setPickRoleId("");
+    setAddingTitle(false);
+    startTransition(async () => {
+      await pinRaciRole({ workspaceId, processId, roleId: role.id });
+      router.refresh();
+    });
+  }
+
+  function addNewTitle() {
+    const name = newTitleName.trim();
+    if (!name) return;
+    setAddTitleError(null);
+    startTransition(async () => {
+      const created = await createRole({ workspaceId, name });
+      if (!created.ok) {
+        setAddTitleError(created.error === "VALIDATION_ERROR" ? (created.message ?? "Invalid title") : created.error);
+        return;
+      }
+      const role = { id: created.data.id, name };
+      await pinRaciRole({ workspaceId, processId, roleId: role.id });
+      setVisibleRoles((prev) => [...prev, role]);
+      setNewTitleName("");
+      setAddingTitle(false);
+      router.refresh();
+    });
+  }
+
   const flaggedRowIds = new Set(issues.map((i) => i.activityId));
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         {status === "DRAFT" ? (
           <button
             type="button"
@@ -229,6 +272,73 @@ export function RaciTable({
         >
           {status}
         </span>
+
+        <div className="ml-auto">
+          {addingTitle ? (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2">
+              {hiddenRoles.length > 0 && (
+                <>
+                  <select
+                    value={pickRoleId}
+                    onChange={(e) => setPickRoleId(e.target.value)}
+                    className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                  >
+                    <option value="">— pick an existing title —</option>
+                    {hiddenRoles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={addExistingTitle}
+                    disabled={!pickRoleId || pending}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                  <span className="text-xs text-slate-400">or</span>
+                </>
+              )}
+              <input
+                value={newTitleName}
+                onChange={(e) => setNewTitleName(e.target.value)}
+                placeholder="New title name"
+                className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+              />
+              <button
+                type="button"
+                onClick={addNewTitle}
+                disabled={!newTitleName.trim() || pending}
+                className="rounded-lg bg-slate-900 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                Create
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingTitle(false);
+                  setAddTitleError(null);
+                  setPickRoleId("");
+                  setNewTitleName("");
+                }}
+                className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              {addTitleError && <span className="w-full text-xs text-red-600">{addTitleError}</span>}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddingTitle(true)}
+              className="rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              + Add title
+            </button>
+          )}
+        </div>
       </div>
 
       {issues.length === 0 ? (
@@ -241,24 +351,24 @@ export function RaciTable({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm" role="grid" aria-label="RACI assignments by task and role">
           <caption className="sr-only">
             Each cell cycles Responsible, Accountable, Consulted, Informed, then clear. Use the arrow keys to move
             between cells. Every Process Map step is already a row — use Skip for a step that doesn&apos;t need
-            RACI.
+            RACI. Column titles stay visible while you scroll.
           </caption>
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th scope="col" className="sticky left-0 z-10 bg-slate-50 px-4 py-2">
+              <th scope="col" className="sticky left-0 top-0 z-30 bg-slate-50 px-4 py-2">
                 Task
               </th>
               {roles.map((r) => (
-                <th key={r.id} scope="col" className="px-3 py-2 text-center">
+                <th key={r.id} scope="col" className="sticky top-0 z-20 bg-slate-50 px-3 py-2 text-center">
                   {r.name}
                 </th>
               ))}
-              <th scope="col" className="px-3 py-2 text-center">
+              <th scope="col" className="sticky top-0 z-20 bg-slate-50 px-3 py-2 text-center">
                 Actions
               </th>
             </tr>

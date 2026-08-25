@@ -21,6 +21,7 @@ const {
   updateActivity,
   deleteActivity,
   validateRaciMatrixAction,
+  pinRaciRole,
 } = await import("@/lib/actions/raci");
 const { prisma } = await import("@/lib/db/client");
 
@@ -372,6 +373,80 @@ describe("updateActivity / deleteActivity", () => {
     if (!deleteResult.ok) expect(deleteResult.error).toBe("NOT_FOUND");
 
     await otherFixture.cleanup();
+  });
+});
+
+describe("pinRaciRole", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let processId: string;
+  let roleId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Pin Role Process" });
+    const role = await createRole({ workspaceId: fixture.workspace.id, name: "HR" });
+    if (!process.ok || !role.ok) throw new Error("setup failed");
+    processId = process.data.id;
+    roleId = role.data.id;
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  it("pins a role onto the process's visible RACI columns", async () => {
+    const result = await pinRaciRole({ workspaceId: fixture.workspace.id, processId, roleId });
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.process.findUnique({ where: { id: processId } });
+    expect(row?.raciVisibleRoleIds).toEqual([roleId]);
+  });
+
+  it("does not add a duplicate entry when the role is already pinned", async () => {
+    await pinRaciRole({ workspaceId: fixture.workspace.id, processId, roleId });
+    await pinRaciRole({ workspaceId: fixture.workspace.id, processId, roleId });
+
+    const row = await prisma.process.findUnique({ where: { id: processId } });
+    expect(row?.raciVisibleRoleIds).toEqual([roleId]);
+  });
+
+  it("rejects a roleId from a different workspace", async () => {
+    const otherFixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: otherFixture.adminUser.id } });
+    const otherRole = await createRole({ workspaceId: otherFixture.workspace.id, name: "Outsider Role" });
+    if (!otherRole.ok) throw new Error("setup failed");
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const result = await pinRaciRole({ workspaceId: fixture.workspace.id, processId, roleId: otherRole.data.id });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+
+    await otherFixture.cleanup();
+  });
+
+  it("rejects a processId from a different workspace", async () => {
+    const otherFixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: otherFixture.adminUser.id } });
+    const otherProcess = await createProcess({ workspaceId: otherFixture.workspace.id, name: "Outsider Process" });
+    if (!otherProcess.ok) throw new Error("setup failed");
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const result = await pinRaciRole({ workspaceId: fixture.workspace.id, processId: otherProcess.data.id, roleId });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+
+    await otherFixture.cleanup();
+  });
+
+  it("rejects a VIEWER attempting to pin a role", async () => {
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+
+    const result = await pinRaciRole({ workspaceId: fixture.workspace.id, processId, roleId });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("FORBIDDEN");
   });
 });
 

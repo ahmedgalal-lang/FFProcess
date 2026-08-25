@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
-import { buildRaciTableRows } from "@/lib/domain/raci-table";
+import { buildRaciTableRows, computeVisibleRoleIds } from "@/lib/domain/raci-table";
 import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
 import { RaciTable } from "./raci-table";
 import { AddActivityForm } from "./activity-form";
@@ -52,6 +52,13 @@ export default async function RaciMatrixPage(
       }))
   );
 
+  const visibleRoleIds = computeVisibleRoleIds(
+    roles.map((r) => r.id),
+    rows,
+    process.raciVisibleRoleIds
+  );
+  const visibleRoles = roles.filter((r) => visibleRoleIds.includes(r.id));
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <div className="mb-1 flex items-center justify-between gap-3">
@@ -90,7 +97,8 @@ export default async function RaciMatrixPage(
       <RaciTable
         workspaceId={workspaceId}
         processId={processId}
-        roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+        allRoles={roles.map((r) => ({ id: r.id, name: r.name }))}
+        initialVisibleRoles={visibleRoles.map((r) => ({ id: r.id, name: r.name }))}
         initialRows={rows}
         initialIssues={issues}
         initialStatus={matrixStatus?.status ?? "DRAFT"}

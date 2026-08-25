@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildRaciTableRows, type TableStep, type TableActivity } from "@/lib/domain/raci-table";
+import {
+  buildRaciTableRows,
+  computeVisibleRoleIds,
+  type TableStep,
+  type TableActivity,
+  type RaciTableRow,
+} from "@/lib/domain/raci-table";
 
 describe("buildRaciTableRows", () => {
   it("shows a step with no linked Activity as an empty, unskipped, assignable row", () => {
@@ -92,5 +98,37 @@ describe("buildRaciTableRows", () => {
     ];
     const rows = buildRaciTableRows(steps, activities);
     expect(rows.map((r) => r.id)).toEqual(["a-first", "a-second"]);
+  });
+});
+
+function row(assignments: RaciTableRow["assignments"]): RaciTableRow {
+  return { id: "r1", kind: "activity", stepId: null, stepType: null, label: "Row", skipped: false, assignments };
+}
+
+describe("computeVisibleRoleIds", () => {
+  const allRoleIds = ["clerk", "manager", "cco", "ceo", "hr"];
+
+  it("shows only Roles actually used in an assignment, in the original order", () => {
+    const rows = [row({ ceo: "ACCOUNTABLE" }), row({ clerk: "RESPONSIBLE" })];
+    expect(computeVisibleRoleIds(allRoleIds, rows, [])).toEqual(["clerk", "ceo"]);
+  });
+
+  it("also shows a pinned Role even with zero assignments yet", () => {
+    const rows = [row({ clerk: "RESPONSIBLE" })];
+    expect(computeVisibleRoleIds(allRoleIds, rows, ["hr"])).toEqual(["clerk", "hr"]);
+  });
+
+  it("does not duplicate a Role that is both used and pinned", () => {
+    const rows = [row({ clerk: "RESPONSIBLE" })];
+    expect(computeVisibleRoleIds(allRoleIds, rows, ["clerk"])).toEqual(["clerk"]);
+  });
+
+  it("falls back to every Role when nothing is used or pinned yet", () => {
+    const rows = [row({}), row({})];
+    expect(computeVisibleRoleIds(allRoleIds, rows, [])).toEqual(allRoleIds);
+  });
+
+  it("falls back to every Role for a brand-new matrix with no rows at all", () => {
+    expect(computeVisibleRoleIds(allRoleIds, [], [])).toEqual(allRoleIds);
   });
 });

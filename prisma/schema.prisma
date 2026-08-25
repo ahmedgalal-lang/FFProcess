@@ -242,6 +242,13 @@ model Process {
   parentProcessId String?
   archivedAt      DateTime?
 
+  /// Roles explicitly pinned as RACI table columns for this process — lets a
+  /// large workspace with many Roles keep the matrix to only the titles
+  /// relevant here, instead of every Role in the workspace. Any Role with at
+  /// least one assignment always shows regardless of this list (see
+  /// computeVisibleRoleIds in lib/domain/raci-table.ts).
+  raciVisibleRoleIds String[] @default([])
+
   workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   category      ProcessCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   parentProcess Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
