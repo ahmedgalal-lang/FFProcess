@@ -222,3 +222,36 @@ export async function changeFirmMemberRole(
   revalidatePath("/firm/settings");
   return ok({ id: updated.id });
 }
+
+const removeFirmMemberSchema = z.object({ firmMemberId: z.string().min(1) });
+
+/**
+ * Fully removes someone from the Firm — unlike demoting an Owner to Member,
+ * this deletes the Firm Member record entirely, so they lose the Firm-wide
+ * access carve-out (Constitution Principle V) and fall back to only whatever
+ * explicit Workspace Member records they have. Blocked on the Firm's last
+ * remaining Owner, same as demoting one.
+ */
+export async function removeFirmMember(
+  input: z.infer<typeof removeFirmMemberSchema>
+): Promise<ActionResult<{ id: string }> | ActionError> {
+  const parsed = removeFirmMemberSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireFirmOwner();
+  if (!access.ok) return access;
+
+  const target = await prisma.firmMember.findUniqueOrThrow({ where: { id: parsed.data.firmMemberId } });
+
+  if (target.role === "OWNER") {
+    const activeOwners = await prisma.firmMember.count({ where: { firmId: target.firmId, role: "OWNER" } });
+    if (!canChangeLastFirmOwner(activeOwners)) {
+      return { ok: false, error: "LAST_OWNER" };
+    }
+  }
+
+  await prisma.firmMember.delete({ where: { id: target.id } });
+
+  revalidatePath("/firm/settings");
+  return ok({ id: target.id });
+}

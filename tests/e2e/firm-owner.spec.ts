@@ -58,6 +58,40 @@ test.describe("Firm Owner management", () => {
     await expect(page.locator("tr", { hasText: "Ahmed Galal" }).locator('button:has-text("Demote to Member")')).toBeDisabled();
   });
 
+  test("a Firm Owner can fully remove a Firm Member, and the last-Owner guard applies to Remove too", async ({
+    page,
+    context,
+  }) => {
+    await loginAs(page, "ahmed.galal@forefront.consulting", "password123");
+    await page.goto("/firm/settings");
+
+    // Ahmed alone is the sole Owner — his own Remove must be blocked (same LAST_OWNER guard as Demote).
+    await expect(page.locator("tr", { hasText: "Ahmed Galal" }).locator('button:has-text("Remove")')).toBeDisabled();
+
+    // Ensure Sam has a Firm Member row to remove (idempotent across re-runs, same as the promote/demote test).
+    const samRow = page.locator("tr", { hasText: "Sam Osei" });
+    if (!(await samRow.count())) {
+      await page.selectOption("select", { label: "Sam Osei (sam.osei@acme-example.com)" });
+      await page.click('button:has-text("Make Firm Owner")');
+      await expect(samRow).toBeVisible();
+      await samRow.locator('button:has-text("Demote to Member")').click();
+      await expect(samRow).toContainText("Firm Member");
+    }
+
+    // Remove Sam entirely — the row disappears rather than just changing role.
+    await samRow.locator('button:has-text("Remove")').click();
+    await expect(page.getByText("Remove from the Firm permanently?")).toBeVisible();
+    await page.click('button:has-text("Yes")');
+    await expect(page.locator("tr", { hasText: "Sam Osei" })).toHaveCount(0);
+
+    // Sam, no longer a Firm Member at all, loses the Firm-wide access carve-out.
+    const samPage = await context.newPage();
+    await loginAs(samPage, "sam.osei@acme-example.com", "password123");
+    await expect(samPage.getByRole("link", { name: "Firm Settings" })).toHaveCount(0);
+    const directNav = await samPage.goto("/firm/settings");
+    expect(directNav?.status()).toBe(404);
+  });
+
   test("a Firm Owner can create and delete a client Workspace; a non-owner cannot", async ({ page, context }) => {
     await loginAs(page, "ahmed.galal@forefront.consulting", "password123");
 

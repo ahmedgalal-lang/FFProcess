@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addFirmOwner, changeFirmMemberRole, updateFirmLogo } from "@/lib/actions/organization";
+import { addFirmOwner, changeFirmMemberRole, removeFirmMember, updateFirmLogo } from "@/lib/actions/organization";
 
 type UserRef = { id: string; name: string | null; email: string };
 
@@ -152,6 +152,7 @@ export function FirmMemberRowActions({
   canDemote: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -165,6 +166,43 @@ export function FirmMemberRowActions({
       }
       router.refresh();
     });
+  }
+
+  function remove() {
+    setError(null);
+    startTransition(async () => {
+      const result = await removeFirmMember({ firmMemberId });
+      setConfirmingRemove(false);
+      if (!result.ok) {
+        setError(result.error === "LAST_OWNER" ? "Can't remove the last Firm Owner" : result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  if (confirmingRemove) {
+    return (
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-xs text-slate-500">Remove from the Firm permanently?</span>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={remove}
+          className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmingRemove(false)}
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700"
+        >
+          No
+        </button>
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </div>
+    );
   }
 
   return (
@@ -189,6 +227,15 @@ export function FirmMemberRowActions({
           Promote to Owner
         </button>
       )}
+      <button
+        type="button"
+        disabled={pending || (role === "OWNER" && !canDemote)}
+        onClick={() => setConfirmingRemove(true)}
+        title={role === "OWNER" && !canDemote ? "The Firm must always have at least one Owner" : undefined}
+        className="text-xs font-medium text-slate-600 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Remove
+      </button>
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
   );
