@@ -23,9 +23,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </div>
           {logoDataUrl && (
             <>
-              <span className="h-5 w-px bg-slate-200" aria-hidden="true" />
+              <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
               {/* eslint-disable-next-line @next/next/no-img-element -- user-uploaded data: URL, not an optimizable static asset */}
-              <img src={logoDataUrl} alt="Company logo" className="h-6 w-auto max-w-[120px] object-contain" />
+              <img src={logoDataUrl} alt="Company logo" className="h-8 w-auto max-w-[150px] object-contain" />
             </>
           )}
           <span className="text-sm font-semibold text-slate-900">FFProcess</span>
