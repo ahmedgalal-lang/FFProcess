@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
-import { validateApprovalRules } from "@/lib/domain/authority-resolution";
+import { buildAuthorityTableRows, validateAuthorityTable } from "@/lib/domain/authority-table";
 import { findStructuralGaps, buildProcessReviewPrompt } from "@/lib/domain/process-review";
 import {
   normalizeFindingTitle,
@@ -28,7 +28,7 @@ const reviewProcessSchema = z.object({
 });
 
 /**
- * Gathers a Process's Map, RACI matrix, and the workspace's Authority Matrix
+ * Gathers a Process's Map, RACI matrix, and this Process's Authority Matrix
  * (plus the workspace's industry/background notes, for sector-aware
  * findings), asks Claude to review it end to end, and persists any genuinely
  * new findings as ReviewFinding rows scoped to this process. A finding the
@@ -54,26 +54,25 @@ export async function reviewProcessWithAI(
   ]);
   if (!workspace || !process || process.workspaceId !== workspaceId) return notFound();
 
-  const [steps, connections, activities, matrixStatus, decisionTypes, existingFindings] = await Promise.all([
-    prisma.processStep.findMany({
-      where: { processId },
-      include: { assignedRole: true, swimlaneRole: true, links: { include: { targetProcess: true } } },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.stepConnection.findMany({ where: { processId } }),
-    prisma.activity.findMany({
-      where: { processId },
-      include: { raciAssignments: { include: { role: true } } },
-      orderBy: { order: "asc" },
-    }),
-    prisma.raciMatrixStatus.findUnique({ where: { processId } }),
-    prisma.decisionType.findMany({
-      where: { workspaceId },
-      include: { rules: { include: { approverRole: true, approverPerson: true, coApproverRole: true } } },
-      orderBy: { name: "asc" },
-    }),
-    prisma.reviewFinding.findMany({ where: { processId }, include: { integratedStep: true } }),
-  ]);
+  const [steps, connections, activities, matrixStatus, roles, people, authorityAssignments, existingFindings] =
+    await Promise.all([
+      prisma.processStep.findMany({
+        where: { processId },
+        include: { assignedRole: true, swimlaneRole: true, links: { include: { targetProcess: true } } },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.stepConnection.findMany({ where: { processId } }),
+      prisma.activity.findMany({
+        where: { processId },
+        include: { raciAssignments: { include: { role: true } } },
+        orderBy: { order: "asc" },
+      }),
+      prisma.raciMatrixStatus.findUnique({ where: { processId } }),
+      prisma.role.findMany({ where: { workspaceId } }),
+      prisma.person.findMany({ where: { workspaceId } }),
+      prisma.authorityAssignment.findMany({ where: { processId } }),
+      prisma.reviewFinding.findMany({ where: { processId }, include: { integratedStep: true } }),
+    ]);
 
   const stepLabelById = new Map(steps.map((s) => [s.id, s.label]));
 
@@ -84,16 +83,32 @@ export async function reviewProcessWithAI(
   }));
   const raciIssues = validateRaciMatrix(raciActivities);
 
-  const authorityRules = decisionTypes.flatMap((dt) =>
-    dt.rules.map((r) => ({
-      id: r.id,
-      approverLabel: r.approverRole?.name ?? r.approverPerson?.name ?? "Unknown",
-      maxThreshold: Number(r.maxThreshold),
-      coApprovalAboveThreshold: r.coApprovalAboveThreshold ? Number(r.coApprovalAboveThreshold) : null,
-      coApproverLabel: r.coApproverRole?.name ?? null,
+  const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
+  const personNameById = new Map(people.map((p) => [p.id, p.name]));
+  const authorityRows = buildAuthorityTableRows(
+    steps.map((s) => ({ id: s.id, type: s.type, label: s.label })),
+    activities.map((a) => ({ id: a.id, name: a.name, relatedStepId: a.relatedStepId, order: a.order })),
+    authorityAssignments.map((a) => ({
+      ...a,
+      threshold: a.threshold === null ? null : Number(a.threshold),
+      coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
     }))
   );
-  const authorityConflicts = validateApprovalRules(authorityRules);
+  const authorityIssues = validateAuthorityTable(authorityRows);
+  const authorityRowsForPrompt = authorityRows.map((r) => ({
+    rowId: r.id,
+    label: r.label,
+    skipped: r.skipped,
+    unit: r.unit,
+    threshold: r.threshold,
+    approverLabel: r.approverRoleId
+      ? (roleNameById.get(r.approverRoleId) ?? null)
+      : r.approverPersonId
+        ? (personNameById.get(r.approverPersonId) ?? null)
+        : null,
+    coApprovalAboveThreshold: r.coApprovalAboveThreshold,
+    coApproverLabel: r.coApproverRoleId ? (roleNameById.get(r.coApproverRoleId) ?? null) : null,
+  }));
 
   const structuralGaps = findStructuralGaps(
     steps.map((s) => ({ id: s.id, type: s.type, label: s.label })),
@@ -128,15 +143,8 @@ export async function reviewProcessWithAI(
       issues: raciIssues,
     },
     authority: {
-      decisionTypes: decisionTypes.map((dt) => ({
-        name: dt.name,
-        rules: dt.rules.map((r) => ({
-          approverLabel: r.approverRole?.name ?? r.approverPerson?.name ?? "Unknown",
-          maxThreshold: Number(r.maxThreshold),
-          coApproverLabel: r.coApproverRole?.name ?? null,
-        })),
-      })),
-      conflicts: authorityConflicts,
+      rows: authorityRowsForPrompt,
+      issues: authorityIssues,
     },
     structuralGaps,
   });

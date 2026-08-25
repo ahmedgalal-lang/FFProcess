@@ -6,7 +6,7 @@
  */
 
 import type { RaciIssue } from "./raci-validation";
-import type { ApprovalRuleIssue } from "./authority-resolution";
+import type { AuthorityIssue, AuthorityUnit } from "./authority-table";
 
 export type StepType = "START" | "TASK" | "DECISION" | "END";
 
@@ -96,11 +96,17 @@ export type ProcessReviewContext = {
     issues: RaciIssue[];
   };
   authority: {
-    decisionTypes: {
-      name: string;
-      rules: { approverLabel: string; maxThreshold: number; coApproverLabel: string | null }[];
+    rows: {
+      rowId: string;
+      label: string;
+      skipped: boolean;
+      unit: AuthorityUnit;
+      threshold: number | null;
+      approverLabel: string | null;
+      coApprovalAboveThreshold: number | null;
+      coApproverLabel: string | null;
     }[];
-    conflicts: ApprovalRuleIssue[];
+    issues: AuthorityIssue[];
   };
   structuralGaps: StructuralGap[];
 };
@@ -159,16 +165,26 @@ export function buildProcessReviewPrompt(context: ProcessReviewContext): string 
   }
   lines.push("");
 
-  lines.push("## Authority Matrix (workspace-wide governance context)");
-  if (context.authority.decisionTypes.length === 0) {
-    lines.push("(No decision types defined for this workspace.)");
+  const authorityLabelByRowId = new Map<string, string>();
+  lines.push("## Authority Matrix");
+  const activeAuthorityRows = context.authority.rows.filter((r) => !r.skipped);
+  if (activeAuthorityRows.length === 0) {
+    lines.push("(No authority entries yet.)");
   } else {
-    for (const dt of context.authority.decisionTypes) {
-      lines.push(`- ${dt.name}:`);
-      for (const rule of dt.rules) {
-        const co = rule.coApproverLabel ? `, co-approval from ${rule.coApproverLabel} above that` : "";
-        lines.push(`  - up to $${rule.maxThreshold.toLocaleString()}: ${rule.approverLabel}${co}`);
-      }
+    for (const row of activeAuthorityRows) {
+      authorityLabelByRowId.set(row.rowId, row.label);
+      const threshold =
+        row.threshold === null
+          ? "no threshold set"
+          : row.unit === "MONEY"
+            ? `up to $${row.threshold.toLocaleString()}`
+            : `up to ${row.threshold} day(s)`;
+      const approver = row.approverLabel ?? "no approver assigned";
+      const co =
+        row.coApproverLabel && row.coApprovalAboveThreshold !== null
+          ? `, co-approval from ${row.coApproverLabel} above ${row.unit === "MONEY" ? `$${row.coApprovalAboveThreshold.toLocaleString()}` : `${row.coApprovalAboveThreshold} day(s)`}`
+          : "";
+      lines.push(`- ${row.label}: ${threshold} — ${approver}${co}`);
     }
   }
   lines.push("");
@@ -176,9 +192,12 @@ export function buildProcessReviewPrompt(context: ProcessReviewContext): string 
   const knownIssues = [
     ...context.structuralGaps.map(describeStructuralGap),
     ...context.raci.issues.map((i) => describeRaciIssue(i, activityNameById)),
-    ...context.authority.conflicts.map(
-      () => "Two Authority Matrix rules share the same threshold, so the applicable approver is ambiguous."
-    ),
+    ...context.authority.issues.map((i) => {
+      const label = authorityLabelByRowId.get(i.rowId) ?? i.rowId;
+      return i.type === "MISSING_APPROVER"
+        ? `Authority Matrix task "${label}" has no approver assigned.`
+        : `Authority Matrix task "${label}" has a co-approval threshold but no co-approver assigned.`;
+    }),
   ];
   lines.push("## Already-detected mechanical issues");
   lines.push(

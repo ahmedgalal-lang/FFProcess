@@ -9,6 +9,8 @@ function hrefFor(key: StepperKey, workspaceId: string, processId: string): strin
       return `/workspaces/${workspaceId}/processes/${processId}/map`;
     case "raci":
       return `/workspaces/${workspaceId}/processes/${processId}/raci`;
+    case "authority":
+      return `/workspaces/${workspaceId}/processes/${processId}/authority`;
     case "review":
       return `/workspaces/${workspaceId}/processes/${processId}/review`;
   }
@@ -41,14 +43,16 @@ export function ProcessStepper({
   stepsCount,
   activitiesCount,
   raciStatus,
+  authorityAssignedCount,
 }: {
   workspaceId: string;
   processId: string;
   stepsCount: number;
   activitiesCount: number;
   raciStatus: "DRAFT" | "FINAL";
+  authorityAssignedCount: number;
 }) {
-  const items = computeProcessStepper({ stepsCount, activitiesCount, raciStatus });
+  const items = computeProcessStepper({ stepsCount, activitiesCount, raciStatus, authorityAssignedCount });
 
   return (
     <div className="mb-5 inline-flex max-w-full items-center gap-[3px] overflow-x-auto rounded-full border border-slate-200 bg-slate-100 p-[3px]">

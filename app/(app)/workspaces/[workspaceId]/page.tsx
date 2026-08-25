@@ -7,9 +7,8 @@ export default async function WorkspaceDashboardPage(
 ) {
   const { workspaceId } = await props.params;
 
-  const [processCount, decisionTypeCount, memberCount, workspace] = await Promise.all([
+  const [processCount, memberCount, workspace] = await Promise.all([
     prisma.process.count({ where: { workspaceId, archivedAt: null } }),
-    prisma.decisionType.count({ where: { workspaceId } }),
     prisma.member.count({ where: { workspaceId, status: "ACTIVE" } }),
     prisma.workspace.findUnique({ where: { id: workspaceId } }),
   ]);
@@ -32,7 +31,6 @@ export default async function WorkspaceDashboardPage(
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Processes" value={processCount} />
         <StatCard label="RACI drafts" value={draftMatrices} />
-        <StatCard label="Decision types" value={decisionTypeCount} />
         <StatCard label="Members" value={memberCount} />
       </div>
 
@@ -48,12 +46,6 @@ export default async function WorkspaceDashboardPage(
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
         >
           Org directory
-        </Link>
-        <Link
-          href={`/workspaces/${workspaceId}/authority`}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-        >
-          Authority matrix
         </Link>
       </div>
     </main>

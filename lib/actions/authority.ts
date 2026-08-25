@@ -4,143 +4,163 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
-import {
-  resolveApprovers,
-  validateApprovalRules,
-  type ApprovalRule,
-  type ApproverResolution,
-  type ApprovalRuleIssue,
-} from "@/lib/domain/authority-resolution";
-import { ok, validationError, type ActionResult } from "@/lib/actions/errors";
+import { ok, notFound, validationError, type ActionResult } from "@/lib/actions/errors";
 
-const createDecisionTypeSchema = z.object({
-  workspaceId: z.string().min(1),
-  name: z.string().trim().min(1).max(120),
-});
-
-export async function createDecisionType(
-  input: z.infer<typeof createDecisionTypeSchema>
-): Promise<ActionResult<{ id: string }>> {
-  const parsed = createDecisionTypeSchema.safeParse(input);
-  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
-
-  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
-  if (!access.ok) return access;
-
-  const decisionType = await prisma.decisionType.create({
-    data: { workspaceId: parsed.data.workspaceId, name: parsed.data.name },
-  });
-
-  revalidatePath(`/workspaces/${parsed.data.workspaceId}/authority`);
-  return ok({ id: decisionType.id });
+/** Verifies processId actually belongs to workspaceId, not just that the caller can access workspaceId. */
+async function loadProcessInWorkspace(workspaceId: string, processId: string) {
+  const process = await prisma.process.findUnique({ where: { id: processId } });
+  if (!process || process.workspaceId !== workspaceId) return null;
+  return process;
 }
 
-const createRuleSchema = z
-  .object({
-    workspaceId: z.string().min(1),
-    decisionTypeId: z.string().min(1),
-    approverRoleId: z.string().min(1).optional(),
-    approverPersonId: z.string().min(1).optional(),
-    maxThreshold: z.number().positive(),
-    coApprovalAboveThreshold: z.number().positive().optional(),
-    coApprovalRoleId: z.string().min(1).optional(),
+/** Verifies rowId/kind refers to a real Activity or Step belonging to processId. */
+async function loadRowInProcess(processId: string, rowId: string, kind: "activity" | "step") {
+  if (kind === "activity") {
+    const activity = await prisma.activity.findUnique({ where: { id: rowId } });
+    if (!activity || activity.processId !== processId) return null;
+    return { activityId: activity.id, stepId: null as string | null };
+  }
+  const step = await prisma.processStep.findUnique({ where: { id: rowId } });
+  if (!step || step.processId !== processId) return null;
+  return { activityId: null as string | null, stepId: step.id };
+}
+
+const rowRefSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  rowId: z.string().min(1),
+  kind: z.enum(["activity", "step"]),
+});
+
+const saveAuthorityRowSchema = rowRefSchema
+  .extend({
+    unit: z.enum(["MONEY", "DAYS"]),
+    threshold: z.number().nonnegative().nullable(),
+    approverRoleId: z.string().min(1).nullable(),
+    approverPersonId: z.string().min(1).nullable(),
+    coApprovalAboveThreshold: z.number().nonnegative().nullable(),
+    coApproverRoleId: z.string().min(1).nullable(),
   })
-  .refine((v) => Boolean(v.approverRoleId) !== Boolean(v.approverPersonId), {
-    message: "Exactly one of approverRoleId or approverPersonId must be set",
+  .refine((v) => !(v.approverRoleId && v.approverPersonId), {
+    message: "Choose a Role or a Person as approver, not both",
   });
 
-export async function createApprovalRule(
-  input: z.infer<typeof createRuleSchema>
+/** Creates or updates a row's Authority data — threshold, approver, and optional co-approval tier. */
+export async function saveAuthorityRow(
+  input: z.infer<typeof saveAuthorityRowSchema>
 ): Promise<ActionResult<{ id: string }>> {
-  const parsed = createRuleSchema.safeParse(input);
-  if (!parsed.success) return validationError("Invalid rule input", parsed.error.issues);
-
-  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
-  if (!access.ok) return access;
-
-  const rule = await prisma.approvalRule.create({
-    data: {
-      decisionTypeId: parsed.data.decisionTypeId,
-      approverRoleId: parsed.data.approverRoleId,
-      approverPersonId: parsed.data.approverPersonId,
-      maxThreshold: parsed.data.maxThreshold,
-      coApprovalAboveThreshold: parsed.data.coApprovalAboveThreshold,
-      coApprovalRoleId: parsed.data.coApprovalRoleId,
-    },
-  });
-
-  revalidatePath(`/workspaces/${parsed.data.workspaceId}/authority`);
-  return ok({ id: rule.id });
-}
-
-const deleteRuleSchema = z.object({
-  workspaceId: z.string().min(1),
-  ruleId: z.string().min(1),
-});
-
-export async function deleteApprovalRule(
-  input: z.infer<typeof deleteRuleSchema>
-): Promise<ActionResult<{ id: string }>> {
-  const parsed = deleteRuleSchema.safeParse(input);
+  const parsed = saveAuthorityRowSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  await prisma.approvalRule.delete({ where: { id: parsed.data.ruleId } });
+  const { workspaceId, processId, rowId, kind } = parsed.data;
 
-  revalidatePath(`/workspaces/${parsed.data.workspaceId}/authority`);
-  return ok({ id: parsed.data.ruleId });
-}
+  const process = await loadProcessInWorkspace(workspaceId, processId);
+  if (!process) return notFound();
 
-async function loadRules(decisionTypeId: string): Promise<ApprovalRule[]> {
-  const rules = await prisma.approvalRule.findMany({
-    where: { decisionTypeId },
-    include: { approverRole: true, approverPerson: true, coApproverRole: true },
+  const row = await loadRowInProcess(processId, rowId, kind);
+  if (!row) return notFound();
+
+  if (parsed.data.approverRoleId) {
+    const role = await prisma.role.findUnique({ where: { id: parsed.data.approverRoleId } });
+    if (!role || role.workspaceId !== workspaceId) return notFound();
+  }
+  if (parsed.data.approverPersonId) {
+    const person = await prisma.person.findUnique({ where: { id: parsed.data.approverPersonId } });
+    if (!person || person.workspaceId !== workspaceId) return notFound();
+  }
+  if (parsed.data.coApproverRoleId) {
+    const role = await prisma.role.findUnique({ where: { id: parsed.data.coApproverRoleId } });
+    if (!role || role.workspaceId !== workspaceId) return notFound();
+  }
+
+  const data = {
+    unit: parsed.data.unit,
+    threshold: parsed.data.threshold,
+    approverRoleId: parsed.data.approverRoleId,
+    approverPersonId: parsed.data.approverPersonId,
+    coApprovalAboveThreshold: parsed.data.coApprovalAboveThreshold,
+    coApproverRoleId: parsed.data.coApproverRoleId,
+  };
+
+  const where = row.activityId ? { activityId: row.activityId } : { stepId: row.stepId! };
+
+  const assignment = await prisma.authorityAssignment.upsert({
+    where,
+    update: data,
+    create: { processId, activityId: row.activityId, stepId: row.stepId, skipped: false, ...data },
   });
 
-  return rules.map((r) => ({
-    id: r.id,
-    approverLabel: r.approverRole?.name ?? r.approverPerson?.name ?? "Unknown",
-    maxThreshold: Number(r.maxThreshold),
-    coApprovalAboveThreshold: r.coApprovalAboveThreshold ? Number(r.coApprovalAboveThreshold) : null,
-    coApproverLabel: r.coApproverRole?.name ?? null,
-  }));
+  revalidatePath(`/workspaces/${workspaceId}/processes/${processId}/authority`);
+  return ok({ id: assignment.id });
 }
 
-const decisionTypeIdSchema = z.object({
-  workspaceId: z.string().min(1),
-  decisionTypeId: z.string().min(1),
-});
-
-export async function validateAuthorityMatrix(
-  input: z.infer<typeof decisionTypeIdSchema>
-): Promise<ActionResult<{ issues: ApprovalRuleIssue[] }>> {
-  const parsed = decisionTypeIdSchema.safeParse(input);
+async function setSkipped(
+  input: z.infer<typeof rowRefSchema>,
+  skipped: boolean
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = rowRefSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
 
-  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "VIEWER");
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const rules = await loadRules(parsed.data.decisionTypeId);
-  return ok({ issues: validateApprovalRules(rules) });
+  const { workspaceId, processId, rowId, kind } = parsed.data;
+
+  const process = await loadProcessInWorkspace(workspaceId, processId);
+  if (!process) return notFound();
+
+  const row = await loadRowInProcess(processId, rowId, kind);
+  if (!row) return notFound();
+
+  const where = row.activityId ? { activityId: row.activityId } : { stepId: row.stepId! };
+
+  const assignment = await prisma.authorityAssignment.upsert({
+    where,
+    update: { skipped },
+    create: { processId, activityId: row.activityId, stepId: row.stepId, skipped },
+  });
+
+  revalidatePath(`/workspaces/${workspaceId}/processes/${processId}/authority`);
+  return ok({ id: assignment.id });
 }
 
-const queryApproversSchema = z.object({
-  workspaceId: z.string().min(1),
-  decisionTypeId: z.string().min(1),
-  value: z.number().nonnegative(),
-});
+/** Marks a row as intentionally not needing an Authority entry. */
+export async function skipAuthorityRow(input: z.infer<typeof rowRefSchema>): Promise<ActionResult<{ id: string }>> {
+  return setSkipped(input, true);
+}
 
-export async function queryApprovers(
-  input: z.infer<typeof queryApproversSchema>
-): Promise<ActionResult<ApproverResolution>> {
-  const parsed = queryApproversSchema.safeParse(input);
-  if (!parsed.success) return validationError("Invalid query", parsed.error.issues);
+/** Reverses skipAuthorityRow. */
+export async function unskipAuthorityRow(input: z.infer<typeof rowRefSchema>): Promise<ActionResult<{ id: string }>> {
+  return setSkipped(input, false);
+}
 
-  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "VIEWER");
+/**
+ * Clears a row's Authority data (threshold, approver, co-approval, skip) back
+ * to empty. The task itself — the underlying Activity or Process Map step —
+ * is shared with the RACI table and is untouched; this only removes what was
+ * entered here.
+ */
+export async function clearAuthorityRow(input: z.infer<typeof rowRefSchema>): Promise<ActionResult<{ rowId: string }>> {
+  const parsed = rowRefSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const rules = await loadRules(parsed.data.decisionTypeId);
-  return ok(resolveApprovers(rules, parsed.data.value));
+  const { workspaceId, processId, rowId, kind } = parsed.data;
+
+  const process = await loadProcessInWorkspace(workspaceId, processId);
+  if (!process) return notFound();
+
+  const row = await loadRowInProcess(processId, rowId, kind);
+  if (!row) return notFound();
+
+  const where = row.activityId ? { activityId: row.activityId } : { stepId: row.stepId! };
+  await prisma.authorityAssignment.deleteMany({ where });
+
+  revalidatePath(`/workspaces/${workspaceId}/processes/${processId}/authority`);
+  return ok({ rowId });
 }

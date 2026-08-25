@@ -47,23 +47,27 @@ test.describe("Core workflows", () => {
     await page.click("text=Build RACI");
     await page.waitForURL("**/raci");
 
-    await expect(page.getByText(/\d+ validation issues? — finalization blocked/)).toBeVisible();
+    await expect(page.getByText(/\d+ tasks? missing an Accountable or Responsible — finalization blocked/)).toBeVisible();
     await expect(page.locator('button:has-text("Mark Final")')).toBeDisabled();
   });
 
-  test("Authority query resolves the tightest rule, co-approval, and gap correctly", async ({ page }) => {
-    await page.goto("/workspaces/workspace-acme/authority");
-    await expect(page.locator("text=Who can approve this?")).toBeVisible();
+  test("Authority Matrix shows seeded thresholds and co-approval, and flags an incomplete row", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
+    await expect(page.locator("h1")).toHaveText("Authority Matrix");
 
-    await page.click('button:has-text("$5,000")');
-    await expect(page.locator("main")).toContainText("AP Clerk");
+    const createPORow = page.locator("tr", { hasText: "Create Purchase Order" });
+    await expect(createPORow).toContainText("$10,000");
+    await expect(createPORow).toContainText("AP Clerk");
 
-    await page.click('button:has-text("$60,000")');
-    await expect(page.locator("main")).toContainText("Co-approval required from");
-    await expect(page.locator("main")).toContainText("Controller");
+    const approvePORow = page.locator("tr", { hasText: "Approve Purchase Order" });
+    await expect(approvePORow).toContainText("$100,000");
+    await expect(approvePORow).toContainText("Finance Manager");
+    await expect(approvePORow).toContainText("Controller");
 
-    await page.click('button:has-text("$250,000")');
-    await expect(page.locator("main")).toContainText("No authorized approver");
+    const revisePORow = page.locator("tr", { hasText: "Revise Purchase Order" });
+    await expect(revisePORow).toContainText("3 days");
+
+    await expect(page.getByText(/\d+ tasks? need an approver \(or co-approver\)/)).toBeVisible();
   });
 
   test("Inviting a new member produces a working accept link that provisions an account", async ({ page, context }) => {

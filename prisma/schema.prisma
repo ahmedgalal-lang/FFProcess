@@ -139,11 +139,10 @@ model Workspace {
 
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 
-  members       Member[]
-  roles         Role[]
-  people        Person[]
-  processes     Process[]
-  decisionTypes DecisionType[]
+  members   Member[]
+  roles     Role[]
+  people    Person[]
+  processes Process[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -185,12 +184,12 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles     PersonRole[]
-  processSteps    ProcessStep[]    @relation("StepAssignedRole")
-  swimlaneSteps   ProcessStep[]    @relation("StepSwimlaneRole")
-  raciAssignments RaciAssignment[]
-  approverRules   ApprovalRule[]   @relation("ApproverRole")
-  coApproverRules ApprovalRule[]   @relation("CoApproverRole")
+  personRoles          PersonRole[]
+  processSteps         ProcessStep[]         @relation("StepAssignedRole")
+  swimlaneSteps        ProcessStep[]         @relation("StepSwimlaneRole")
+  raciAssignments      RaciAssignment[]
+  authorityApprovals   AuthorityAssignment[] @relation("AuthorityApproverRole")
+  authorityCoApprovals AuthorityAssignment[] @relation("AuthorityCoApproverRole")
 
   createdAt DateTime @default(now())
 
@@ -210,8 +209,8 @@ model Person {
   manager   Person?   @relation("PersonManager", fields: [managerId], references: [id])
   reports   Person[]  @relation("PersonManager")
 
-  personRoles   PersonRole[]
-  approverRules ApprovalRule[] @relation("ApproverPerson")
+  personRoles        PersonRole[]
+  authorityApprovals AuthorityAssignment[] @relation("AuthorityApproverPerson")
 
   createdAt DateTime @default(now())
 
@@ -258,11 +257,12 @@ model Process {
   parentProcess Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
   subProcesses  Process[]        @relation("ProcessHierarchy")
 
-  steps            ProcessStep[]
-  activities       Activity[]
-  raciMatrixStatus RaciMatrixStatus?
-  linkedFromSteps  ProcessStepLink[] @relation("LinkTargetProcess")
-  reviewFindings   ReviewFinding[]
+  steps                ProcessStep[]
+  activities           Activity[]
+  raciMatrixStatus     RaciMatrixStatus?
+  linkedFromSteps      ProcessStepLink[]     @relation("LinkTargetProcess")
+  reviewFindings       ReviewFinding[]
+  authorityAssignments AuthorityAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -315,11 +315,12 @@ model ProcessStep {
   assignedRole Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])
   swimlaneRole Role?   @relation("StepSwimlaneRole", fields: [swimlaneRoleId], references: [id])
 
-  links          ProcessStepLink[]
-  outgoingEdges  StepConnection[]  @relation("FromStep")
-  incomingEdges  StepConnection[]  @relation("ToStep")
-  activities     Activity[]
-  reviewFindings ReviewFinding[]
+  links               ProcessStepLink[]
+  outgoingEdges       StepConnection[]     @relation("FromStep")
+  incomingEdges       StepConnection[]     @relation("ToStep")
+  activities          Activity[]
+  reviewFindings      ReviewFinding[]
+  authorityAssignment AuthorityAssignment?
 
   createdAt DateTime @default(now())
 
@@ -367,7 +368,8 @@ model Activity {
   process     Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
   relatedStep ProcessStep? @relation(fields: [relatedStepId], references: [id])
 
-  raciAssignments RaciAssignment[]
+  raciAssignments     RaciAssignment[]
+  authorityAssignment AuthorityAssignment?
 
   createdAt DateTime @default(now())
 
@@ -473,36 +475,40 @@ model ReviewFinding {
 // Authority Matrix — DecisionType, ApprovalRule (spec FR-008-FR-011)
 // ============================================================================
 
-model DecisionType {
-  id          String @id @default(uuid())
-  workspaceId String
-  name        String
-
-  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  rules     ApprovalRule[]
-
-  createdAt DateTime @default(now())
-
-  @@index([workspaceId])
-  @@map("decision_types")
+enum AuthorityUnit {
+  MONEY
+  DAYS
 }
 
-model ApprovalRule {
-  id                       String   @id @default(uuid())
-  decisionTypeId           String
+/// Authority Matrix rows — one per Process Map step (or, when a step's
+/// been split into finer-grained RACI Activities, one per Activity), the
+/// same task list the RACI table draws from (see buildAuthorityTableRows in
+/// lib/domain/authority-table.ts). A row is only persisted once it has a
+/// threshold, an approver, or is explicitly skipped — otherwise it's just an
+/// empty row derived from the Process Map/Activities at render time.
+model AuthorityAssignment {
+  id                       String        @id @default(uuid())
+  processId                String
+  activityId               String?       @unique
+  stepId                   String?       @unique
+  skipped                  Boolean       @default(false)
+  unit                     AuthorityUnit @default(MONEY)
+  threshold                Decimal?      @db.Decimal(14, 2)
   approverRoleId           String?
   approverPersonId         String?
-  maxThreshold             Decimal  @db.Decimal(14, 2)
-  coApprovalAboveThreshold Decimal? @db.Decimal(14, 2)
-  coApprovalRoleId         String?
+  coApprovalAboveThreshold Decimal?      @db.Decimal(14, 2)
+  coApproverRoleId         String?
 
-  decisionType   DecisionType @relation(fields: [decisionTypeId], references: [id], onDelete: Cascade)
-  approverRole   Role?        @relation("ApproverRole", fields: [approverRoleId], references: [id])
-  approverPerson Person?      @relation("ApproverPerson", fields: [approverPersonId], references: [id])
-  coApproverRole Role?        @relation("CoApproverRole", fields: [coApprovalRoleId], references: [id])
+  process        Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
+  activity       Activity?    @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  step           ProcessStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  approverRole   Role?        @relation("AuthorityApproverRole", fields: [approverRoleId], references: [id])
+  approverPerson Person?      @relation("AuthorityApproverPerson", fields: [approverPersonId], references: [id])
+  coApproverRole Role?        @relation("AuthorityCoApproverRole", fields: [coApproverRoleId], references: [id])
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([decisionTypeId])
-  @@map("approval_rules")
+  @@index([processId])
+  @@map("authority_assignments")
 }

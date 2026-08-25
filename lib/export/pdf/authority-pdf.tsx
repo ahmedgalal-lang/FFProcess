@@ -7,95 +7,106 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: 700, color: "#0f172a" },
   meta: { fontSize: 8, color: "#94a3b8", marginTop: 4 },
   banner: {
-    backgroundColor: "#fee2e2",
+    backgroundColor: "#fef3c7",
     borderWidth: 1,
-    borderColor: "#fca5a5",
+    borderColor: "#fbbf24",
     borderRadius: 4,
     padding: 8,
     marginBottom: 12,
   },
-  bannerText: { fontSize: 9, color: "#991b1b", fontWeight: 700 },
-  rule: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderColor: "#e2e8f0",
+  bannerText: { fontSize: 9, color: "#92400e", fontWeight: 700 },
+  table: { display: "flex", flexDirection: "column", borderWidth: 1, borderColor: "#e2e8f0" },
+  row: { flexDirection: "row", borderBottomWidth: 1, borderColor: "#e2e8f0" },
+  headerRow: { backgroundColor: "#f1f5f9" },
+  taskCell: { width: "32%", padding: 6, fontWeight: 700, color: "#0f172a" },
+  headerCell: {
+    flex: 1,
+    padding: 6,
+    fontSize: 8,
+    fontWeight: 700,
+    color: "#475569",
+    textAlign: "center",
+    textTransform: "uppercase",
   },
-  approver: { fontSize: 10, fontWeight: 700, color: "#0f172a" },
-  coApproval: { fontSize: 8, color: "#64748b", marginTop: 2 },
-  threshold: { fontSize: 10, fontWeight: 700, color: "#334155" },
-  gapRow: { backgroundColor: "#fef2f2" },
+  cell: { flex: 1, padding: 6, textAlign: "center", color: "#334155" },
+  co: { fontSize: 7, color: "#64748b" },
   footer: { position: "absolute", bottom: 24, left: 32, right: 32, fontSize: 7, color: "#94a3b8", textAlign: "center" },
 });
 
+export type AuthorityPdfRow = {
+  id: string;
+  label: string;
+  unit: "MONEY" | "DAYS";
+  threshold: number | null;
+  approverLabel: string | null;
+  coApprovalAboveThreshold: number | null;
+  coApproverLabel: string | null;
+};
+
 export type AuthorityPdfProps = {
   workspaceName: string;
-  decisionTypeName: string;
-  rules: {
-    id: string;
-    approverLabel: string;
-    maxThreshold: number;
-    coApprovalAboveThreshold: number | null;
-    coApproverLabel: string | null;
-  }[];
-  conflictCount: number;
+  processCode: string;
+  processName: string;
+  rows: AuthorityPdfRow[];
+  issueCount: number;
   generatedFor: string;
 };
 
-const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+function formatThreshold(unit: "MONEY" | "DAYS", value: number | null): string {
+  if (value === null) return "—";
+  return unit === "MONEY" ? `$${value.toLocaleString("en-US")}` : `${value} day${value === 1 ? "" : "s"}`;
+}
 
 export function AuthorityPdfDocument({
   workspaceName,
-  decisionTypeName,
-  rules,
-  conflictCount,
+  processCode,
+  processName,
+  rows,
+  issueCount,
   generatedFor,
 }: AuthorityPdfProps) {
-  const sorted = [...rules].sort((a, b) => a.maxThreshold - b.maxThreshold);
-  const highest = sorted.at(-1)?.maxThreshold ?? 0;
-
   return (
-    <Document title={`${decisionTypeName} Authority Matrix`}>
-      <Page size="A4" style={styles.page}>
+    <Document title={`${processCode} Authority Matrix`}>
+      <Page size="A4" orientation="landscape" style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>{workspaceName} · Authority Matrix</Text>
-          <Text style={styles.title}>{decisionTypeName}</Text>
+          <Text style={styles.eyebrow}>
+            {workspaceName} · {processCode}
+          </Text>
+          <Text style={styles.title}>{processName} — Authority Matrix</Text>
           <Text style={styles.meta}>
             Generated for {generatedFor} on {new Date().toLocaleDateString()}
           </Text>
         </View>
 
-        {conflictCount > 0 && (
+        {issueCount > 0 && (
           <View style={styles.banner}>
-            <Text style={styles.bannerText}>⚠ {conflictCount} conflicting rule pair(s) — thresholds are ambiguous</Text>
+            <Text style={styles.bannerText}>⚠ {issueCount} task(s) need an approver (or co-approver)</Text>
           </View>
         )}
 
-        <View>
-          {sorted.map((r) => (
-            <View key={r.id} style={styles.rule}>
-              <View>
-                <Text style={styles.approver}>{r.approverLabel}</Text>
-                {r.coApproverLabel && (
-                  <Text style={styles.coApproval}>
-                    Co-approval from {r.coApproverLabel} above {money(r.coApprovalAboveThreshold ?? 0)}
-                  </Text>
-                )}
-              </View>
-              <Text style={styles.threshold}>up to {money(r.maxThreshold)}</Text>
+        <View style={styles.table}>
+          <View style={[styles.row, styles.headerRow]}>
+            <Text style={styles.taskCell}>Task</Text>
+            <Text style={styles.headerCell}>Threshold</Text>
+            <Text style={styles.headerCell}>Approver</Text>
+            <Text style={styles.headerCell}>Co-approval</Text>
+          </View>
+          {rows.map((r) => (
+            <View key={r.id} style={styles.row}>
+              <Text style={styles.taskCell}>{r.label}</Text>
+              <Text style={styles.cell}>{formatThreshold(r.unit, r.threshold)}</Text>
+              <Text style={styles.cell}>{r.approverLabel ?? "—"}</Text>
+              <Text style={styles.cell}>
+                {r.coApproverLabel
+                  ? `${r.coApproverLabel} above ${formatThreshold(r.unit, r.coApprovalAboveThreshold)}`
+                  : "—"}
+              </Text>
             </View>
           ))}
-          <View style={[styles.rule, styles.gapRow]}>
-            <Text style={[styles.approver, { color: "#991b1b" }]}>No rule defined</Text>
-            <Text style={[styles.threshold, { color: "#991b1b" }]}>&gt; {money(highest)}</Text>
-          </View>
         </View>
 
         <Text style={styles.footer} fixed>
-          FFProcess · {workspaceName} · {decisionTypeName}
+          FFProcess · {workspaceName} · {processCode}
         </Text>
       </Page>
     </Document>

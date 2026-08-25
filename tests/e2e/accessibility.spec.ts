@@ -55,8 +55,8 @@ test.describe("Accessibility", () => {
   });
 
   test("Authority matrix has no automatically detectable violations", async ({ page }) => {
-    await page.goto("/workspaces/workspace-acme/authority");
-    await page.waitForSelector("text=Who can approve this?");
+    await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
+    await page.waitForSelector("text=Co-approval above");
 
     const results = await new AxeBuilder({ page }).include("main").analyze();
     expect(results.violations).toEqual([]);

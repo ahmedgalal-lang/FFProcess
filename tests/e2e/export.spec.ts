@@ -36,13 +36,14 @@ test.describe("Export", () => {
   });
 
   test("Authority PDF and Excel downloads return well-formed files", async ({ page }) => {
-    await page.goto("/workspaces/workspace-acme/authority");
-    await page.waitForSelector("text=Who can approve this?");
+    await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
+    await page.waitForSelector("text=Co-approval above");
 
     const pdfHref = await page.locator('a:has-text("Export PDF")').first().getAttribute("href");
     const pdfResponse = await page.request.get(pdfHref!);
     expect(pdfResponse.status()).toBe(200);
     expect(pdfResponse.headers()["content-type"]).toBe("application/pdf");
+    expect(pdfResponse.headers()["content-disposition"]).toContain("PUR101-authority-matrix.pdf");
     const pdfBody = await pdfResponse.body();
     expect(pdfBody.subarray(0, 5).toString("latin1")).toBe("%PDF-");
 

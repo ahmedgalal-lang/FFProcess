@@ -283,34 +283,76 @@ async function main() {
     create: { processId: p2p.id, status: "DRAFT" },
   });
 
-  const decisionType = await prisma.decisionType.upsert({
-    where: { id: `decision-type-${workspace.id}-po` },
+  // Authority Matrix — per-task rows on PUR101, same tasks as the RACI table above.
+  // Mixes every state the table can show: skipped, money-based, days-based, an
+  // untouched empty row (sendVendor), and a deliberately incomplete co-approval
+  // (approvePayment) to demonstrate validateAuthorityTable's MISSING_CO_APPROVER.
+  const authorityByStep: Record<
+    string,
+    { skipped?: boolean }
+  > = {
+    start: { skipped: true },
+    end: { skipped: true },
+  };
+  for (const [key, data] of Object.entries(authorityByStep)) {
+    await prisma.authorityAssignment.upsert({
+      where: { stepId: stepIds[key] },
+      update: {},
+      create: { processId: p2p.id, stepId: stepIds[key], skipped: data.skipped ?? false },
+    });
+  }
+  // revisePO has no linked Activity, so it's a step-scoped row (days-based).
+  await prisma.authorityAssignment.upsert({
+    where: { stepId: stepIds.revisePO },
     update: {},
-    create: { id: `decision-type-${workspace.id}-po`, workspaceId: workspace.id, name: "Purchase Order" },
+    create: {
+      processId: p2p.id,
+      stepId: stepIds.revisePO,
+      unit: "DAYS",
+      threshold: 3,
+      approverRoleId: roles["AP Clerk"],
+    },
   });
 
-  await prisma.approvalRule.upsert({
-    where: { id: `rule-${decisionType.id}-ap-clerk` },
-    update: {},
-    create: {
-      id: `rule-${decisionType.id}-ap-clerk`,
-      decisionTypeId: decisionType.id,
-      approverRoleId: roles["AP Clerk"],
-      maxThreshold: 10000,
-    },
-  });
-  await prisma.approvalRule.upsert({
-    where: { id: `rule-${decisionType.id}-finance-manager` },
-    update: {},
-    create: {
-      id: `rule-${decisionType.id}-finance-manager`,
-      decisionTypeId: decisionType.id,
+  const authorityByActivity: Record<
+    string,
+    {
+      skipped?: boolean;
+      threshold?: number;
+      approverRoleId?: string;
+      coApprovalAboveThreshold?: number;
+      coApproverRoleId?: string;
+    }
+  > = {
+    createPO: { threshold: 10000, approverRoleId: roles["AP Clerk"] },
+    approvePO: {
+      threshold: 100000,
       approverRoleId: roles["Finance Manager"],
-      maxThreshold: 100000,
       coApprovalAboveThreshold: 50000,
-      coApprovalRoleId: roles.Controller,
+      coApproverRoleId: roles.Controller,
     },
-  });
+    receiveGoods: { skipped: true },
+    matchInvoice: { threshold: 20000, approverRoleId: roles["Finance Manager"] },
+    // Deliberately incomplete: a co-approval threshold with no co-approver assigned yet.
+    approvePayment: { threshold: 100000, approverRoleId: roles.Controller, coApprovalAboveThreshold: 50000 },
+    payVendor: { threshold: 100000, approverRoleId: roles["Finance Manager"] },
+  };
+  for (const [key, data] of Object.entries(authorityByActivity)) {
+    const activityId = `activity-${p2p.id}-${key}`;
+    await prisma.authorityAssignment.upsert({
+      where: { activityId },
+      update: {},
+      create: {
+        processId: p2p.id,
+        activityId,
+        skipped: data.skipped ?? false,
+        threshold: data.threshold,
+        approverRoleId: data.approverRoleId,
+        coApprovalAboveThreshold: data.coApprovalAboveThreshold,
+        coApproverRoleId: data.coApproverRoleId,
+      },
+    });
+  }
 
   console.log("Seed complete.");
   console.log("Sign in as ahmed.galal@forefront.consulting / password123 (Firm Owner)");

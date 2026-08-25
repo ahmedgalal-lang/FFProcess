@@ -53,42 +53,50 @@ export async function buildRaciWorkbook(params: {
 
 export async function buildAuthorityWorkbook(params: {
   workspaceName: string;
-  decisionTypeName: string;
-  rules: {
-    approverLabel: string;
-    maxThreshold: number;
+  processCode: string;
+  processName: string;
+  rows: {
+    id: string;
+    label: string;
+    unit: "MONEY" | "DAYS";
+    threshold: number | null;
+    approverLabel: string | null;
     coApprovalAboveThreshold: number | null;
     coApproverLabel: string | null;
   }[];
 }): Promise<Buffer> {
-  const { workspaceName, decisionTypeName, rules } = params;
+  const { workspaceName, processCode, processName, rows } = params;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "FFProcess";
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet("Authority Matrix");
-  sheet.addRow([`${workspaceName} · ${decisionTypeName}`]);
+  sheet.addRow([`${workspaceName} · ${processCode} · ${processName}`]);
   sheet.addRow([]);
 
-  const headerRow = sheet.addRow(["Approver", "Max Threshold", "Co-Approval Above", "Co-Approver"]);
+  const headerRow = sheet.addRow(["Task", "Threshold", "Approver", "Co-Approval Above", "Co-Approver"]);
   headerRow.font = { bold: true };
   headerRow.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
   });
 
-  const sorted = [...rules].sort((a, b) => a.maxThreshold - b.maxThreshold);
-  for (const r of sorted) {
-    sheet.addRow([r.approverLabel, r.maxThreshold, r.coApprovalAboveThreshold ?? "", r.coApproverLabel ?? ""]);
+  for (const r of rows) {
+    const thresholdLabel =
+      r.threshold === null ? "" : r.unit === "MONEY" ? r.threshold : `${r.threshold} day${r.threshold === 1 ? "" : "s"}`;
+    const coLabel =
+      r.coApprovalAboveThreshold === null
+        ? ""
+        : r.unit === "MONEY"
+          ? r.coApprovalAboveThreshold
+          : `${r.coApprovalAboveThreshold} day${r.coApprovalAboveThreshold === 1 ? "" : "s"}`;
+    sheet.addRow([r.label, thresholdLabel, r.approverLabel ?? "", coLabel, r.coApproverLabel ?? ""]);
   }
-  const highest = sorted.at(-1)?.maxThreshold ?? 0;
-  const gapRow = sheet.addRow(["No rule defined", `> ${highest}`, "", ""]);
-  gapRow.font = { color: { argb: "FFB91C1C" }, bold: true };
 
-  sheet.getColumn(1).width = 24;
+  sheet.getColumn(1).width = 34;
   sheet.getColumn(2).width = 16;
-  sheet.getColumn(3).width = 18;
-  sheet.getColumn(4).width = 20;
-  sheet.getColumn(2).numFmt = '"$"#,##0';
+  sheet.getColumn(3).width = 22;
+  sheet.getColumn(4).width = 18;
+  sheet.getColumn(5).width = 22;
   sheet.getRow(1).font = { bold: true, size: 13 };
 
   const buffer = await workbook.xlsx.writeBuffer();

@@ -298,7 +298,7 @@ export function RaciTable({
                   >
                     Add
                   </button>
-                  <span className="text-xs text-slate-400">or</span>
+                  <span className="text-xs text-slate-500">or</span>
                 </>
               )}
               <input
@@ -412,7 +412,7 @@ export function RaciTable({
                     ) : (
                       <div className="flex items-center gap-2">
                         {row.stepType && (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-600">
                             {row.stepType}
                           </span>
                         )}
@@ -448,7 +448,7 @@ export function RaciTable({
                       <button
                         type="button"
                         onClick={() => toggleSkip(row)}
-                        className="rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-700"
                       >
                         Skip
                       </button>
@@ -475,14 +475,14 @@ export function RaciTable({
                         <button
                           type="button"
                           onClick={() => startRename(row)}
-                          className="rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-700"
                         >
                           Edit
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirmingDeleteId(row.id)}
-                          className="rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-red-50 hover:text-red-600"
                         >
                           Delete
                         </button>
@@ -499,7 +499,7 @@ export function RaciTable({
                   <th scope="row" className="sticky left-0 z-10 bg-white px-4 py-2 text-left font-medium text-slate-500 line-through">
                     <div className="flex items-center gap-2">
                       {row.stepType && (
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-600">
                           {row.stepType}
                         </span>
                       )}

@@ -109,10 +109,19 @@ describe("buildProcessReviewPrompt", () => {
       issues: [{ activityId: "a1", type: "MISSING_RESPONSIBLE", roleIds: [] }],
     },
     authority: {
-      decisionTypes: [
-        { name: "Purchase Order", rules: [{ approverLabel: "Manager", maxThreshold: 5000, coApproverLabel: null }] },
+      rows: [
+        {
+          rowId: "a1",
+          label: "Approve invoice",
+          skipped: false,
+          unit: "MONEY",
+          threshold: 5000,
+          approverLabel: "Manager",
+          coApprovalAboveThreshold: null,
+          coApproverLabel: null,
+        },
       ],
-      conflicts: [],
+      issues: [],
     },
     structuralGaps: [{ type: "MISSING_END" }],
   };
@@ -139,7 +148,7 @@ describe("buildProcessReviewPrompt", () => {
     expect(prompt).toContain("Requisition raised");
     expect(prompt).toContain("Approve invoice");
     expect(prompt).toContain("Manager=ACCOUNTABLE");
-    expect(prompt).toContain("Purchase Order");
+    expect(prompt).toContain("up to $5,000");
   });
 
   it("surfaces already-detected mechanical issues so the model doesn't have to rediscover them", () => {
