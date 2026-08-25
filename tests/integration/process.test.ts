@@ -13,6 +13,8 @@ vi.mock("@/lib/auth/config", () => ({
 const {
   createProcess,
   cloneProcess,
+  updateProcess,
+  archiveProcess,
   addProcessStep,
   addProcessStepsBulk,
   createActivity,
@@ -388,5 +390,206 @@ describe("process Server Actions", () => {
     const result = await createProcess({ workspaceId: fixture.workspace.id, name: "Process E" });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBe("UNAUTHORIZED");
+  });
+});
+
+describe("updateProcess / archiveProcess", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  it("edits a process's name, description, and category", async () => {
+    const category = await createProcessCategory({ workspaceId: fixture.workspace.id, name: "Finance" });
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Draft Name" });
+    if (!category.ok || !process.ok) throw new Error("setup failed");
+
+    const result = await updateProcess({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      name: "Corrected Name",
+      description: "Updated description",
+      categoryId: category.data.id,
+    });
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.process.findUnique({ where: { id: process.data.id } });
+    expect(row?.name).toBe("Corrected Name");
+    expect(row?.description).toBe("Updated description");
+    expect(row?.categoryId).toBe(category.data.id);
+  });
+
+  it("rejects a parent selection that would create a circular hierarchy", async () => {
+    const parent = await createProcess({ workspaceId: fixture.workspace.id, name: "Parent" });
+    if (!parent.ok) throw new Error("setup failed");
+    const child = await createProcess({
+      workspaceId: fixture.workspace.id,
+      name: "Child",
+      parentProcessId: parent.data.id,
+    });
+    if (!child.ok) throw new Error("setup failed");
+
+    const cyclic = await updateProcess({
+      workspaceId: fixture.workspace.id,
+      processId: parent.data.id,
+      parentProcessId: child.data.id,
+    });
+    expect(cyclic.ok).toBe(false);
+    if (!cyclic.ok) expect(cyclic.error).toBe("VALIDATION_ERROR");
+  });
+
+  it("archives a process, dropping it out of the active list", async () => {
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "To Archive" });
+    if (!process.ok) throw new Error("setup failed");
+
+    const result = await archiveProcess({ workspaceId: fixture.workspace.id, processId: process.data.id });
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.process.findUnique({ where: { id: process.data.id } });
+    expect(row?.archivedAt).not.toBeNull();
+
+    const activeList = await prisma.process.findMany({ where: { workspaceId: fixture.workspace.id, archivedAt: null } });
+    expect(activeList.some((p) => p.id === process.data.id)).toBe(false);
+  });
+
+  it("rejects a VIEWER attempting to edit or archive a process", async () => {
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Guarded" });
+    if (!process.ok) throw new Error("setup failed");
+
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+
+    const updateResult = await updateProcess({ workspaceId: fixture.workspace.id, processId: process.data.id, name: "x" });
+    expect(updateResult.ok).toBe(false);
+    if (!updateResult.ok) expect(updateResult.error).toBe("FORBIDDEN");
+
+    const archiveResult = await archiveProcess({ workspaceId: fixture.workspace.id, processId: process.data.id });
+    expect(archiveResult.ok).toBe(false);
+    if (!archiveResult.ok) expect(archiveResult.error).toBe("FORBIDDEN");
+  });
+});
+
+describe("cross-workspace isolation on process actions", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let otherFixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let otherProcessId: string;
+  let otherStepId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    otherFixture = await createFixtureWorkspace();
+
+    mockAuth.mockResolvedValue({ user: { id: otherFixture.adminUser.id } });
+    const otherProcess = await createProcess({ workspaceId: otherFixture.workspace.id, name: "Outsider Process" });
+    if (!otherProcess.ok) throw new Error("setup failed");
+    otherProcessId = otherProcess.data.id;
+
+    const otherStep = await addProcessStep({
+      workspaceId: otherFixture.workspace.id,
+      processId: otherProcessId,
+      step: { type: "START", label: "Outsider start", linkedProcessIds: [] },
+    });
+    if (!otherStep.ok) throw new Error("setup failed");
+    otherStepId = otherStep.data.id;
+
+    // Now act as the FIRST fixture's admin — EDITOR on their own workspace,
+    // no access at all to otherFixture's workspace.
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+    await otherFixture.cleanup();
+  });
+
+  it("updateProcess and archiveProcess reject a processId from a different workspace", async () => {
+    const updateResult = await updateProcess({ workspaceId: fixture.workspace.id, processId: otherProcessId, name: "Hijacked" });
+    expect(updateResult.ok).toBe(false);
+    if (!updateResult.ok) expect(updateResult.error).toBe("NOT_FOUND");
+
+    const archiveResult = await archiveProcess({ workspaceId: fixture.workspace.id, processId: otherProcessId });
+    expect(archiveResult.ok).toBe(false);
+    if (!archiveResult.ok) expect(archiveResult.error).toBe("NOT_FOUND");
+  });
+
+  it("addProcessStep, addProcessStepsBulk, and createActivity reject a processId from a different workspace", async () => {
+    const addResult = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      step: { type: "TASK", label: "Hijacked step", linkedProcessIds: [] },
+    });
+    expect(addResult.ok).toBe(false);
+    if (!addResult.ok) expect(addResult.error).toBe("NOT_FOUND");
+
+    const bulkResult = await addProcessStepsBulk({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      labels: ["Hijacked step"],
+    });
+    expect(bulkResult.ok).toBe(false);
+    if (!bulkResult.ok) expect(bulkResult.error).toBe("NOT_FOUND");
+
+    const activityResult = await createActivity({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      name: "Hijacked activity",
+    });
+    expect(activityResult.ok).toBe(false);
+    if (!activityResult.ok) expect(activityResult.error).toBe("NOT_FOUND");
+  });
+
+  it("updateProcessStep, deleteProcessStep, and updateStepPosition reject a processId/stepId pair from a different workspace", async () => {
+    const updateResult = await updateProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      stepId: otherStepId,
+      type: "TASK",
+      label: "Hijacked",
+    });
+    expect(updateResult.ok).toBe(false);
+    if (!updateResult.ok) expect(updateResult.error).toBe("NOT_FOUND");
+
+    const positionResult = await updateStepPosition({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      stepId: otherStepId,
+      positionX: 1,
+      positionY: 1,
+    });
+    expect(positionResult.ok).toBe(false);
+    if (!positionResult.ok) expect(positionResult.error).toBe("NOT_FOUND");
+
+    const deleteResult = await deleteProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      stepId: otherStepId,
+    });
+    expect(deleteResult.ok).toBe(false);
+    if (!deleteResult.ok) expect(deleteResult.error).toBe("NOT_FOUND");
+  });
+
+  it("createStepConnection and deleteStepConnection reject a processId from a different workspace", async () => {
+    const connectResult = await createStepConnection({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      fromStepId: otherStepId,
+      toStepId: otherStepId,
+    });
+    expect(connectResult.ok).toBe(false);
+    if (!connectResult.ok) expect(connectResult.error).toBe("NOT_FOUND");
+
+    const deleteConnResult = await deleteStepConnection({
+      workspaceId: fixture.workspace.id,
+      processId: otherProcessId,
+      connectionId: "does-not-matter",
+    });
+    expect(deleteConnResult.ok).toBe(false);
+    if (!deleteConnResult.ok) expect(deleteConnResult.error).toBe("NOT_FOUND");
   });
 });

@@ -9,6 +9,13 @@ import { validateConnections } from "@/lib/domain/process-graph";
 import { laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
+/** Verifies processId actually belongs to workspaceId, not just that the caller can access workspaceId. */
+async function loadProcessInWorkspace(workspaceId: string, processId: string) {
+  const process = await prisma.process.findUnique({ where: { id: processId } });
+  if (!process || process.workspaceId !== workspaceId) return null;
+  return process;
+}
+
 const createProcessSchema = z.object({
   workspaceId: z.string().min(1),
   name: z.string().trim().min(1).max(120),
@@ -221,6 +228,7 @@ const updateProcessSchema = z.object({
   code: z.string().trim().min(2).max(20).optional(),
   name: z.string().trim().min(1).max(120).optional(),
   description: z.string().trim().max(2000).optional(),
+  categoryId: z.string().min(1).nullable().optional(),
   parentProcessId: z.string().min(1).nullable().optional(),
 });
 
@@ -232,6 +240,15 @@ export async function updateProcess(
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  if (parsed.data.categoryId) {
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: parsed.data.workspaceId } });
+    const category = await prisma.processCategory.findUnique({ where: { id: parsed.data.categoryId } });
+    if (!category || category.firmId !== workspace.firmId) return notFound();
+  }
 
   const allProcesses = await prisma.process.findMany({
     where: { workspaceId: parsed.data.workspaceId },
@@ -252,14 +269,42 @@ export async function updateProcess(
     }
   }
 
-  const process = await prisma.process.update({
+  const updated = await prisma.process.update({
     where: { id: parsed.data.processId },
     data: {
       code: parsed.data.code ? parsed.data.code.trim().toUpperCase() : undefined,
       name: parsed.data.name,
       description: parsed.data.description,
+      categoryId: parsed.data.categoryId,
       parentProcessId: parsed.data.parentProcessId,
     },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
+  return ok({ id: updated.id });
+}
+
+const archiveProcessSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+});
+
+/** Soft-deletes a Process — it drops off the Processes list but nothing under it is touched or destroyed. */
+export async function archiveProcess(
+  input: z.infer<typeof archiveProcessSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = archiveProcessSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  await prisma.process.update({
+    where: { id: process.id },
+    data: { archivedAt: new Date() },
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
@@ -297,6 +342,9 @@ export async function addProcessStep(
   if (!access.ok) return access;
 
   const { processId, step, fromStepId, connectionLabel } = parsed.data;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, processId);
+  if (!process) return notFound();
 
   const stepsInProcess = await prisma.processStep.findMany({
     where: { processId },
@@ -382,6 +430,9 @@ export async function addProcessStepsBulk(
 
   const { processId, labels } = parsed.data;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, processId);
+  if (!process) return notFound();
+
   const stepsInProcess = await prisma.processStep.findMany({
     where: { processId },
     select: { id: true, positionX: true, swimlaneRoleId: true, assignedRoleId: true, createdAt: true },
@@ -439,6 +490,9 @@ export async function updateProcessStep(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
   const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
   if (!step || step.processId !== parsed.data.processId) return notFound();
 
@@ -476,6 +530,9 @@ export async function deleteProcessStep(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
   const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
   if (!step || step.processId !== parsed.data.processId) return notFound();
 
@@ -504,6 +561,9 @@ export async function createStepConnection(
   if (!access.ok) return access;
 
   const { processId, fromStepId, toStepId, label } = parsed.data;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, processId);
+  if (!process) return notFound();
 
   const steps = await prisma.processStep.findMany({ where: { processId }, select: { id: true } });
   const validIds = new Set(steps.map((s) => s.id));
@@ -538,6 +598,12 @@ export async function deleteStepConnection(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  const connection = await prisma.stepConnection.findUnique({ where: { id: parsed.data.connectionId } });
+  if (!connection || connection.processId !== parsed.data.processId) return notFound();
+
   await prisma.stepConnection.delete({ where: { id: parsed.data.connectionId } });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
@@ -562,6 +628,12 @@ export async function updateStepPosition(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  const existingStep = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
+  if (!existingStep || existingStep.processId !== parsed.data.processId) return notFound();
+
   const step = await prisma.processStep.update({
     where: { id: parsed.data.stepId },
     data: { positionX: parsed.data.positionX, positionY: parsed.data.positionY },
@@ -585,6 +657,14 @@ export async function createActivity(
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  if (parsed.data.relatedStepId) {
+    const relatedStep = await prisma.processStep.findUnique({ where: { id: parsed.data.relatedStepId } });
+    if (!relatedStep || relatedStep.processId !== parsed.data.processId) return notFound();
+  }
 
   const count = await prisma.activity.count({ where: { processId: parsed.data.processId } });
 

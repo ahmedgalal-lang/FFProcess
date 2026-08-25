@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
-import { CreateProcessForm, CloneProcessButton } from "./process-forms";
+import { CreateProcessForm, CloneProcessButton, EditProcessButton, ArchiveProcessButton } from "./process-forms";
 import { GenerateTemplateForm } from "./template-form";
 
 export default async function ProcessesPage(props: PageProps<"/workspaces/[workspaceId]/processes">) {
@@ -137,6 +137,18 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                 </td>
                 <td className="px-4 py-2 text-right">
                   <div className="flex items-center justify-end gap-3">
+                    <EditProcessButton
+                      workspaceId={workspaceId}
+                      process={{
+                        id: p.id,
+                        name: p.name,
+                        description: p.description ?? "",
+                        categoryId: p.categoryId,
+                        parentProcessId: p.parentProcessId,
+                      }}
+                      processes={processes.map((proc) => ({ id: proc.id, code: proc.code, name: proc.name }))}
+                      categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+                    />
                     <CloneProcessButton
                       workspaceId={workspaceId}
                       sourceProcessId={p.id}
@@ -144,6 +156,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                       sourceParentProcessId={p.parentProcessId}
                       processes={processes.map((proc) => ({ id: proc.id, code: proc.code, name: proc.name }))}
                     />
+                    <ArchiveProcessButton workspaceId={workspaceId} processId={p.id} />
                     <Link
                       href={`/workspaces/${workspaceId}/processes/${p.id}/map`}
                       className="text-xs font-semibold text-slate-700 hover:text-slate-900"

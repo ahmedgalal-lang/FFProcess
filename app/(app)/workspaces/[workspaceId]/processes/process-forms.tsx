@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createProcess, cloneProcess } from "@/lib/actions/process";
+import { createProcess, cloneProcess, updateProcess, archiveProcess } from "@/lib/actions/process";
 import { createProcessCategory } from "@/lib/actions/process-category";
 
 type ProcessOption = { id: string; code: string; name: string };
@@ -293,5 +293,195 @@ export function CloneProcessButton({
         </div>
       </form>
     </div>
+  );
+}
+
+export function EditProcessButton({
+  workspaceId,
+  process,
+  processes,
+  categories,
+}: {
+  workspaceId: string;
+  process: { id: string; name: string; description: string; categoryId: string | null; parentProcessId: string | null };
+  processes: ProcessOption[];
+  categories: CategoryOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(process.name);
+  const [description, setDescription] = useState(process.description);
+  const [categoryId, setCategoryId] = useState(process.categoryId ?? "");
+  const [parentProcessId, setParentProcessId] = useState(process.parentProcessId ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setName(process.name);
+          setDescription(process.description);
+          setCategoryId(process.categoryId ?? "");
+          setParentProcessId(process.parentProcessId ?? "");
+          setError(null);
+          setOpen(true);
+        }}
+        className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+      >
+        Edit
+      </button>
+    );
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Edit ${process.name}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={() => setOpen(false)}
+    >
+      <form
+        className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          startTransition(async () => {
+            const result = await updateProcess({
+              workspaceId,
+              processId: process.id,
+              name,
+              description,
+              categoryId: categoryId || null,
+              parentProcessId: parentProcessId || null,
+            });
+            if (!result.ok) {
+              setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save") : result.error);
+              return;
+            }
+            setOpen(false);
+            router.refresh();
+          });
+        }}
+      >
+        <h2 className="text-sm font-semibold text-slate-900">Edit &ldquo;{process.name}&rdquo;</h2>
+        <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoFocus
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Description
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Category
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          >
+            <option value="">— none —</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Parent process
+          <select
+            value={parentProcessId}
+            onChange={(e) => setParentProcessId(e.target.value)}
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          >
+            <option value="">— top-level —</option>
+            {processes
+              .filter((p) => p.id !== process.id)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.code} — {p.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            disabled={pending}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export function ArchiveProcessButton({ workspaceId, processId }: { workspaceId: string; processId: string }) {
+  const [confirming, setConfirming] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  if (confirming) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="text-xs text-slate-500">Delete?</span>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              await archiveProcess({ workspaceId, processId });
+              router.refresh();
+            })
+          }
+          className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirming(false)}
+          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+        >
+          No
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setConfirming(true)}
+      className="text-xs font-semibold text-slate-500 hover:text-red-600"
+    >
+      Delete
+    </button>
   );
 }
