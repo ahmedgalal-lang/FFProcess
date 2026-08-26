@@ -1,26 +1,38 @@
-import { notFound } from "next/navigation";
+import { notFound as nextNotFound, redirect } from "next/navigation";
+import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { prisma } from "@/lib/db/client";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { buildAuthorityTableRows } from "@/lib/domain/authority-table";
 import {
   buildCombinedMatrixRows,
   deriveControlPoints,
+  deriveDocumentationGaps,
   deriveProcessOwnerRoleId,
   involvedRoleIds,
   describeRoleInvolvement,
 } from "@/lib/domain/process-report";
 import { ExportPreview, type ExportProcessData } from "./export-preview";
 
-export default async function ExportPreviewPage(
-  props: PageProps<"/workspaces/[workspaceId]/export/preview">
-) {
+/**
+ * The Export Report lives outside the (app) route group on purpose: it renders
+ * with no workspace sidebar and no app header, so what's on screen is exactly
+ * what prints. That means it can't inherit (app)'s auth, so it runs its own
+ * requireWorkspaceAccess check here.
+ */
+export default async function ReportPage(props: PageProps<"/reports/[workspaceId]">) {
   const { workspaceId } = await props.params;
   const searchParams = await props.searchParams;
   const idsRaw = searchParams["ids"];
   const processIds = (Array.isArray(idsRaw) ? idsRaw : idsRaw ? [idsRaw] : []).filter(Boolean);
 
+  const access = await requireWorkspaceAccess(workspaceId, "VIEWER");
+  if (!access.ok) {
+    if (access.error === "UNAUTHORIZED") redirect("/login");
+    nextNotFound();
+  }
+
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
-  if (!workspace) notFound();
+  if (!workspace) nextNotFound();
 
   const [people, roles, processes] = await Promise.all([
     prisma.person.findMany({
@@ -83,18 +95,27 @@ export default async function ExportPreviewPage(
         .filter((r) => combinedRows.some((row) => row.raciAssignments[r.id]))
         .map((r) => r.id);
       const involved = involvedRoleIds(combinedRows);
+      const kpis = process.kpis as unknown as { metric: string; target: string; frequency: string }[];
+      const externalEntities = process.externalEntities as unknown as { name: string; description: string }[];
 
       return {
         id: process.id,
         code: process.code,
         name: process.name,
         description: process.description,
+        processPurpose: process.processPurpose,
+        inScope: process.inScope,
+        outOfScope: process.outOfScope,
+        externalEntities,
+        kpis,
         steps: steps.map((s) => ({
           id: s.id,
           type: s.type,
           label: s.label,
           positionX: s.positionX,
           positionY: s.positionY,
+          detailedAction: s.detailedAction,
+          exceptionHandling: s.exceptionHandling,
           assignedRole: s.assignedRole ? { id: s.assignedRole.id, name: s.assignedRole.name } : null,
           swimlaneRole: s.swimlaneRole ? { id: s.swimlaneRole.id, name: s.swimlaneRole.name } : null,
           links: s.links.map((l) => ({
@@ -129,6 +150,14 @@ export default async function ExportPreviewPage(
         processOwnerName: ownerRoleId ? (roleNameById.get(ownerRoleId) ?? null) : null,
         triggerLabel: steps.find((s) => s.type === "START")?.label ?? null,
         outputLabel: steps.find((s) => s.type === "END")?.label ?? null,
+        gaps: deriveDocumentationGaps({
+          processPurpose: process.processPurpose,
+          inScope: process.inScope,
+          outOfScope: process.outOfScope,
+          externalEntities,
+          steps: steps.map((s) => ({ detailedAction: s.detailedAction, exceptionHandling: s.exceptionHandling })),
+          kpis,
+        }),
       };
     })
   );
@@ -139,6 +168,7 @@ export default async function ExportPreviewPage(
       companyName={workspace.name}
       industry={workspace.industry}
       description={workspace.description}
+      accentSecondary={workspace.accentColorSecondary}
       people={people.map((p) => ({
         id: p.id,
         name: p.name,

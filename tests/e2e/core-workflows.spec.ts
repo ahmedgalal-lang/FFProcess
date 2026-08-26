@@ -68,23 +68,27 @@ test.describe("Core workflows", () => {
     await expect(revisePORow).toContainText("3 days");
   });
 
-  test("Export Report picker and preview show company info, org chart, and a per-process documentation report", async ({
-    page,
-  }) => {
+  test("Export Report renders as a clean, chrome-free, read-only document", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
     await expect(page.locator("h1")).toHaveText("Export Report");
     await expect(page.locator("tr", { hasText: "PUR101" })).toBeVisible();
 
     await page.click('button:has-text("Preview report")');
-    await page.waitForURL("**/export/preview**");
+    await page.waitForURL("**/reports/**");
 
     await expect(page.locator("h1")).toHaveText("Acme Industrial");
     await expect(page.getByText("Org Structure")).toBeVisible();
-    await expect(page.getByText("Purchase-to-Pay")).toBeVisible();
     await expect(page.getByText("Business Process Documentation & Procedure Standard").first()).toBeVisible();
-    await expect(page.getByText("Process Purpose").first()).toBeVisible();
-    await expect(page.getByText("Process Trigger").first()).toBeVisible();
-    await expect(page.getByText("Involved Parties & Ecosystem").first()).toBeVisible();
+
+    // No app chrome: the workspace sidebar and top app header must not render here.
+    await expect(page.getByRole("link", { name: "Org Directory" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "All workspaces" })).toHaveCount(0);
+    await expect(page.getByText("FFProcess", { exact: true })).toHaveCount(0);
+
+    // Read-only: no AI-draft button, and no editable inputs anywhere in the report.
+    await expect(page.locator('button:has-text("Draft narrative with AI")')).toHaveCount(0);
+    await expect(page.locator("main textarea")).toHaveCount(0);
+    await expect(page.locator("main input")).toHaveCount(0);
 
     // RACI and Authority are combined into one matrix, with real seeded data.
     await expect(page.getByText("Delegated Authority & Limits").first()).toBeVisible();
@@ -94,11 +98,28 @@ test.describe("Core workflows", () => {
     await expect(page.getByText("Key Control Points").first()).toBeVisible();
     await expect(page.getByText(/no co-approver is assigned/).first()).toBeVisible();
 
-    // AI draft button is present and gracefully reports when ANTHROPIC_API_KEY isn't configured.
-    await page.locator('button:has-text("Draft narrative with AI")').first().click();
-    await expect(page.getByText(/isn't configured/i).first()).toBeVisible();
+    // Undocumented sections are skipped in the report, but named in a preview-only banner.
+    const banner = page.getByText(/Some sections are missing content/);
+    await expect(banner).toBeVisible();
+    await expect(page.getByText(/Process Purpose not written/).first()).toBeVisible();
 
     await expect(page.locator("button:has-text('Print / Save as PDF')")).toBeVisible();
+  });
+
+  test("Process Map is where the report's per-step and process-level documentation is written", async ({ page }) => {
+    const mapUrl = "/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/map";
+    await page.goto(mapUrl);
+
+    // Process-level documentation (Purpose, Scope, External Entities) lives here.
+    await expect(page.getByText("Process Documentation")).toBeVisible();
+    // Governance/KPIs live here too, not in the report.
+    await expect(page.getByText("Governance, Controls & Metrics")).toBeVisible();
+
+    // Per-step Detailed Action / Exception Handling are edited in the Steps List view.
+    await page.click('button:has-text("Steps List")');
+    await page.getByLabel("Edit Create Purchase Order").click();
+    await expect(page.getByLabel(/Detailed Action/)).toBeVisible();
+    await expect(page.getByLabel(/Exception Handling/)).toBeVisible();
   });
 
   test("Inviting a new member produces a working accept link that provisions an account", async ({ page, context }) => {

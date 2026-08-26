@@ -69,7 +69,7 @@ test.describe("Accessibility", () => {
   });
 
   test("Export Report preview has no automatically detectable violations", async ({ page }) => {
-    await page.goto("/workspaces/workspace-acme/export/preview?ids=7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8");
+    await page.goto("/reports/workspace-acme?ids=7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8");
     await page.waitForSelector("text=Authority Matrix");
 
     const results = await new AxeBuilder({ page }).include("main").analyze();

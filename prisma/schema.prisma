@@ -263,6 +263,17 @@ model Process {
   /// computeVisibleRoleIds in lib/domain/raci-table.ts).
   raciVisibleRoleIds String[] @default([])
 
+  /// Process-level documentation feeding the Export Report — edited on the
+  /// Process Map page (not in the report itself, which is read-only), so the
+  /// report never has to show an empty editable field.
+  processPurpose   String?
+  inScope          String[] @default([])
+  outOfScope       String[] @default([])
+  /// { name, description }[] — external parties involved in this process.
+  externalEntities Json     @default("[]")
+  /// { metric, target, frequency }[] — operational KPIs/SLAs for this process.
+  kpis             Json     @default("[]")
+
   workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   category      ProcessCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   parentProcess Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
@@ -321,6 +332,12 @@ model ProcessStep {
   positionY      Float    @default(0)
   raciSkipped    Boolean  @default(false)
   reviewNotes    String?
+
+  /// This step's procedure for the Export Report — edited inline in the
+  /// Process Map's Steps List view, one action per line; the report just
+  /// displays it read-only.
+  detailedAction    String[] @default([])
+  exceptionHandling String?
 
   process      Process @relation(fields: [processId], references: [id], onDelete: Cascade)
   assignedRole Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])

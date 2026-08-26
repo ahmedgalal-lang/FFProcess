@@ -13,8 +13,9 @@ export default async function ExportPickerPage(props: PageProps<"/workspaces/[wo
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="text-xl font-semibold text-slate-900">Export Report</h1>
       <p className="mt-1 mb-5 text-sm text-slate-500">
-        Pick which processes to include. The report opens as a preview you can print or save as a PDF — company
-        name, a summary, the org structure, then each process&rsquo;s map, RACI matrix, and Authority Matrix.
+        Pick which processes to include. The report opens as a clean, printable document — company name, a summary,
+        the org structure, then each process&rsquo;s documentation. Its content comes from each process&rsquo;s
+        Process Map page; anything not filled in there is left out of the report.
       </p>
 
       {processes.length === 0 ? (
@@ -22,7 +23,7 @@ export default async function ExportPickerPage(props: PageProps<"/workspaces/[wo
           No processes yet in {workspace.name}.
         </p>
       ) : (
-        <form action={`/workspaces/${workspaceId}/export/preview`} method="GET">
+        <form action={`/reports/${workspaceId}`} method="GET">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">

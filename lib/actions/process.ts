@@ -284,6 +284,85 @@ export async function updateProcess(
   return ok({ id: updated.id });
 }
 
+const externalEntitySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().min(1).max(500),
+});
+
+const updateProcessScopeSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  processPurpose: z.string().trim().max(2000).optional().or(z.literal("")),
+  inScope: z.array(z.string().trim().min(1).max(200)).max(50),
+  outOfScope: z.array(z.string().trim().min(1).max(200)).max(50),
+  externalEntities: z.array(externalEntitySchema).max(50),
+});
+
+/**
+ * Saves this process's documentation feeding the Export Report — Process
+ * Purpose, In/Out-of-Scope, and External Entities — edited here on the
+ * Process Map page rather than in the report itself, which is read-only.
+ */
+export async function updateProcessScope(
+  input: z.infer<typeof updateProcessScopeSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateProcessScopeSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  const updated = await prisma.process.update({
+    where: { id: parsed.data.processId },
+    data: {
+      processPurpose: parsed.data.processPurpose || null,
+      inScope: parsed.data.inScope,
+      outOfScope: parsed.data.outOfScope,
+      externalEntities: parsed.data.externalEntities,
+    },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ id: updated.id });
+}
+
+const kpiSchema = z.object({
+  metric: z.string().trim().min(1).max(120),
+  target: z.string().trim().min(1).max(120),
+  frequency: z.string().trim().min(1).max(120),
+});
+
+const updateProcessKpisSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  kpis: z.array(kpiSchema).max(50),
+});
+
+/** Saves this process's operational KPIs/SLAs — edited on the Process Map page, displayed read-only in the Export Report. */
+export async function updateProcessKpis(
+  input: z.infer<typeof updateProcessKpisSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateProcessKpisSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  const updated = await prisma.process.update({
+    where: { id: parsed.data.processId },
+    data: { kpis: parsed.data.kpis },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ id: updated.id });
+}
+
 const archiveProcessSchema = z.object({
   workspaceId: z.string().min(1),
   processId: z.string().min(1),
@@ -478,9 +557,16 @@ const updateStepSchema = z.object({
   label: z.string().trim().min(1).max(200),
   assignedRoleId: z.string().min(1).optional().or(z.literal("")),
   swimlaneRoleId: z.string().min(1).optional().or(z.literal("")),
+  detailedAction: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
+  exceptionHandling: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
-/** Edits an existing step's name, type, and assigned/swimlane role. */
+/**
+ * Edits an existing step's name, type, assigned/swimlane role, and its
+ * Export Report documentation (Detailed Action, one entry per line, and
+ * Exception Handling) — the report reads these fields directly rather than
+ * offering its own editing UI, so this is their only home.
+ */
 export async function updateProcessStep(
   input: z.infer<typeof updateStepSchema>
 ): Promise<ActionResult<{ id: string }>> {
@@ -503,6 +589,10 @@ export async function updateProcessStep(
       label: parsed.data.label,
       assignedRoleId: parsed.data.assignedRoleId || null,
       swimlaneRoleId: parsed.data.swimlaneRoleId || null,
+      ...(parsed.data.detailedAction !== undefined ? { detailedAction: parsed.data.detailedAction } : {}),
+      ...(parsed.data.exceptionHandling !== undefined
+        ? { exceptionHandling: parsed.data.exceptionHandling || null }
+        : {}),
     },
   });
 

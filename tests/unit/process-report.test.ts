@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   buildCombinedMatrixRows,
   deriveControlPoints,
-  buildProcessReportPrompt,
   involvedRoleIds,
   describeRoleInvolvement,
   deriveProcessOwnerRoleId,
+  deriveDocumentationGaps,
   type CombinedMatrixRow,
 } from "@/lib/domain/process-report";
 
@@ -197,34 +197,56 @@ describe("deriveProcessOwnerRoleId", () => {
   });
 });
 
-describe("buildProcessReportPrompt", () => {
-  it("includes the process identity and task rows", () => {
-    const prompt = buildProcessReportPrompt({
-      workspaceName: "Acme Industrial",
-      workspaceIndustry: "Manufacturing",
-      processCode: "PUR101",
-      processName: "Purchase-to-Pay",
-      processDescription: null,
-      rows: [
-        { rowId: "a1", label: "Create PO", raciSummary: "AP Clerk=RESPONSIBLE", authoritySummary: "up to $10,000 — AP Clerk" },
-      ],
-    });
-    expect(prompt).toContain("PUR101");
-    expect(prompt).toContain("Purchase-to-Pay");
-    expect(prompt).toContain("Create PO");
-    expect(prompt).toContain("up to $10,000 — AP Clerk");
+describe("deriveDocumentationGaps", () => {
+  const full = {
+    processPurpose: "Standardizes purchasing.",
+    inScope: ["Raising a PO"],
+    outOfScope: ["Vendor onboarding"],
+    externalEntities: [{ name: "Vendor", description: "Supplies goods." }],
+    steps: [{ detailedAction: ["Open the form"], exceptionHandling: "Escalate." }],
+    kpis: [{ metric: "Cycle time", target: "3 days", frequency: "Monthly" }],
+  };
+
+  it("reports no gaps for a fully documented process", () => {
+    expect(deriveDocumentationGaps(full)).toEqual([]);
   });
 
-  it("handles a process with no task rows", () => {
-    const prompt = buildProcessReportPrompt({
-      workspaceName: "Acme Industrial",
-      workspaceIndustry: null,
-      processCode: "PUR101",
-      processName: "Purchase-to-Pay",
-      processDescription: null,
-      rows: [],
+  it("flags a missing Process Purpose, including a blank one", () => {
+    expect(deriveDocumentationGaps({ ...full, processPurpose: null })).toContain("Process Purpose not written");
+    expect(deriveDocumentationGaps({ ...full, processPurpose: "   " })).toContain("Process Purpose not written");
+  });
+
+  it("flags scope only when both In-Scope and Out-of-Scope are empty", () => {
+    expect(deriveDocumentationGaps({ ...full, inScope: [], outOfScope: [] })).toContain(
+      "Scope (In-Scope / Out-of-Scope) not documented"
+    );
+    expect(deriveDocumentationGaps({ ...full, inScope: [] })).not.toContain(
+      "Scope (In-Scope / Out-of-Scope) not documented"
+    );
+  });
+
+  it("flags missing external entities and KPIs", () => {
+    expect(deriveDocumentationGaps({ ...full, externalEntities: [] })).toContain("No External Entities documented");
+    expect(deriveDocumentationGaps({ ...full, kpis: [] })).toContain("No KPIs added");
+  });
+
+  it("counts steps missing both Detailed Action and Exception Handling", () => {
+    const gaps = deriveDocumentationGaps({
+      ...full,
+      steps: [
+        { detailedAction: ["Open the form"], exceptionHandling: null },
+        { detailedAction: [], exceptionHandling: null },
+        { detailedAction: [], exceptionHandling: "   " },
+      ],
     });
-    expect(prompt).toContain("No tasks yet.");
-    expect(prompt).toContain("Industry / sector: not specified");
+    expect(gaps).toContain("2 of 3 step(s) missing Detailed Action / Exception Handling");
+  });
+
+  it("treats a step with only Exception Handling as documented", () => {
+    const gaps = deriveDocumentationGaps({
+      ...full,
+      steps: [{ detailedAction: [], exceptionHandling: "Escalate to the manager." }],
+    });
+    expect(gaps.some((g) => g.includes("step(s) missing"))).toBe(false);
   });
 });

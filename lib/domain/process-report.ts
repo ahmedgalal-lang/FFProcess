@@ -2,10 +2,8 @@
  * Builds the "process documentation" report structure: a single combined
  * RACI + Authority matrix per task (instead of two separate tables), the
  * governance Control Points derivable straight from real co-approval data,
- * and the prompt sent to Claude to draft the narrative sections a business
- * process document expects (purpose, scope, per-step detail, KPIs) that
- * FFProcess doesn't model as structured data. Pure and framework-free
- * (Constitution Principle III) — the AI call itself lives in lib/ai.
+ * and the list of what's still undocumented for a process. Pure and
+ * framework-free (Constitution Principle III).
  */
 
 import type { RaciCode, StepType } from "./raci-table";
@@ -181,42 +179,39 @@ export function deriveProcessOwnerRoleId(rows: CombinedMatrixRow[]): string | nu
   return topApprover?.[0] ?? null;
 }
 
-export type ProcessReportPromptContext = {
-  workspaceName: string;
-  workspaceIndustry: string | null;
-  processCode: string;
-  processName: string;
-  processDescription: string | null;
-  rows: {
-    rowId: string;
-    label: string;
-    raciSummary: string; // e.g. "AP Clerk=RESPONSIBLE, Finance Manager=ACCOUNTABLE"
-    authoritySummary: string | null; // e.g. "up to $10,000 — AP Clerk"
-  }[];
+export type DocumentationGapsInput = {
+  processPurpose: string | null;
+  inScope: string[];
+  outOfScope: string[];
+  externalEntities: { name: string; description: string }[];
+  steps: { detailedAction: string[]; exceptionHandling: string | null }[];
+  kpis: { metric: string; target: string; frequency: string }[];
 };
 
 /**
- * Renders the context into the user-turn text sent to Claude to draft the
- * narrative sections a formal process document needs. Kept as a pure string
- * builder (no network call) so its shape is unit-testable.
+ * What's still undocumented for this process's Export Report, in plain
+ * language — surfaced as a preview-only banner (never printed) so a
+ * consultant knows what to fill in before exporting, instead of the report
+ * silently omitting sections with no content.
  */
-export function buildProcessReportPrompt(context: ProcessReportPromptContext): string {
-  const lines: string[] = [];
+export function deriveDocumentationGaps(input: DocumentationGapsInput): string[] {
+  const gaps: string[] = [];
+  if (!input.processPurpose?.trim()) gaps.push("Process Purpose not written");
+  if (input.inScope.length === 0 && input.outOfScope.length === 0) {
+    gaps.push("Scope (In-Scope / Out-of-Scope) not documented");
+  }
+  if (input.externalEntities.length === 0) gaps.push("No External Entities documented");
 
-  lines.push(`# Process: ${context.processCode} — ${context.processName}`);
-  lines.push(`Workspace: ${context.workspaceName}`);
-  lines.push(`Industry / sector: ${context.workspaceIndustry ?? "not specified"}`);
-  if (context.processDescription) lines.push(`Description: ${context.processDescription}`);
-  lines.push("");
-
-  lines.push("## Task rows (id: label — RACI — Authority)");
-  if (context.rows.length === 0) {
-    lines.push("(No tasks yet.)");
-  } else {
-    for (const row of context.rows) {
-      lines.push(`- ${row.rowId}: ${row.label} — ${row.raciSummary} — ${row.authoritySummary ?? "no threshold set"}`);
-    }
+  const undocumentedSteps = input.steps.filter(
+    (s) => s.detailedAction.length === 0 && !s.exceptionHandling?.trim()
+  );
+  if (undocumentedSteps.length > 0) {
+    gaps.push(
+      `${undocumentedSteps.length} of ${input.steps.length} step(s) missing Detailed Action / Exception Handling`
+    );
   }
 
-  return lines.join("\n");
+  if (input.kpis.length === 0) gaps.push("No KPIs added");
+
+  return gaps;
 }

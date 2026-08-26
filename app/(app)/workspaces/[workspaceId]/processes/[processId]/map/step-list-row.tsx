@@ -32,6 +32,8 @@ type StepT = {
   label: string;
   assignedRole: RoleRef | null;
   reviewNotes: string | null;
+  detailedAction: string[];
+  exceptionHandling: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
@@ -67,6 +69,8 @@ export function StepListRow({
   const [roleId, setRoleId] = useState(step.assignedRole?.id ?? "");
   const [fromStepId, setFromStepId] = useState(predecessor?.id ?? "");
   const [connectionLabel, setConnectionLabel] = useState(incomingConnection?.label ?? "");
+  const [detailedAction, setDetailedAction] = useState(step.detailedAction.join("\n"));
+  const [exceptionHandling, setExceptionHandling] = useState(step.exceptionHandling ?? "");
 
   function startEditing() {
     setLabel(step.label);
@@ -74,6 +78,8 @@ export function StepListRow({
     setRoleId(step.assignedRole?.id ?? "");
     setFromStepId(predecessor?.id ?? "");
     setConnectionLabel(incomingConnection?.label ?? "");
+    setDetailedAction(step.detailedAction.join("\n"));
+    setExceptionHandling(step.exceptionHandling ?? "");
     setError(null);
     setEditing(true);
   }
@@ -89,6 +95,11 @@ export function StepListRow({
         label,
         assignedRoleId: roleId || undefined,
         swimlaneRoleId: roleId || undefined,
+        detailedAction: detailedAction
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+        exceptionHandling,
       });
       if (!result.ok) {
         setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Invalid step") : result.error);
@@ -203,6 +214,26 @@ export function StepListRow({
             />
           </Field>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Detailed Action (Export Report — one action per line)">
+            <textarea
+              value={detailedAction}
+              onChange={(e) => setDetailedAction(e.target.value)}
+              rows={2}
+              placeholder="One action per line"
+              className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+          </Field>
+          <Field label="Exception Handling (Export Report)">
+            <textarea
+              value={exceptionHandling}
+              onChange={(e) => setExceptionHandling(e.target.value)}
+              rows={2}
+              placeholder="What happens if this step doesn't go as planned"
+              className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+          </Field>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -243,6 +274,11 @@ export function StepListRow({
           {step.assignedRole && (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
               {step.assignedRole.name}
+            </span>
+          )}
+          {(step.detailedAction.length > 0 || step.exceptionHandling) && (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+              📄 Documented
             </span>
           )}
         </div>
