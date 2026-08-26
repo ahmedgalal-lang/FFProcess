@@ -44,14 +44,16 @@ export default async function WorkspaceLayout(
         {workspace.logoDataUrl && (
           // Sits in the margin next to every page's centered content — every
           // workspace page shares the same "mx-auto max-w-4xl" wrapper, so
-          // this gutter exists everywhere. Only wide enough to fit it without
-          // touching that content on narrower viewports, so it's hidden below
-          // the 2xl breakpoint rather than risk an overlap.
+          // this gutter exists everywhere, but its width grows with the
+          // viewport (sidebar width is fixed, content tops out at 896px).
+          // Small and close-in at xl (1280px, common laptop width — the
+          // gutter there is only ~80px) so it never touches that content,
+          // then grows once there's more room to spare at 2xl (1536px+).
           // eslint-disable-next-line @next/next/no-img-element -- user-uploaded data: URL, not an optimizable static asset
           <img
             src={workspace.logoDataUrl}
             alt=""
-            className="pointer-events-none absolute left-8 top-8 hidden h-28 w-28 object-contain 2xl:block"
+            className="pointer-events-none absolute left-4 top-8 hidden h-12 w-12 object-contain xl:block 2xl:left-8 2xl:h-28 2xl:w-28"
           />
         )}
         {props.children}
