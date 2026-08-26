@@ -1,8 +1,8 @@
 /**
  * AI-review data shaping: deterministic structural checks over a Process Map,
- * plus assembling the prompt sent to Claude. Pure and framework-free so the
+ * plus assembling the prompt sent to Gemini. Pure and framework-free so the
  * checks and prompt shape are unit-testable without the database or the
- * Anthropic SDK (Constitution Principle III).
+ * Gemini SDK (Constitution Principle III).
  */
 
 import type { RaciIssue } from "./raci-validation";
@@ -112,7 +112,7 @@ export type ProcessReviewContext = {
 };
 
 /**
- * Renders the full context into the user-turn text sent to Claude. Kept as a
+ * Renders the full context into the user-turn text sent to Gemini. Kept as a
  * pure string builder (no network call) so its shape is unit-testable.
  */
 export function buildProcessReviewPrompt(context: ProcessReviewContext): string {

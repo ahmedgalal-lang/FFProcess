@@ -1,5 +1,5 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI, Type, FunctionCallingConfigMode, type FunctionDeclaration } from "@google/genai";
 
 export type ProcessReportDraft = {
   processPurpose: string;
@@ -26,57 +26,57 @@ const SYSTEM_PROMPT =
   "the row's own rowId exactly as given so the caller can match your draft back to the right row. " +
   "Call submit_process_report_draft exactly once.";
 
-const DRAFT_TOOL: Anthropic.Tool = {
+const DRAFT_TOOL: FunctionDeclaration = {
   name: "submit_process_report_draft",
   description: "Submit the drafted narrative sections for this process's documentation report.",
-  input_schema: {
-    type: "object",
+  parameters: {
+    type: Type.OBJECT,
     properties: {
       processPurpose: {
-        type: "string",
+        type: Type.STRING,
         description: "2-4 sentence statement of why this process exists and what it standardizes.",
       },
       inScope: {
-        type: "array",
-        items: { type: "string" },
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
         description: "Short bullet phrases of what this process covers.",
       },
       outOfScope: {
-        type: "array",
-        items: { type: "string" },
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
         description: "Short bullet phrases of related activity this process explicitly does not cover.",
       },
       externalEntities: {
-        type: "array",
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
-            name: { type: "string" },
-            description: { type: "string", description: "One sentence on this entity's role in the process." },
+            name: { type: Type.STRING },
+            description: { type: Type.STRING, description: "One sentence on this entity's role in the process." },
           },
           required: ["name", "description"],
         },
       },
       steps: {
-        type: "array",
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
-            rowId: { type: "string", description: "Exact rowId from the task rows given in the prompt." },
-            detailedAction: { type: "array", items: { type: "string" }, description: "1-3 short numbered-step phrases." },
-            exceptionHandling: { type: "string", description: "One sentence." },
+            rowId: { type: Type.STRING, description: "Exact rowId from the task rows given in the prompt." },
+            detailedAction: { type: Type.ARRAY, items: { type: Type.STRING }, description: "1-3 short numbered-step phrases." },
+            exceptionHandling: { type: Type.STRING, description: "One sentence." },
           },
           required: ["rowId", "detailedAction", "exceptionHandling"],
         },
       },
       kpis: {
-        type: "array",
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
-            metric: { type: "string" },
-            target: { type: "string" },
-            frequency: { type: "string" },
+            metric: { type: Type.STRING },
+            target: { type: Type.STRING },
+            frequency: { type: Type.STRING },
           },
           required: ["metric", "target", "frequency"],
         },
@@ -89,10 +89,10 @@ const DRAFT_TOOL: Anthropic.Tool = {
 
 /**
  * Drafts the narrative sections of a process documentation report. Gracefully
- * no-ops when ANTHROPIC_API_KEY isn't configured, mirroring runProcessReview.
+ * no-ops when GEMINI_API_KEY isn't configured, mirroring runProcessReview.
  */
 export async function draftProcessReportNarrative(promptText: string): Promise<ProcessReportDraftOutcome> {
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  const apiKey = process.env["GEMINI_API_KEY"];
   if (!apiKey) {
     return {
       ok: false,
@@ -101,27 +101,30 @@ export async function draftProcessReportNarrative(promptText: string): Promise<P
     };
   }
 
-  const client = new Anthropic({ apiKey });
+  const client = new GoogleGenAI({ apiKey });
 
   try {
-    const response = await client.messages.create({
-      model: "claude-opus-5",
-      max_tokens: 4096,
-      thinking: { type: "disabled" },
-      system: SYSTEM_PROMPT,
-      tools: [DRAFT_TOOL],
-      tool_choice: { type: "tool", name: "submit_process_report_draft" },
-      messages: [{ role: "user", content: promptText }],
+    const response = await client.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: promptText,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        tools: [{ functionDeclarations: [DRAFT_TOOL] }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: FunctionCallingConfigMode.ANY,
+            allowedFunctionNames: ["submit_process_report_draft"],
+          },
+        },
+      },
     });
 
-    const toolUse = response.content.find(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-    );
-    if (!toolUse) {
-      return { ok: false, reason: "REQUEST_FAILED", message: "Claude did not return a structured draft." };
+    const call = response.functionCalls?.[0];
+    if (!call) {
+      return { ok: false, reason: "REQUEST_FAILED", message: "Gemini did not return a structured draft." };
     }
 
-    return { ok: true, data: toolUse.input as ProcessReportDraft };
+    return { ok: true, data: call.args as unknown as ProcessReportDraft };
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI drafting request failed.";
     return { ok: false, reason: "REQUEST_FAILED", message };

@@ -94,7 +94,7 @@ test.describe("Core workflows", () => {
     await expect(page.getByText("Key Control Points").first()).toBeVisible();
     await expect(page.getByText(/no co-approver is assigned/).first()).toBeVisible();
 
-    // AI draft button is present and gracefully reports when ANTHROPIC_API_KEY isn't configured.
+    // AI draft button is present and gracefully reports when GEMINI_API_KEY isn't configured.
     await page.locator('button:has-text("Draft narrative with AI")').first().click();
     await expect(page.getByText(/isn't configured/i).first()).toBeVisible();
 

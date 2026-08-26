@@ -30,7 +30,7 @@ const reviewProcessSchema = z.object({
 /**
  * Gathers a Process's Map, RACI matrix, and this Process's Authority Matrix
  * (plus the workspace's industry/background notes, for sector-aware
- * findings), asks Claude to review it end to end, and persists any genuinely
+ * findings), asks Gemini to review it end to end, and persists any genuinely
  * new findings as ReviewFinding rows scoped to this process. A finding the
  * user already dismissed on this process won't be re-created even if a later
  * run rediscovers the same issue; a finding already being tracked (open,

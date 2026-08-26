@@ -18,10 +18,10 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
     "@auth/prisma-adapter": "^2.11.3",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@google/genai": "^2.19.0",
     "@react-pdf/renderer": "^4.6.0",
     "@xyflow/react": "^12.11.2",
     "bcryptjs": "^3.0.3",

@@ -2,7 +2,7 @@
  * Builds the "process documentation" report structure: a single combined
  * RACI + Authority matrix per task (instead of two separate tables), the
  * governance Control Points derivable straight from real co-approval data,
- * and the prompt sent to Claude to draft the narrative sections a business
+ * and the prompt sent to Gemini to draft the narrative sections a business
  * process document expects (purpose, scope, per-step detail, KPIs) that
  * FFProcess doesn't model as structured data. Pure and framework-free
  * (Constitution Principle III) — the AI call itself lives in lib/ai.
@@ -196,7 +196,7 @@ export type ProcessReportPromptContext = {
 };
 
 /**
- * Renders the context into the user-turn text sent to Claude to draft the
+ * Renders the context into the user-turn text sent to Gemini to draft the
  * narrative sections a formal process document needs. Kept as a pure string
  * builder (no network call) so its shape is unit-testable.
  */

@@ -3,7 +3,7 @@
  * fresh AI result against what's already stored so a re-run doesn't
  * duplicate findings the user is already tracking, and doesn't resurrect
  * ones they've dismissed. Framework-free so it's unit-testable without the
- * database or the Anthropic SDK (Constitution Principle III).
+ * database or the Gemini SDK (Constitution Principle III).
  */
 
 import type {

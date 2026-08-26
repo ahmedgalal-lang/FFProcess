@@ -1,5 +1,5 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI, Type, FunctionCallingConfigMode, type FunctionDeclaration } from "@google/genai";
 
 export type ProcessReviewFinding = {
   category: "gap" | "risk";
@@ -31,27 +31,27 @@ const SYSTEM_PROMPT =
   "industry norm you're not reasonably confident about. Call submit_process_review exactly once with your " +
   "findings.";
 
-const REVIEW_TOOL: Anthropic.Tool = {
+const REVIEW_TOOL: FunctionDeclaration = {
   name: "submit_process_review",
   description: "Submit the structured end-to-end review findings for this business process.",
-  input_schema: {
-    type: "object",
+  parameters: {
+    type: Type.OBJECT,
     properties: {
       summary: {
-        type: "string",
+        type: Type.STRING,
         description: "2-4 sentence overview of the process's overall health.",
       },
       findings: {
-        type: "array",
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
-            category: { type: "string", enum: ["gap", "risk"] },
-            area: { type: "string", enum: ["process_map", "raci", "authority", "general"] },
-            severity: { type: "string", enum: ["high", "medium", "low"] },
-            title: { type: "string", description: "Short label, under 10 words." },
-            description: { type: "string", description: "What the issue is and where it shows up." },
-            recommendation: { type: "string", description: "A concrete next step to close the gap or mitigate the risk." },
+            category: { type: Type.STRING, enum: ["gap", "risk"] },
+            area: { type: Type.STRING, enum: ["process_map", "raci", "authority", "general"] },
+            severity: { type: Type.STRING, enum: ["high", "medium", "low"] },
+            title: { type: Type.STRING, description: "Short label, under 10 words." },
+            description: { type: Type.STRING, description: "What the issue is and where it shows up." },
+            recommendation: { type: Type.STRING, description: "A concrete next step to close the gap or mitigate the risk." },
           },
           required: ["category", "area", "severity", "title", "description", "recommendation"],
         },
@@ -63,11 +63,11 @@ const REVIEW_TOOL: Anthropic.Tool = {
 
 /**
  * Runs the AI end-to-end process review. Gracefully no-ops when
- * ANTHROPIC_API_KEY isn't configured (local dev, this sandbox), mirroring the
+ * GEMINI_API_KEY isn't configured (local dev, this sandbox), mirroring the
  * RESEND_API_KEY fallback pattern in lib/email/invitation.ts.
  */
 export async function runProcessReview(promptText: string): Promise<ProcessReviewOutcome> {
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  const apiKey = process.env["GEMINI_API_KEY"];
   if (!apiKey) {
     return {
       ok: false,
@@ -76,27 +76,30 @@ export async function runProcessReview(promptText: string): Promise<ProcessRevie
     };
   }
 
-  const client = new Anthropic({ apiKey });
+  const client = new GoogleGenAI({ apiKey });
 
   try {
-    const response = await client.messages.create({
-      model: "claude-opus-5",
-      max_tokens: 4096,
-      thinking: { type: "disabled" },
-      system: SYSTEM_PROMPT,
-      tools: [REVIEW_TOOL],
-      tool_choice: { type: "tool", name: "submit_process_review" },
-      messages: [{ role: "user", content: promptText }],
+    const response = await client.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: promptText,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        tools: [{ functionDeclarations: [REVIEW_TOOL] }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: FunctionCallingConfigMode.ANY,
+            allowedFunctionNames: ["submit_process_review"],
+          },
+        },
+      },
     });
 
-    const toolUse = response.content.find(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-    );
-    if (!toolUse) {
-      return { ok: false, reason: "REQUEST_FAILED", message: "Claude did not return structured findings." };
+    const call = response.functionCalls?.[0];
+    if (!call) {
+      return { ok: false, reason: "REQUEST_FAILED", message: "Gemini did not return structured findings." };
     }
 
-    return { ok: true, data: toolUse.input as ProcessReviewResult };
+    return { ok: true, data: call.args as unknown as ProcessReviewResult };
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI review request failed.";
     return { ok: false, reason: "REQUEST_FAILED", message };

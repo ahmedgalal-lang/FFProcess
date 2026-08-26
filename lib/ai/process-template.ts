@@ -1,5 +1,5 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI, Type, FunctionCallingConfigMode, type FunctionDeclaration } from "@google/genai";
 
 export type TemplateStep = {
   type: "START" | "TASK" | "DECISION" | "END";
@@ -32,22 +32,22 @@ const SYSTEM_PROMPT =
   "activities, favoring a clear industry-standard structure over exhaustive detail. Every RACI activity needs " +
   "exactly one Accountable role. Call submit_process_template exactly once.";
 
-const TEMPLATE_TOOL: Anthropic.Tool = {
+const TEMPLATE_TOOL: FunctionDeclaration = {
   name: "submit_process_template",
   description: "Submit a first-draft Process Map and RACI matrix for this business process.",
-  input_schema: {
-    type: "object",
+  parameters: {
+    type: Type.OBJECT,
     properties: {
-      processName: { type: "string", description: "A clear name for the process, e.g. \"Employee Onboarding\"." },
+      processName: { type: Type.STRING, description: "A clear name for the process, e.g. \"Employee Onboarding\"." },
       steps: {
-        type: "array",
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
-            type: { type: "string", enum: ["START", "TASK", "DECISION", "END"] },
-            label: { type: "string" },
+            type: { type: Type.STRING, enum: ["START", "TASK", "DECISION", "END"] },
+            label: { type: Type.STRING },
             roleName: {
-              type: "string",
+              type: Type.STRING,
               description: "Suggested role/title responsible for this step. Empty string if none obviously applies.",
             },
           },
@@ -55,18 +55,18 @@ const TEMPLATE_TOOL: Anthropic.Tool = {
         },
       },
       activities: {
-        type: "array",
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
-            name: { type: "string" },
+            name: { type: Type.STRING },
             assignments: {
-              type: "array",
+              type: Type.ARRAY,
               items: {
-                type: "object",
+                type: Type.OBJECT,
                 properties: {
-                  roleName: { type: "string" },
-                  code: { type: "string", enum: ["RESPONSIBLE", "ACCOUNTABLE", "CONSULTED", "INFORMED"] },
+                  roleName: { type: Type.STRING },
+                  code: { type: Type.STRING, enum: ["RESPONSIBLE", "ACCOUNTABLE", "CONSULTED", "INFORMED"] },
                 },
                 required: ["roleName", "code"],
               },
@@ -82,11 +82,11 @@ const TEMPLATE_TOOL: Anthropic.Tool = {
 
 /**
  * Drafts a best-practice Process Map + RACI matrix from a sector/context
- * description. Gracefully no-ops when ANTHROPIC_API_KEY isn't configured,
+ * description. Gracefully no-ops when GEMINI_API_KEY isn't configured,
  * mirroring the same fallback used by the AI Review feature.
  */
 export async function runProcessTemplateGeneration(promptText: string): Promise<ProcessTemplateOutcome> {
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  const apiKey = process.env["GEMINI_API_KEY"];
   if (!apiKey) {
     return {
       ok: false,
@@ -95,27 +95,30 @@ export async function runProcessTemplateGeneration(promptText: string): Promise<
     };
   }
 
-  const client = new Anthropic({ apiKey });
+  const client = new GoogleGenAI({ apiKey });
 
   try {
-    const response = await client.messages.create({
-      model: "claude-opus-5",
-      max_tokens: 4096,
-      thinking: { type: "disabled" },
-      system: SYSTEM_PROMPT,
-      tools: [TEMPLATE_TOOL],
-      tool_choice: { type: "tool", name: "submit_process_template" },
-      messages: [{ role: "user", content: promptText }],
+    const response = await client.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: promptText,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        tools: [{ functionDeclarations: [TEMPLATE_TOOL] }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: FunctionCallingConfigMode.ANY,
+            allowedFunctionNames: ["submit_process_template"],
+          },
+        },
+      },
     });
 
-    const toolUse = response.content.find(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-    );
-    if (!toolUse) {
-      return { ok: false, reason: "REQUEST_FAILED", message: "Claude did not return a structured draft." };
+    const call = response.functionCalls?.[0];
+    if (!call) {
+      return { ok: false, reason: "REQUEST_FAILED", message: "Gemini did not return a structured draft." };
     }
 
-    return { ok: true, data: toolUse.input as ProcessTemplateResult };
+    return { ok: true, data: call.args as unknown as ProcessTemplateResult };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Template generation request failed.";
     return { ok: false, reason: "REQUEST_FAILED", message };
