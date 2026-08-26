@@ -112,14 +112,25 @@ test.describe("Core workflows", () => {
 
     // Process-level documentation (Purpose, Scope, External Entities) lives here.
     await expect(page.getByText("Process Documentation")).toBeVisible();
-    // Governance/KPIs live here too, not in the report.
-    await expect(page.getByText("Governance, Controls & Metrics")).toBeVisible();
 
     // Per-step Detailed Action / Exception Handling are edited in the Steps List view.
     await page.click('button:has-text("Steps List")');
     await page.getByLabel("Edit Create Purchase Order").click();
     await expect(page.getByLabel(/Detailed Action/)).toBeVisible();
     await expect(page.getByLabel(/Exception Handling/)).toBeVisible();
+  });
+
+  test("Governance is a workspace page listing every process's control points and KPIs", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/governance");
+    await expect(page.locator("h1")).toHaveText("Governance, Controls & Metrics");
+
+    // One section per process, and the seeded co-approval gap surfaces here.
+    await expect(page.getByText("Purchase-to-Pay")).toBeVisible();
+    await expect(page.getByText("Sales Order Fulfillment")).toBeVisible();
+    await expect(page.getByText(/no co-approver is assigned/).first()).toBeVisible();
+
+    // KPIs are editable per process, from here rather than the Process Map.
+    await expect(page.getByLabel("Edit KPIs for Purchase-to-Pay")).toBeVisible();
   });
 
   test("Inviting a new member produces a working accept link that provisions an account", async ({ page, context }) => {

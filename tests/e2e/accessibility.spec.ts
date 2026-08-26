@@ -62,6 +62,13 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Governance page has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/governance");
+    await page.waitForSelector("text=Key Control Points");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("Export Report picker has no automatically detectable violations", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
     const results = await new AxeBuilder({ page }).include("main").analyze();

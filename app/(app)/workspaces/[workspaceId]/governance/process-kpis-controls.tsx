@@ -10,11 +10,15 @@ type ControlPoint = { rowId: string; statement: string; flagged: boolean };
 export function ProcessKpisControls({
   workspaceId,
   processId,
+  processCode,
+  processName,
   kpis,
   controlPoints,
 }: {
   workspaceId: string;
   processId: string;
+  processCode: string;
+  processName: string;
   kpis: Kpi[];
   controlPoints: ControlPoint[];
 }) {
@@ -46,9 +50,13 @@ export function ProcessKpisControls({
   }
 
   return (
-    <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
-      <div className="text-sm font-semibold text-slate-800">Governance, Controls &amp; Metrics</div>
-      <p className="mt-0.5 text-xs text-slate-500">Shown as the final step of the Export Report, after the Authority Matrix.</p>
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-baseline gap-2">
+        <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs font-bold text-slate-700">
+          {processCode}
+        </span>
+        <h2 className="text-sm font-semibold text-slate-900">{processName}</h2>
+      </div>
 
       <div className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Key Control Points</div>
       {controlPoints.length === 0 ? (
@@ -77,7 +85,7 @@ export function ProcessKpisControls({
               setError(null);
               setEditing(true);
             }}
-            aria-label="Edit KPIs"
+            aria-label={`Edit KPIs for ${processName}`}
             className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
             Edit
@@ -105,7 +113,7 @@ export function ProcessKpisControls({
                     <td className="px-2 py-1.5">
                       <input
                         value={item.metric}
-                        aria-label="Metric"
+                        aria-label={`Metric ${i + 1} for ${processName}`}
                         onChange={(e) => update(i, { metric: e.target.value })}
                         className="w-full rounded border border-slate-300 px-1.5 py-1"
                       />
@@ -113,7 +121,7 @@ export function ProcessKpisControls({
                     <td className="px-2 py-1.5">
                       <input
                         value={item.target}
-                        aria-label="Target"
+                        aria-label={`Target ${i + 1} for ${processName}`}
                         onChange={(e) => update(i, { target: e.target.value })}
                         className="w-full rounded border border-slate-300 px-1.5 py-1"
                       />
@@ -121,7 +129,7 @@ export function ProcessKpisControls({
                     <td className="px-2 py-1.5">
                       <input
                         value={item.frequency}
-                        aria-label="Frequency"
+                        aria-label={`Frequency ${i + 1} for ${processName}`}
                         onChange={(e) => update(i, { frequency: e.target.value })}
                         className="w-full rounded border border-slate-300 px-1.5 py-1"
                       />
