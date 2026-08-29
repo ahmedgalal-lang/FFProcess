@@ -9,7 +9,7 @@ import {
   deriveDocumentationGaps,
   deriveProcessOwnerRoleId,
   involvedRoleIds,
-  describeRoleInvolvement,
+  deriveRoleDuties,
 } from "@/lib/domain/process-report";
 import { ExportPreview, type ExportProcessData } from "./export-preview";
 
@@ -149,7 +149,7 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
         involvedRoles: involved.map((roleId) => ({
           id: roleId,
           name: roleNameById.get(roleId) ?? "Unknown",
-          involvement: describeRoleInvolvement(combinedRows, roleId),
+          duties: deriveRoleDuties(combinedRows, roleId).duties,
         })),
         controlPoints,
         processOwnerName: ownerRoleId ? (roleNameById.get(ownerRoleId) ?? null) : null,

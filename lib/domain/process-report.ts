@@ -134,29 +134,41 @@ export function involvedRoleIds(rows: CombinedMatrixRow[]): string[] {
   return [...ids];
 }
 
+/** One duty a Role can hold in a process, and the tasks it holds it for. */
+export type RoleDuty = {
+  key: "accountable" | "responsible" | "consulted" | "informed" | "approves" | "coApproves" | "escalationFor";
+  label: string;
+  tasks: string[];
+};
+
+export type RoleDuties = {
+  /** Only the duties this Role actually holds — an empty one is left out rather than rendered as "none". */
+  duties: RoleDuty[];
+};
+
+const DUTY_ORDER: { key: RoleDuty["key"]; label: string; pick: (r: CombinedMatrixRow, roleId: string) => boolean }[] = [
+  { key: "accountable", label: "Accountable", pick: (r, id) => r.raciAssignments[id] === "ACCOUNTABLE" },
+  { key: "responsible", label: "Responsible", pick: (r, id) => r.raciAssignments[id] === "RESPONSIBLE" },
+  { key: "consulted", label: "Consulted", pick: (r, id) => r.raciAssignments[id] === "CONSULTED" },
+  { key: "informed", label: "Informed", pick: (r, id) => r.raciAssignments[id] === "INFORMED" },
+  { key: "approves", label: "Approves", pick: (r, id) => r.approverRoleId === id },
+  { key: "coApproves", label: "Co-approves", pick: (r, id) => r.coApproverRoleId === id },
+  { key: "escalationFor", label: "Escalation point", pick: (r, id) => r.escalationRoleId === id },
+];
+
 /**
- * Describes one Role's involvement in this process mechanically from its
- * real RACI codes and Authority approvals — no AI needed, since this is a
- * straightforward summary of data already on hand.
+ * Breaks one Role's involvement into its separate duties, each with the tasks
+ * it covers — the Export Report groups these under the Role rather than
+ * running them together into a single sentence, which became unreadable once
+ * a real process had more than a handful of tasks.
  */
-export function describeRoleInvolvement(rows: CombinedMatrixRow[], roleId: string): string {
-  const accountableFor = rows.filter((r) => r.raciAssignments[roleId] === "ACCOUNTABLE").map((r) => r.label);
-  const responsibleFor = rows.filter((r) => r.raciAssignments[roleId] === "RESPONSIBLE").map((r) => r.label);
-  const consultedOn = rows.filter((r) => r.raciAssignments[roleId] === "CONSULTED").map((r) => r.label);
-  const approves = rows.filter((r) => r.approverRoleId === roleId).map((r) => r.label);
-  const coApproves = rows.filter((r) => r.coApproverRoleId === roleId).map((r) => r.label);
-  const escalations = rows.filter((r) => r.escalationRoleId === roleId).map((r) => r.label);
-
-  const parts: string[] = [];
-  if (accountableFor.length > 0) parts.push(`Accountable for ${accountableFor.join(", ")}`);
-  if (responsibleFor.length > 0) parts.push(`Responsible for ${responsibleFor.join(", ")}`);
-  if (consultedOn.length > 0) parts.push(`consulted on ${consultedOn.join(", ")}`);
-  if (approves.length > 0) parts.push(`approves ${approves.join(", ")}`);
-  if (coApproves.length > 0) parts.push(`co-approves ${coApproves.join(", ")}`);
-  if (escalations.length > 0) parts.push(`is the escalation point for ${escalations.join(", ")}`);
-
-  if (parts.length === 0) return "Involved in this process.";
-  return `${parts[0]![0]!.toUpperCase()}${parts[0]!.slice(1)}${parts.length > 1 ? "; " + parts.slice(1).join("; ") : ""}.`;
+export function deriveRoleDuties(rows: CombinedMatrixRow[], roleId: string): RoleDuties {
+  const duties: RoleDuty[] = [];
+  for (const { key, label, pick } of DUTY_ORDER) {
+    const tasks = rows.filter((r) => pick(r, roleId)).map((r) => r.label);
+    if (tasks.length > 0) duties.push({ key, label, tasks });
+  }
+  return { duties };
 }
 
 /**

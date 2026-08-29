@@ -47,7 +47,11 @@ export type ExportProcessData = {
     coApproverLabel: string | null;
     escalationLabel: string | null;
   }[];
-  involvedRoles: { id: string; name: string; involvement: string }[];
+  involvedRoles: {
+    id: string;
+    name: string;
+    duties: { key: string; label: string; tasks: string[] }[];
+  }[];
   controlPoints: { rowId: string; statement: string; flagged: boolean }[];
   processOwnerName: string | null;
   triggerLabel: string | null;
@@ -234,13 +238,11 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
           {process.involvedRoles.length > 0 && (
             <>
               <SubHeading>Internal Roles</SubHeading>
-              <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-                {process.involvedRoles.map((r) => (
-                  <li key={r.id}>
-                    <strong className="text-slate-900">{r.name}</strong> — {r.involvement}
-                  </li>
+              <div className="flex flex-col gap-2.5">
+                {process.involvedRoles.map((role) => (
+                  <RoleCard key={role.id} name={role.name} duties={role.duties} />
                 ))}
-              </ul>
+              </div>
             </>
           )}
           {process.externalEntities.length > 0 && (
@@ -430,6 +432,57 @@ function MetaField({ label, value, mono }: { label: string; value: string; mono?
     <div>
       <dt className="text-slate-500">{label}</dt>
       <dd className={`font-semibold text-slate-900 ${mono ? "font-mono" : ""}`}>{value}</dd>
+    </div>
+  );
+}
+
+/** Tone per duty, so Accountable reads as the heaviest and Informed the lightest. */
+const DUTY_TONE: Record<string, { chip: string; label: string }> = {
+  accountable: { chip: "bg-amber-50 text-amber-700", label: "text-amber-700" },
+  responsible: { chip: "bg-blue-50 text-blue-700", label: "text-blue-700" },
+  consulted: { chip: "bg-emerald-50 text-emerald-700", label: "text-emerald-700" },
+  informed: { chip: "bg-slate-100 text-slate-600", label: "text-slate-600" },
+  approves: { chip: "bg-indigo-50 text-indigo-700", label: "text-indigo-700" },
+  coApproves: { chip: "bg-indigo-50 text-indigo-700", label: "text-indigo-700" },
+  escalationFor: { chip: "bg-rose-50 text-rose-700", label: "text-rose-700" },
+};
+
+const DEFAULT_TONE = { chip: "bg-slate-100 text-slate-600", label: "text-slate-600" };
+
+/**
+ * One Role's duties, grouped and labelled instead of run together into a
+ * sentence — a real process has enough tasks that the sentence form became a
+ * paragraph nobody could scan.
+ */
+function RoleCard({ name, duties }: { name: string; duties: { key: string; label: string; tasks: string[] }[] }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 break-inside-avoid">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3.5 py-2">
+        <span className="text-sm font-bold text-slate-900">{name}</span>
+        <span className="ml-auto flex flex-wrap gap-1.5">
+          {duties.map((duty) => (
+            <span
+              key={duty.key}
+              className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${(DUTY_TONE[duty.key] ?? DEFAULT_TONE).chip}`}
+            >
+              {duty.tasks.length} {duty.label}
+            </span>
+          ))}
+        </span>
+      </div>
+      {duties.map((duty) => (
+        <div
+          key={duty.key}
+          className="grid grid-cols-[110px_1fr] gap-2.5 border-t border-slate-100 px-3.5 py-2 first:border-t-0"
+        >
+          <span
+            className={`pt-0.5 text-[10px] font-bold uppercase tracking-wide ${(DUTY_TONE[duty.key] ?? DEFAULT_TONE).label}`}
+          >
+            {duty.label}
+          </span>
+          <span className="text-xs text-slate-700">{duty.tasks.join(" · ")}</span>
+        </div>
+      ))}
     </div>
   );
 }

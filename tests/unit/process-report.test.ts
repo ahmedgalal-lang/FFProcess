@@ -3,7 +3,7 @@ import {
   buildCombinedMatrixRows,
   deriveControlPoints,
   involvedRoleIds,
-  describeRoleInvolvement,
+  deriveRoleDuties,
   deriveProcessOwnerRoleId,
   deriveDocumentationGaps,
   type CombinedMatrixRow,
@@ -178,18 +178,45 @@ describe("involvedRoleIds", () => {
   });
 });
 
-describe("describeRoleInvolvement", () => {
-  it("describes a role that is Accountable and approves a task", () => {
+describe("deriveRoleDuties", () => {
+  it("groups a role's tasks under each duty it actually holds", () => {
     const rows = [
       row({ rowId: "r1", label: "Approve PO", raciAssignments: { fm: "ACCOUNTABLE" }, approverRoleId: "fm" }),
+      row({ rowId: "r2", label: "Create PO", raciAssignments: { fm: "RESPONSIBLE" } }),
     ];
-    const description = describeRoleInvolvement(rows, "fm");
-    expect(description).toContain("Accountable for Approve PO");
-    expect(description).toContain("approves Approve PO");
+    const { duties } = deriveRoleDuties(rows, "fm");
+    expect(duties.map((d) => d.key)).toEqual(["accountable", "responsible", "approves"]);
+    expect(duties.find((d) => d.key === "accountable")!.tasks).toEqual(["Approve PO"]);
+    expect(duties.find((d) => d.key === "responsible")!.tasks).toEqual(["Create PO"]);
+    expect(duties.find((d) => d.key === "approves")!.tasks).toEqual(["Approve PO"]);
   });
 
-  it("falls back to a generic sentence for a role with no matching data", () => {
-    expect(describeRoleInvolvement([row({})], "nobody")).toBe("Involved in this process.");
+  it("leaves out duties the role does not hold, rather than listing them as empty", () => {
+    const rows = [row({ rowId: "r1", label: "Approve PO", raciAssignments: { fm: "CONSULTED" } })];
+    const { duties } = deriveRoleDuties(rows, "fm");
+    expect(duties.map((d) => d.key)).toEqual(["consulted"]);
+  });
+
+  it("returns no duties at all for a role with nothing in this process", () => {
+    expect(deriveRoleDuties([row({})], "nobody").duties).toEqual([]);
+  });
+
+  it("covers co-approval and escalation, not just RACI codes", () => {
+    const rows = [
+      row({ rowId: "r1", label: "Approve Payment", coApproverRoleId: "ctrl", escalationRoleId: "ctrl" }),
+    ];
+    const { duties } = deriveRoleDuties(rows, "ctrl");
+    expect(duties.map((d) => d.key)).toEqual(["coApproves", "escalationFor"]);
+    expect(duties.find((d) => d.key === "escalationFor")!.label).toBe("Escalation point");
+  });
+
+  it("orders duties by weight — Accountable first, Informed after Consulted", () => {
+    const rows = [
+      row({ rowId: "r1", label: "A", raciAssignments: { x: "INFORMED" } }),
+      row({ rowId: "r2", label: "B", raciAssignments: { x: "ACCOUNTABLE" } }),
+      row({ rowId: "r3", label: "C", raciAssignments: { x: "CONSULTED" } }),
+    ];
+    expect(deriveRoleDuties(rows, "x").duties.map((d) => d.key)).toEqual(["accountable", "consulted", "informed"]);
   });
 });
 
