@@ -117,7 +117,7 @@ test.describe("Core workflows", () => {
     await expect(page.locator("main input")).toHaveCount(0);
 
     // RACI and Authority are combined into one matrix, with real seeded data.
-    await expect(page.getByText("Delegated Authority & Limits").first()).toBeVisible();
+    await expect(page.getByText("SLA & Threshold Exception").first()).toBeVisible();
     await expect(page.locator("tr", { hasText: "Create Purchase Order" }).filter({ hasText: "$10,000" })).toHaveCount(1);
 
     // Key Control Points, derived from real co-approval data, surface a real gap in the seed.

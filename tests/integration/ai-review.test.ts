@@ -32,9 +32,9 @@ describe("reviewProcessWithAI", () => {
     await fixture.cleanup();
   });
 
-  // ANTHROPIC_API_KEY is never set in the test environment, so this exercises
+  // GEMINI_API_KEY is never set in the test environment, so this exercises
   // the same graceful no-op path used when a deployment hasn't configured it.
-  it("returns AI_UNAVAILABLE instead of calling the API when ANTHROPIC_API_KEY isn't configured", async () => {
+  it("returns AI_UNAVAILABLE instead of calling the API when GEMINI_API_KEY isn't configured", async () => {
     const result = await reviewProcessWithAI({ workspaceId: fixture.workspace.id, processId });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBe("AI_UNAVAILABLE");

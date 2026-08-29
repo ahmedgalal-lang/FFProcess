@@ -268,7 +268,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                       {r.name}
                     </th>
                   ))}
-                  <th className="px-3 py-2">Delegated Authority &amp; Limits</th>
+                  <th className="px-3 py-2">SLA &amp; Threshold Exception</th>
                 </tr>
               </thead>
               <tbody>

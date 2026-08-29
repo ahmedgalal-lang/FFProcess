@@ -25,9 +25,9 @@ describe("generateProcessTemplateDraft", () => {
     await fixture.cleanup();
   });
 
-  // ANTHROPIC_API_KEY is never set in the test environment — same no-op path
+  // GEMINI_API_KEY is never set in the test environment — same no-op path
   // exercised by the AI Review feature's own tests.
-  it("returns AI_UNAVAILABLE instead of calling the API when ANTHROPIC_API_KEY isn't configured", async () => {
+  it("returns AI_UNAVAILABLE instead of calling the API when GEMINI_API_KEY isn't configured", async () => {
     const result = await generateProcessTemplateDraft({
       workspaceId: fixture.workspace.id,
       processName: "Employee Onboarding",

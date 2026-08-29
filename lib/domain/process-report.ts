@@ -84,7 +84,7 @@ export function buildCombinedMatrixRows(
 }
 
 /**
- * The one-line "Delegated Authority & Limits" cell for the Export Report's
+ * The one-line "SLA & Threshold Exception" cell for the Export Report's
  * combined matrix — SLA, amount and direction, approver, co-approval and
  * escalation, in the same order the Authority Matrix shows them.
  */
