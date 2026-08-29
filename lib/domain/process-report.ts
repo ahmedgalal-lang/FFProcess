@@ -7,7 +7,7 @@
  */
 
 import type { RaciCode, StepType } from "./raci-table";
-import { formatMoney, formatSla, requiresApproval, type AuthorityDirection } from "./authority-table";
+import { formatMoney, type AuthorityDirection } from "./authority-table";
 
 export type CombinedMatrixRow = {
   rowId: string;
@@ -82,50 +82,6 @@ export function buildCombinedMatrixRows(
     })
     .filter((row) => !row.skipped);
 }
-
-/**
- * The one-line "SLA & Threshold Exception" cell for the Export Report's
- * combined matrix — SLA, amount and direction, approver, co-approval and
- * escalation, in the same order the Authority Matrix shows them.
- */
-export function describeCombinedAuthority(
-  row: CombinedMatrixRow,
-  names: { approver: string | null; coApprover: string | null; escalation: string | null }
-): string {
-  const parts: string[] = [];
-  if (row.slaDays !== null) parts.push(`SLA ${formatSla(row.slaDays)}`);
-
-  if (!requiresApproval(row.direction)) {
-    parts.push("no approval required");
-    return parts.join(" · ");
-  }
-
-  const phrase = DIRECTION_PHRASES[row.direction];
-  if (row.threshold !== null) {
-    parts.push(names.approver ? `${phrase} ${formatMoney(row.threshold)} → ${names.approver}` : `${phrase} ${formatMoney(row.threshold)}`);
-  } else if (names.approver) {
-    parts.push(names.approver);
-  }
-
-  if (row.coApprovalAboveThreshold !== null) {
-    const coAmount = formatMoney(row.coApprovalAboveThreshold);
-    parts.push(
-      names.coApprover ? `co-approval from ${names.coApprover} above ${coAmount}` : `co-approval above ${coAmount} (unassigned)`
-    );
-  }
-
-  if (names.escalation) parts.push(`escalates to ${names.escalation}`);
-
-  return parts.length > 0 ? parts.join(" · ") : "—";
-}
-
-const DIRECTION_PHRASES: Record<AuthorityDirection, string> = {
-  GREATER_THAN: "more than",
-  GREATER_OR_EQUAL: "at or above",
-  LESS_THAN: "below",
-  LESS_OR_EQUAL: "at or below",
-  EQUAL_NO_APPROVAL: "no approval required",
-};
 
 export type ControlPoint = {
   rowId: string;

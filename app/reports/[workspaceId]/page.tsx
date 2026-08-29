@@ -2,13 +2,12 @@ import { notFound as nextNotFound, redirect } from "next/navigation";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { prisma } from "@/lib/db/client";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
-import { buildAuthorityTableRows } from "@/lib/domain/authority-table";
+import { buildAuthorityTableRows, DIRECTION_LABELS, requiresApproval } from "@/lib/domain/authority-table";
 import {
   buildCombinedMatrixRows,
   deriveControlPoints,
   deriveDocumentationGaps,
   deriveProcessOwnerRoleId,
-  describeCombinedAuthority,
   involvedRoleIds,
   describeRoleInvolvement,
 } from "@/lib/domain/process-report";
@@ -137,17 +136,15 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
             : row.approverPersonId
               ? (personNameById.get(row.approverPersonId) ?? null)
               : null,
-          // The authority cell's wording lives in the domain layer so the
-          // report and the Authority Matrix describe a rule identically.
-          authorityText: describeCombinedAuthority(row, {
-            approver: row.approverRoleId
-              ? (roleNameById.get(row.approverRoleId) ?? null)
-              : row.approverPersonId
-                ? (personNameById.get(row.approverPersonId) ?? null)
-                : null,
-            coApprover: row.coApproverRoleId ? (roleNameById.get(row.coApproverRoleId) ?? null) : null,
-            escalation: row.escalationRoleId ? (roleNameById.get(row.escalationRoleId) ?? null) : null,
-          }),
+          // Carried as separate fields, not one blob, so the report's matrix
+          // breaks a rule into the same columns the Authority Matrix does.
+          slaDays: row.slaDays,
+          threshold: row.threshold,
+          directionLabel: DIRECTION_LABELS[row.direction].label,
+          requiresApproval: requiresApproval(row.direction),
+          coApprovalAboveThreshold: row.coApprovalAboveThreshold,
+          coApproverLabel: row.coApproverRoleId ? (roleNameById.get(row.coApproverRoleId) ?? null) : null,
+          escalationLabel: row.escalationRoleId ? (roleNameById.get(row.escalationRoleId) ?? null) : null,
         })),
         involvedRoles: involved.map((roleId) => ({
           id: roleId,

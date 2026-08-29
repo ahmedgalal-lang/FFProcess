@@ -39,7 +39,13 @@ export type ExportProcessData = {
     stepType: StepType | null;
     raci: Record<string, RaciCode>;
     approverLabel: string | null;
-    authorityText: string;
+    slaDays: number | null;
+    threshold: number | null;
+    directionLabel: string;
+    requiresApproval: boolean;
+    coApprovalAboveThreshold: number | null;
+    coApproverLabel: string | null;
+    escalationLabel: string | null;
   }[];
   involvedRoles: { id: string; name: string; involvement: string }[];
   controlPoints: { rowId: string; statement: string; flagged: boolean }[];
@@ -268,7 +274,12 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                       {r.name}
                     </th>
                   ))}
-                  <th className="px-3 py-2">SLA &amp; Threshold Exception</th>
+                  <th className="px-3 py-2 text-center">SLA</th>
+                  <th className="px-3 py-2 text-center">Amount</th>
+                  <th className="px-3 py-2 text-center">Direction</th>
+                  <th className="px-3 py-2 text-center">Approval</th>
+                  <th className="px-3 py-2 text-center">Co-approval</th>
+                  <th className="px-3 py-2 text-center">Escalation</th>
                 </tr>
               </thead>
               <tbody>
@@ -283,9 +294,27 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2 text-xs text-slate-600">
-                      {row.authorityText}
+                    <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
+                      {row.slaDays === null ? "—" : `${row.slaDays} day${row.slaDays === 1 ? "" : "s"}`}
                     </td>
+                    <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
+                      {row.threshold === null ? "—" : `$${row.threshold.toLocaleString()}`}
+                    </td>
+                    <td className="px-3 py-2 text-center text-xs text-slate-600">{row.directionLabel}</td>
+                    <td className="px-3 py-2 text-center text-xs text-slate-600">{row.approverLabel ?? "—"}</td>
+                    <td className="px-3 py-2 text-center text-xs text-slate-600">
+                      {row.coApprovalAboveThreshold === null ? (
+                        "—"
+                      ) : (
+                        <span className="flex flex-col leading-tight">
+                          <span>{row.coApproverLabel ?? "not set"}</span>
+                          <span className="font-mono text-[10px] text-slate-500">
+                            above ${row.coApprovalAboveThreshold.toLocaleString()}
+                          </span>
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center text-xs text-slate-600">{row.escalationLabel ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
