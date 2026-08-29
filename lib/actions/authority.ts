@@ -34,18 +34,25 @@ const rowRefSchema = z.object({
 
 const saveAuthorityRowSchema = rowRefSchema
   .extend({
-    unit: z.enum(["MONEY", "DAYS"]),
+    slaDays: z.number().int().nonnegative().max(3650).nullable(),
     threshold: z.number().nonnegative().nullable(),
+    direction: z.enum(["GREATER_THAN", "GREATER_OR_EQUAL", "LESS_THAN", "LESS_OR_EQUAL", "EQUAL_NO_APPROVAL"]),
     approverRoleId: z.string().min(1).nullable(),
     approverPersonId: z.string().min(1).nullable(),
     coApprovalAboveThreshold: z.number().nonnegative().nullable(),
     coApproverRoleId: z.string().min(1).nullable(),
+    escalationRoleId: z.string().min(1).nullable(),
   })
   .refine((v) => !(v.approverRoleId && v.approverPersonId), {
     message: "Choose a Role or a Person as approver, not both",
   });
 
-/** Creates or updates a row's Authority data — threshold, approver, and optional co-approval tier. */
+/**
+ * Creates or updates a row's Authority data — SLA, amount, direction,
+ * approver, optional co-approval tier, and escalation. A row set to
+ * EQUAL_NO_APPROVAL has no approval gate, so everything except the SLA is
+ * cleared rather than persisted as stale values behind a dimmed row.
+ */
 export async function saveAuthorityRow(
   input: z.infer<typeof saveAuthorityRowSchema>
 ): Promise<ActionResult<{ id: string }>> {
@@ -75,14 +82,21 @@ export async function saveAuthorityRow(
     const role = await prisma.role.findUnique({ where: { id: parsed.data.coApproverRoleId } });
     if (!role || role.workspaceId !== workspaceId) return notFound();
   }
+  if (parsed.data.escalationRoleId) {
+    const role = await prisma.role.findUnique({ where: { id: parsed.data.escalationRoleId } });
+    if (!role || role.workspaceId !== workspaceId) return notFound();
+  }
 
+  const noGate = parsed.data.direction === "EQUAL_NO_APPROVAL";
   const data = {
-    unit: parsed.data.unit,
-    threshold: parsed.data.threshold,
-    approverRoleId: parsed.data.approverRoleId,
-    approverPersonId: parsed.data.approverPersonId,
-    coApprovalAboveThreshold: parsed.data.coApprovalAboveThreshold,
-    coApproverRoleId: parsed.data.coApproverRoleId,
+    slaDays: parsed.data.slaDays,
+    direction: parsed.data.direction,
+    threshold: noGate ? null : parsed.data.threshold,
+    approverRoleId: noGate ? null : parsed.data.approverRoleId,
+    approverPersonId: noGate ? null : parsed.data.approverPersonId,
+    coApprovalAboveThreshold: noGate ? null : parsed.data.coApprovalAboveThreshold,
+    coApproverRoleId: noGate ? null : parsed.data.coApproverRoleId,
+    escalationRoleId: noGate ? null : parsed.data.escalationRoleId,
   };
 
   const where = row.activityId ? { activityId: row.activityId } : { stepId: row.stepId! };

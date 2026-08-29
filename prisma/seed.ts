@@ -284,9 +284,10 @@ async function main() {
   });
 
   // Authority Matrix — per-task rows on PUR101, same tasks as the RACI table above.
-  // Mixes every state the table can show: skipped, money-based, days-based, an
-  // untouched empty row (sendVendor), and a deliberately incomplete co-approval
-  // (approvePayment) to demonstrate validateAuthorityTable's MISSING_CO_APPROVER.
+  // Mixes every state the table can show: skipped, an SLA-only row with no
+  // approval gate, amounts with each direction, an untouched empty row
+  // (sendVendor), and a deliberately incomplete co-approval (approvePayment) to
+  // demonstrate validateAuthorityTable's MISSING_CO_APPROVER.
   const authorityByStep: Record<
     string,
     { skipped?: boolean }
@@ -301,16 +302,16 @@ async function main() {
       create: { processId: p2p.id, stepId: stepIds[key], skipped: data.skipped ?? false },
     });
   }
-  // revisePO has no linked Activity, so it's a step-scoped row (days-based).
+  // revisePO has no linked Activity, so it's a step-scoped row. It carries a
+  // turnaround SLA but no approval gate — the "Equal — no approval" state.
   await prisma.authorityAssignment.upsert({
     where: { stepId: stepIds.revisePO },
     update: {},
     create: {
       processId: p2p.id,
       stepId: stepIds.revisePO,
-      unit: "DAYS",
-      threshold: 3,
-      approverRoleId: roles["AP Clerk"],
+      slaDays: 3,
+      direction: "EQUAL_NO_APPROVAL",
     },
   });
 
@@ -318,24 +319,41 @@ async function main() {
     string,
     {
       skipped?: boolean;
+      slaDays?: number;
       threshold?: number;
+      direction?: "GREATER_THAN" | "GREATER_OR_EQUAL" | "LESS_THAN" | "LESS_OR_EQUAL" | "EQUAL_NO_APPROVAL";
       approverRoleId?: string;
       coApprovalAboveThreshold?: number;
       coApproverRoleId?: string;
+      escalationRoleId?: string;
     }
   > = {
-    createPO: { threshold: 10000, approverRoleId: roles["AP Clerk"] },
+    createPO: {
+      slaDays: 2,
+      threshold: 10000,
+      approverRoleId: roles["AP Clerk"],
+      escalationRoleId: roles["Procurement Lead"],
+    },
     approvePO: {
+      slaDays: 3,
       threshold: 100000,
+      direction: "GREATER_OR_EQUAL",
       approverRoleId: roles["Finance Manager"],
       coApprovalAboveThreshold: 50000,
       coApproverRoleId: roles.Controller,
+      escalationRoleId: roles.Controller,
     },
     receiveGoods: { skipped: true },
-    matchInvoice: { threshold: 20000, approverRoleId: roles["Finance Manager"] },
+    matchInvoice: { slaDays: 2, threshold: 20000, approverRoleId: roles["Finance Manager"] },
     // Deliberately incomplete: a co-approval threshold with no co-approver assigned yet.
-    approvePayment: { threshold: 100000, approverRoleId: roles.Controller, coApprovalAboveThreshold: 50000 },
-    payVendor: { threshold: 100000, approverRoleId: roles["Finance Manager"] },
+    approvePayment: {
+      slaDays: 5,
+      threshold: 100000,
+      approverRoleId: roles.Controller,
+      coApprovalAboveThreshold: 50000,
+      escalationRoleId: roles["Finance Manager"],
+    },
+    payVendor: { slaDays: 1, threshold: 100000, approverRoleId: roles["Finance Manager"] },
   };
   for (const [key, data] of Object.entries(authorityByActivity)) {
     const activityId = `activity-${p2p.id}-${key}`;
@@ -346,10 +364,13 @@ async function main() {
         processId: p2p.id,
         activityId,
         skipped: data.skipped ?? false,
+        slaDays: data.slaDays,
         threshold: data.threshold,
+        direction: data.direction ?? "GREATER_THAN",
         approverRoleId: data.approverRoleId,
         coApprovalAboveThreshold: data.coApprovalAboveThreshold,
         coApproverRoleId: data.coApproverRoleId,
+        escalationRoleId: data.escalationRoleId,
       },
     });
   }

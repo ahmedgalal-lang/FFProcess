@@ -58,11 +58,13 @@ export async function buildAuthorityWorkbook(params: {
   rows: {
     id: string;
     label: string;
-    unit: "MONEY" | "DAYS";
+    slaDays: number | null;
     threshold: number | null;
+    directionLabel: string;
     approverLabel: string | null;
     coApprovalAboveThreshold: number | null;
     coApproverLabel: string | null;
+    escalationLabel: string | null;
   }[];
 }): Promise<Buffer> {
   const { workspaceName, processCode, processName, rows } = params;
@@ -74,29 +76,42 @@ export async function buildAuthorityWorkbook(params: {
   sheet.addRow([`${workspaceName} · ${processCode} · ${processName}`]);
   sheet.addRow([]);
 
-  const headerRow = sheet.addRow(["Task", "Threshold", "Approver", "Co-Approval Above", "Co-Approver"]);
+  const headerRow = sheet.addRow([
+    "Task",
+    "SLA (days)",
+    "Amount",
+    "Direction",
+    "Approver",
+    "Co-Approval Above",
+    "Co-Approver",
+    "Escalation",
+  ]);
   headerRow.font = { bold: true };
   headerRow.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
   });
 
   for (const r of rows) {
-    const thresholdLabel =
-      r.threshold === null ? "" : r.unit === "MONEY" ? r.threshold : `${r.threshold} day${r.threshold === 1 ? "" : "s"}`;
-    const coLabel =
-      r.coApprovalAboveThreshold === null
-        ? ""
-        : r.unit === "MONEY"
-          ? r.coApprovalAboveThreshold
-          : `${r.coApprovalAboveThreshold} day${r.coApprovalAboveThreshold === 1 ? "" : "s"}`;
-    sheet.addRow([r.label, thresholdLabel, r.approverLabel ?? "", coLabel, r.coApproverLabel ?? ""]);
+    sheet.addRow([
+      r.label,
+      r.slaDays ?? "",
+      r.threshold ?? "",
+      r.directionLabel,
+      r.approverLabel ?? "",
+      r.coApprovalAboveThreshold ?? "",
+      r.coApproverLabel ?? "",
+      r.escalationLabel ?? "",
+    ]);
   }
 
   sheet.getColumn(1).width = 34;
-  sheet.getColumn(2).width = 16;
-  sheet.getColumn(3).width = 22;
+  sheet.getColumn(2).width = 11;
+  sheet.getColumn(3).width = 14;
   sheet.getColumn(4).width = 18;
   sheet.getColumn(5).width = 22;
+  sheet.getColumn(6).width = 18;
+  sheet.getColumn(7).width = 22;
+  sheet.getColumn(8).width = 22;
   sheet.getRow(1).font = { bold: true, size: 13 };
 
   const buffer = await workbook.xlsx.writeBuffer();

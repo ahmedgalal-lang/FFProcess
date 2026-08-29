@@ -36,11 +36,13 @@ const styles = StyleSheet.create({
 export type AuthorityPdfRow = {
   id: string;
   label: string;
-  unit: "MONEY" | "DAYS";
+  slaDays: number | null;
   threshold: number | null;
+  directionLabel: string;
   approverLabel: string | null;
   coApprovalAboveThreshold: number | null;
   coApproverLabel: string | null;
+  escalationLabel: string | null;
 };
 
 export type AuthorityPdfProps = {
@@ -52,9 +54,9 @@ export type AuthorityPdfProps = {
   generatedFor: string;
 };
 
-function formatThreshold(unit: "MONEY" | "DAYS", value: number | null): string {
+function formatMoneyCell(value: number | null): string {
   if (value === null) return "—";
-  return unit === "MONEY" ? `$${value.toLocaleString("en-US")}` : `${value} day${value === 1 ? "" : "s"}`;
+  return `$${value.toLocaleString("en-US")}`;
 }
 
 export function AuthorityPdfDocument({
@@ -87,20 +89,26 @@ export function AuthorityPdfDocument({
         <View style={styles.table}>
           <View style={[styles.row, styles.headerRow]}>
             <Text style={styles.taskCell}>Task</Text>
-            <Text style={styles.headerCell}>Threshold</Text>
+            <Text style={styles.headerCell}>SLA</Text>
+            <Text style={styles.headerCell}>Amount</Text>
+            <Text style={styles.headerCell}>Direction</Text>
             <Text style={styles.headerCell}>Approver</Text>
             <Text style={styles.headerCell}>Co-approval</Text>
+            <Text style={styles.headerCell}>Escalation</Text>
           </View>
           {rows.map((r) => (
             <View key={r.id} style={styles.row}>
               <Text style={styles.taskCell}>{r.label}</Text>
-              <Text style={styles.cell}>{formatThreshold(r.unit, r.threshold)}</Text>
+              <Text style={styles.cell}>{r.slaDays === null ? "—" : `${r.slaDays} day${r.slaDays === 1 ? "" : "s"}`}</Text>
+              <Text style={styles.cell}>{formatMoneyCell(r.threshold)}</Text>
+              <Text style={styles.cell}>{r.directionLabel}</Text>
               <Text style={styles.cell}>{r.approverLabel ?? "—"}</Text>
               <Text style={styles.cell}>
                 {r.coApproverLabel
-                  ? `${r.coApproverLabel} above ${formatThreshold(r.unit, r.coApprovalAboveThreshold)}`
+                  ? `${r.coApproverLabel} above ${formatMoneyCell(r.coApprovalAboveThreshold)}`
                   : "—"}
               </Text>
+              <Text style={styles.cell}>{r.escalationLabel ?? "—"}</Text>
             </View>
           ))}
         </View>

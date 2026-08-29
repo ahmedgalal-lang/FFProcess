@@ -4,7 +4,6 @@ import Link from "next/link";
 import { OrgChartCanvas } from "../../(app)/workspaces/[workspaceId]/org/chart/org-chart-canvas";
 import { StaticProcessMapDiagram } from "../../(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram";
 import type { RaciCode, StepType } from "@/lib/domain/raci-table";
-import type { AuthorityUnit } from "@/lib/domain/authority-table";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
@@ -39,11 +38,8 @@ export type ExportProcessData = {
     label: string;
     stepType: StepType | null;
     raci: Record<string, RaciCode>;
-    unit: AuthorityUnit;
-    threshold: number | null;
     approverLabel: string | null;
-    coApprovalAboveThreshold: number | null;
-    coApproverLabel: string | null;
+    authorityText: string;
   }[];
   involvedRoles: { id: string; name: string; involvement: string }[];
   controlPoints: { rowId: string; statement: string; flagged: boolean }[];
@@ -59,11 +55,6 @@ const CODE_LETTER: Record<RaciCode, string> = {
   CONSULTED: "C",
   INFORMED: "I",
 };
-
-function formatThreshold(unit: AuthorityUnit, value: number | null): string {
-  if (value === null) return "—";
-  return unit === "MONEY" ? `$${value.toLocaleString()}` : `${value} day${value === 1 ? "" : "s"}`;
-}
 
 export function ExportPreview({
   workspaceId,
@@ -293,19 +284,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                       );
                     })}
                     <td className="px-3 py-2 text-xs text-slate-600">
-                      {row.approverLabel ? (
-                        <>
-                          {formatThreshold(row.unit, row.threshold)} — {row.approverLabel}
-                          {row.coApproverLabel && row.coApprovalAboveThreshold !== null && (
-                            <>
-                              ; co-approval from {row.coApproverLabel} above{" "}
-                              {formatThreshold(row.unit, row.coApprovalAboveThreshold)}
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        "—"
-                      )}
+                      {row.authorityText}
                     </td>
                   </tr>
                 ))}

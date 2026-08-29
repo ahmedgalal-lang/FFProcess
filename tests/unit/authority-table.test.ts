@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   buildAuthorityTableRows,
   validateAuthorityTable,
+  describeAuthorityRule,
+  requiresApproval,
   type TableStep,
   type TableActivity,
   type AuthorityAssignmentData,
@@ -12,12 +14,14 @@ function assignment(overrides: Partial<AuthorityAssignmentData>): AuthorityAssig
     activityId: null,
     stepId: null,
     skipped: false,
-    unit: "MONEY",
+    slaDays: null,
     threshold: null,
+    direction: "GREATER_THAN",
     approverRoleId: null,
     approverPersonId: null,
     coApprovalAboveThreshold: null,
     coApproverRoleId: null,
+    escalationRoleId: null,
     ...overrides,
   };
 }
@@ -34,12 +38,14 @@ describe("buildAuthorityTableRows", () => {
         stepType: "TASK",
         label: "Create PO",
         skipped: false,
-        unit: "MONEY",
+        slaDays: null,
         threshold: null,
+        direction: "GREATER_THAN",
         approverRoleId: null,
         approverPersonId: null,
         coApprovalAboveThreshold: null,
         coApproverRoleId: null,
+        escalationRoleId: null,
       },
     ]);
   });
@@ -47,7 +53,7 @@ describe("buildAuthorityTableRows", () => {
   it("merges a step-scoped assignment into that step's row by stepId", () => {
     const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Create PO" }];
     const assignments = [
-      assignment({ stepId: "s1", unit: "MONEY", threshold: 5000, approverRoleId: "r1" }),
+      assignment({ stepId: "s1", threshold: 5000, approverRoleId: "r1" }),
     ];
     const rows = buildAuthorityTableRows(steps, [], assignments);
     expect(rows[0]).toMatchObject({ threshold: 5000, approverRoleId: "r1" });
@@ -58,7 +64,7 @@ describe("buildAuthorityTableRows", () => {
     const activities: TableActivity[] = [
       { id: "a1", name: "Create Purchase Order", relatedStepId: "s1", order: 0 },
     ];
-    const assignments = [assignment({ activityId: "a1", unit: "DAYS", threshold: 3, approverPersonId: "p1" })];
+    const assignments = [assignment({ activityId: "a1", slaDays: 3, threshold: 5000, approverPersonId: "p1" })];
     const rows = buildAuthorityTableRows(steps, activities, assignments);
     expect(rows).toEqual([
       {
@@ -68,12 +74,14 @@ describe("buildAuthorityTableRows", () => {
         stepType: "TASK",
         label: "Create Purchase Order",
         skipped: false,
-        unit: "DAYS",
-        threshold: 3,
+        slaDays: 3,
+        threshold: 5000,
+        direction: "GREATER_THAN",
         approverRoleId: null,
         approverPersonId: "p1",
         coApprovalAboveThreshold: null,
         coApproverRoleId: null,
+        escalationRoleId: null,
       },
     ]);
   });
@@ -119,12 +127,14 @@ function row(overrides: Partial<AuthorityAssignmentData> = {}) {
     stepType: null,
     label: "Row",
     skipped: a.skipped,
-    unit: a.unit,
+    slaDays: a.slaDays,
     threshold: a.threshold,
+    direction: a.direction,
     approverRoleId: a.approverRoleId,
     approverPersonId: a.approverPersonId,
     coApprovalAboveThreshold: a.coApprovalAboveThreshold,
     coApproverRoleId: a.coApproverRoleId,
+    escalationRoleId: a.escalationRoleId,
   };
 }
 
@@ -164,5 +174,71 @@ describe("validateAuthorityTable", () => {
       { rowId: "r1", type: "MISSING_APPROVER" },
       { rowId: "r1", type: "MISSING_CO_APPROVER" },
     ]);
+  });
+});
+
+describe("requiresApproval", () => {
+  it("is false only for EQUAL_NO_APPROVAL", () => {
+    expect(requiresApproval("GREATER_THAN")).toBe(true);
+    expect(requiresApproval("GREATER_OR_EQUAL")).toBe(true);
+    expect(requiresApproval("LESS_THAN")).toBe(true);
+    expect(requiresApproval("LESS_OR_EQUAL")).toBe(true);
+    expect(requiresApproval("EQUAL_NO_APPROVAL")).toBe(false);
+  });
+});
+
+describe("validateAuthorityTable — no-approval rows", () => {
+  it("does not demand an approver for a row marked as needing no approval", () => {
+    expect(validateAuthorityTable([row({ direction: "EQUAL_NO_APPROVAL" })])).toEqual([]);
+  });
+});
+
+const NO_NAMES = { approver: null, coApprover: null, escalation: null };
+
+describe("describeAuthorityRule", () => {
+  it("states a plain money rule with its approver and SLA", () => {
+    const sentence = describeAuthorityRule(row({ slaDays: 2, threshold: 10000, approverRoleId: "r1" }), {
+      ...NO_NAMES,
+      approver: "AP Clerk",
+    });
+    expect(sentence).toBe("More than $10,000 needs approval from AP Clerk, within 2 days.");
+  });
+
+  it("uses the wording of the chosen direction", () => {
+    const sentence = describeAuthorityRule(
+      row({ threshold: 100000, direction: "GREATER_OR_EQUAL", approverRoleId: "r1" }),
+      { ...NO_NAMES, approver: "Finance Manager" }
+    );
+    expect(sentence).toBe("At or above $100,000 needs approval from Finance Manager.");
+  });
+
+  it("says a no-approval row proceeds on its own, keeping any SLA", () => {
+    expect(describeAuthorityRule(row({ direction: "EQUAL_NO_APPROVAL", slaDays: 1 }), NO_NAMES)).toBe(
+      "No approval required — this step proceeds on its own. Turnaround expectation: within 1 day."
+    );
+  });
+
+  it("adds the co-approval tier when one is set", () => {
+    const sentence = describeAuthorityRule(
+      row({ threshold: 100000, approverRoleId: "r1", coApprovalAboveThreshold: 50000, coApproverRoleId: "r2" }),
+      { ...NO_NAMES, approver: "Finance Manager", coApprover: "Controller" }
+    );
+    expect(sentence).toContain("A second sign-off from Controller is required above $50,000.");
+  });
+
+  it("calls out an unassigned co-approver rather than implying the control works", () => {
+    const sentence = describeAuthorityRule(
+      row({ threshold: 100000, approverRoleId: "r1", coApprovalAboveThreshold: 50000 }),
+      { ...NO_NAMES, approver: "Controller" }
+    );
+    expect(sentence).toContain("no co-approver is assigned");
+  });
+
+  it("ties escalation to the SLA when both are set", () => {
+    const sentence = describeAuthorityRule(
+      row({ slaDays: 5, threshold: 100000, approverRoleId: "r1", escalationRoleId: "r3" }),
+      { ...NO_NAMES, approver: "Controller", escalation: "CFO" }
+    );
+    expect(sentence).toContain("If 5 days pass with no decision, it escalates to CFO.");
   });
 });

@@ -51,21 +51,47 @@ test.describe("Core workflows", () => {
     await expect(page.locator('button:has-text("Mark Final")')).toBeDisabled();
   });
 
-  test("Authority Matrix shows seeded thresholds and co-approval, and flags an incomplete row", async ({ page }) => {
+  test("Authority Matrix shows SLA, amount, direction, approval, co-approval and escalation per task", async ({
+    page,
+  }) => {
     await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
     await expect(page.locator("h1")).toHaveText("Authority Matrix");
 
-    const createPORow = page.locator("tr", { hasText: "Create Purchase Order" });
+    // Columns read in the order a rule plays out.
+    const headers = await page.locator("thead th").allInnerTexts();
+    expect(headers.map((h) => h.trim().toUpperCase())).toEqual([
+      "TASK",
+      "SLA",
+      "AMOUNT",
+      "DIRECTION",
+      "APPROVAL",
+      "CO-APPROVAL",
+      "ESCALATION",
+      "ACTIONS",
+    ]);
+
+    const createPORow = page.locator("tr", { hasText: "Create Purchase Order" }).first();
+    await expect(createPORow).toContainText("2 days");
     await expect(createPORow).toContainText("$10,000");
+    await expect(createPORow).toContainText("More than");
     await expect(createPORow).toContainText("AP Clerk");
+    await expect(createPORow).toContainText("Procurement Lead"); // escalation
 
-    const approvePORow = page.locator("tr", { hasText: "Approve Purchase Order" });
+    // Each row states its rule as a sentence, built from the same data.
+    await expect(
+      page.getByText("More than $10,000 needs approval from AP Clerk, within 2 days.", { exact: false })
+    ).toBeVisible();
+
+    // "At or above" is a distinct direction from "More than".
+    const approvePORow = page.locator("tr", { hasText: "Approve Purchase Order" }).first();
+    await expect(approvePORow).toContainText("At or above");
     await expect(approvePORow).toContainText("$100,000");
-    await expect(approvePORow).toContainText("Finance Manager");
-    await expect(approvePORow).toContainText("Controller");
 
-    const revisePORow = page.locator("tr", { hasText: "Revise Purchase Order" });
+    // A task with no approval gate is marked as such and dimmed.
+    const revisePORow = page.locator("tr", { hasText: "Revise Purchase Order" }).first();
     await expect(revisePORow).toContainText("3 days");
+    await expect(revisePORow).toContainText("Equal — no approval");
+    await expect(page.getByText(/No approval required — this step proceeds on its own/)).toBeVisible();
   });
 
   test("Export Report renders as a clean, chrome-free, read-only document", async ({ page }) => {

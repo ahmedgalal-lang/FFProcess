@@ -67,8 +67,8 @@ export default async function AuthorityMatrixPage(
       </div>
       <h1 className="text-xl font-semibold text-slate-900">Authority Matrix</h1>
       <p className="mt-1 mb-4 text-sm text-slate-500">
-        Who can approve each task, up to what threshold, and who co-approves above it — set in money or days per
-        task.
+        How long each task may take, the amount its rule turns on, which side of that amount needs approval, and who
+        signs, co-signs, or picks it up when it stalls.
       </p>
 
       <ProcessStepper workspaceId={workspaceId} processId={processId} {...stepperCounts} />

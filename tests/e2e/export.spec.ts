@@ -37,7 +37,7 @@ test.describe("Export", () => {
 
   test("Authority PDF and Excel downloads return well-formed files", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
-    await page.waitForSelector("text=Co-approval above");
+    await page.waitForSelector("text=Escalation");
 
     const pdfHref = await page.locator('a:has-text("Export PDF")').first().getAttribute("href");
     const pdfResponse = await page.request.get(pdfHref!);

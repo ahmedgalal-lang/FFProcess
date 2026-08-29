@@ -114,11 +114,14 @@ describe("buildProcessReviewPrompt", () => {
           rowId: "a1",
           label: "Approve invoice",
           skipped: false,
-          unit: "MONEY",
+          slaDays: 2,
           threshold: 5000,
+          directionLabel: "More than",
+          requiresApproval: true,
           approverLabel: "Manager",
           coApprovalAboveThreshold: null,
           coApproverLabel: null,
+          escalationLabel: null,
         },
       ],
       issues: [],
@@ -148,7 +151,8 @@ describe("buildProcessReviewPrompt", () => {
     expect(prompt).toContain("Requisition raised");
     expect(prompt).toContain("Approve invoice");
     expect(prompt).toContain("Manager=ACCOUNTABLE");
-    expect(prompt).toContain("up to $5,000");
+    expect(prompt).toContain("more than $5,000");
+    expect(prompt).toContain("SLA 2 day(s)");
   });
 
   it("surfaces already-detected mechanical issues so the model doesn't have to rediscover them", () => {

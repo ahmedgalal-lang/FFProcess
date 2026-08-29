@@ -201,6 +201,7 @@ model Role {
   raciAssignments      RaciAssignment[]
   authorityApprovals   AuthorityAssignment[] @relation("AuthorityApproverRole")
   authorityCoApprovals AuthorityAssignment[] @relation("AuthorityCoApproverRole")
+  authorityEscalations AuthorityAssignment[] @relation("AuthorityEscalationRole")
 
   createdAt DateTime @default(now())
 
@@ -503,9 +504,14 @@ model ReviewFinding {
 // Authority Matrix — DecisionType, ApprovalRule (spec FR-008-FR-011)
 // ============================================================================
 
-enum AuthorityUnit {
-  MONEY
-  DAYS
+/// Which side of an Authority row's money threshold requires approval.
+/// EQUAL_NO_APPROVAL marks a step as having no approval gate at all.
+enum AuthorityDirection {
+  GREATER_THAN
+  GREATER_OR_EQUAL
+  LESS_THAN
+  LESS_OR_EQUAL
+  EQUAL_NO_APPROVAL
 }
 
 /// Authority Matrix rows — one per Process Map step (or, when a step's
@@ -515,17 +521,33 @@ enum AuthorityUnit {
 /// threshold, an approver, or is explicitly skipped — otherwise it's just an
 /// empty row derived from the Process Map/Activities at render time.
 model AuthorityAssignment {
-  id                       String        @id @default(uuid())
-  processId                String
-  activityId               String?       @unique
-  stepId                   String?       @unique
-  skipped                  Boolean       @default(false)
-  unit                     AuthorityUnit @default(MONEY)
-  threshold                Decimal?      @db.Decimal(14, 2)
+  id         String  @id @default(uuid())
+  processId  String
+  activityId String? @unique
+  stepId     String? @unique
+  skipped    Boolean @default(false)
+
+  /// How long the approver has to respond, in days. Independent of the money
+  /// threshold below — a step can carry a turnaround expectation even when it
+  /// has no approval gate at all.
+  slaDays Int?
+
+  /// The money amount this rule turns on. Always currency; time lives in
+  /// slaDays.
+  threshold Decimal? @db.Decimal(14, 2)
+
+  /// Which side of `threshold` actually requires approval. EQUAL_NO_APPROVAL
+  /// means this step has no approval gate — the row renders dimmed and its
+  /// amount/approver/co-approval/escalation are all left unset.
+  direction AuthorityDirection @default(GREATER_THAN)
+
   approverRoleId           String?
   approverPersonId         String?
-  coApprovalAboveThreshold Decimal?      @db.Decimal(14, 2)
+  coApprovalAboveThreshold Decimal? @db.Decimal(14, 2)
   coApproverRoleId         String?
+
+  /// Who it lands on when the SLA passes with no decision.
+  escalationRoleId String?
 
   process        Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
   activity       Activity?    @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -533,6 +555,7 @@ model AuthorityAssignment {
   approverRole   Role?        @relation("AuthorityApproverRole", fields: [approverRoleId], references: [id])
   approverPerson Person?      @relation("AuthorityApproverPerson", fields: [approverPersonId], references: [id])
   coApproverRole Role?        @relation("AuthorityCoApproverRole", fields: [coApproverRoleId], references: [id])
+  escalationRole Role?        @relation("AuthorityEscalationRole", fields: [escalationRoleId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

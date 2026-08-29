@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
-import { buildAuthorityTableRows, validateAuthorityTable } from "@/lib/domain/authority-table";
+import {
+  buildAuthorityTableRows,
+  validateAuthorityTable,
+  DIRECTION_LABELS,
+  requiresApproval,
+} from "@/lib/domain/authority-table";
 import { findStructuralGaps, buildProcessReviewPrompt } from "@/lib/domain/process-review";
 import {
   normalizeFindingTitle,
@@ -99,8 +104,10 @@ export async function reviewProcessWithAI(
     rowId: r.id,
     label: r.label,
     skipped: r.skipped,
-    unit: r.unit,
+    slaDays: r.slaDays,
     threshold: r.threshold,
+    directionLabel: DIRECTION_LABELS[r.direction].label,
+    requiresApproval: requiresApproval(r.direction),
     approverLabel: r.approverRoleId
       ? (roleNameById.get(r.approverRoleId) ?? null)
       : r.approverPersonId
@@ -108,6 +115,7 @@ export async function reviewProcessWithAI(
         : null,
     coApprovalAboveThreshold: r.coApprovalAboveThreshold,
     coApproverLabel: r.coApproverRoleId ? (roleNameById.get(r.coApproverRoleId) ?? null) : null,
+    escalationLabel: r.escalationRoleId ? (roleNameById.get(r.escalationRoleId) ?? null) : null,
   }));
 
   const structuralGaps = findStructuralGaps(

@@ -19,7 +19,6 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </div>
           <span className="text-sm font-semibold text-slate-900">FFProcess</span>
         </Link>
-        <div id="header-workspace-logo" className="flex items-center" />
         <div className="flex-1" />
         {isFirmOwner && (
           <Link href="/firm/settings" className="text-xs font-medium text-slate-500 hover:text-slate-900">

@@ -7,7 +7,7 @@
  */
 
 import type { RaciCode, StepType } from "./raci-table";
-import type { AuthorityUnit } from "./authority-table";
+import { formatMoney, formatSla, requiresApproval, type AuthorityDirection } from "./authority-table";
 
 export type CombinedMatrixRow = {
   rowId: string;
@@ -15,12 +15,14 @@ export type CombinedMatrixRow = {
   stepType: StepType | null;
   skipped: boolean;
   raciAssignments: Record<string, RaciCode>;
-  unit: AuthorityUnit;
+  slaDays: number | null;
   threshold: number | null;
+  direction: AuthorityDirection;
   approverRoleId: string | null;
   approverPersonId: string | null;
   coApprovalAboveThreshold: number | null;
   coApproverRoleId: string | null;
+  escalationRoleId: string | null;
 };
 
 type RaciRowInput = {
@@ -34,12 +36,14 @@ type RaciRowInput = {
 type AuthorityRowInput = {
   id: string;
   skipped: boolean;
-  unit: AuthorityUnit;
+  slaDays: number | null;
   threshold: number | null;
+  direction: AuthorityDirection;
   approverRoleId: string | null;
   approverPersonId: string | null;
   coApprovalAboveThreshold: number | null;
   coApproverRoleId: string | null;
+  escalationRoleId: string | null;
 };
 
 /**
@@ -66,16 +70,62 @@ export function buildCombinedMatrixRows(
         stepType: raci.stepType,
         skipped: raci.skipped || (authority?.skipped ?? false),
         raciAssignments: raci.assignments,
-        unit: authority?.unit ?? "MONEY",
+        slaDays: authority?.slaDays ?? null,
         threshold: authority?.threshold ?? null,
+        direction: authority?.direction ?? "GREATER_THAN",
         approverRoleId: authority?.approverRoleId ?? null,
         approverPersonId: authority?.approverPersonId ?? null,
         coApprovalAboveThreshold: authority?.coApprovalAboveThreshold ?? null,
         coApproverRoleId: authority?.coApproverRoleId ?? null,
+        escalationRoleId: authority?.escalationRoleId ?? null,
       };
     })
     .filter((row) => !row.skipped);
 }
+
+/**
+ * The one-line "Delegated Authority & Limits" cell for the Export Report's
+ * combined matrix — SLA, amount and direction, approver, co-approval and
+ * escalation, in the same order the Authority Matrix shows them.
+ */
+export function describeCombinedAuthority(
+  row: CombinedMatrixRow,
+  names: { approver: string | null; coApprover: string | null; escalation: string | null }
+): string {
+  const parts: string[] = [];
+  if (row.slaDays !== null) parts.push(`SLA ${formatSla(row.slaDays)}`);
+
+  if (!requiresApproval(row.direction)) {
+    parts.push("no approval required");
+    return parts.join(" · ");
+  }
+
+  const phrase = DIRECTION_PHRASES[row.direction];
+  if (row.threshold !== null) {
+    parts.push(names.approver ? `${phrase} ${formatMoney(row.threshold)} → ${names.approver}` : `${phrase} ${formatMoney(row.threshold)}`);
+  } else if (names.approver) {
+    parts.push(names.approver);
+  }
+
+  if (row.coApprovalAboveThreshold !== null) {
+    const coAmount = formatMoney(row.coApprovalAboveThreshold);
+    parts.push(
+      names.coApprover ? `co-approval from ${names.coApprover} above ${coAmount}` : `co-approval above ${coAmount} (unassigned)`
+    );
+  }
+
+  if (names.escalation) parts.push(`escalates to ${names.escalation}`);
+
+  return parts.length > 0 ? parts.join(" · ") : "—";
+}
+
+const DIRECTION_PHRASES: Record<AuthorityDirection, string> = {
+  GREATER_THAN: "more than",
+  GREATER_OR_EQUAL: "at or above",
+  LESS_THAN: "below",
+  LESS_OR_EQUAL: "at or below",
+  EQUAL_NO_APPROVAL: "no approval required",
+};
 
 export type ControlPoint = {
   rowId: string;
@@ -97,10 +147,7 @@ export function deriveControlPoints(
   const points: ControlPoint[] = [];
   for (const row of rows) {
     if (row.coApprovalAboveThreshold === null) continue;
-    const limit =
-      row.unit === "MONEY"
-        ? `$${row.coApprovalAboveThreshold.toLocaleString()}`
-        : `${row.coApprovalAboveThreshold} day${row.coApprovalAboveThreshold === 1 ? "" : "s"}`;
+    const limit = formatMoney(row.coApprovalAboveThreshold);
     const coApprover = row.coApproverRoleId ? roleNameById.get(row.coApproverRoleId) : null;
     if (coApprover) {
       points.push({
@@ -126,6 +173,7 @@ export function involvedRoleIds(rows: CombinedMatrixRow[]): string[] {
     for (const roleId of Object.keys(row.raciAssignments)) ids.add(roleId);
     if (row.approverRoleId) ids.add(row.approverRoleId);
     if (row.coApproverRoleId) ids.add(row.coApproverRoleId);
+    if (row.escalationRoleId) ids.add(row.escalationRoleId);
   }
   return [...ids];
 }
@@ -141,6 +189,7 @@ export function describeRoleInvolvement(rows: CombinedMatrixRow[], roleId: strin
   const consultedOn = rows.filter((r) => r.raciAssignments[roleId] === "CONSULTED").map((r) => r.label);
   const approves = rows.filter((r) => r.approverRoleId === roleId).map((r) => r.label);
   const coApproves = rows.filter((r) => r.coApproverRoleId === roleId).map((r) => r.label);
+  const escalations = rows.filter((r) => r.escalationRoleId === roleId).map((r) => r.label);
 
   const parts: string[] = [];
   if (accountableFor.length > 0) parts.push(`Accountable for ${accountableFor.join(", ")}`);
@@ -148,6 +197,7 @@ export function describeRoleInvolvement(rows: CombinedMatrixRow[], roleId: strin
   if (consultedOn.length > 0) parts.push(`consulted on ${consultedOn.join(", ")}`);
   if (approves.length > 0) parts.push(`approves ${approves.join(", ")}`);
   if (coApproves.length > 0) parts.push(`co-approves ${coApproves.join(", ")}`);
+  if (escalations.length > 0) parts.push(`is the escalation point for ${escalations.join(", ")}`);
 
   if (parts.length === 0) return "Involved in this process.";
   return `${parts[0]![0]!.toUpperCase()}${parts[0]!.slice(1)}${parts.length > 1 ? "; " + parts.slice(1).join("; ") : ""}.`;

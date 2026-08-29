@@ -8,6 +8,7 @@ import {
   deriveControlPoints,
   deriveDocumentationGaps,
   deriveProcessOwnerRoleId,
+  describeCombinedAuthority,
   involvedRoleIds,
   describeRoleInvolvement,
 } from "@/lib/domain/process-report";
@@ -131,15 +132,22 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
           label: row.label,
           stepType: row.stepType,
           raci: row.raciAssignments,
-          unit: row.unit,
-          threshold: row.threshold,
           approverLabel: row.approverRoleId
             ? (roleNameById.get(row.approverRoleId) ?? null)
             : row.approverPersonId
               ? (personNameById.get(row.approverPersonId) ?? null)
               : null,
-          coApprovalAboveThreshold: row.coApprovalAboveThreshold,
-          coApproverLabel: row.coApproverRoleId ? (roleNameById.get(row.coApproverRoleId) ?? null) : null,
+          // The authority cell's wording lives in the domain layer so the
+          // report and the Authority Matrix describe a rule identically.
+          authorityText: describeCombinedAuthority(row, {
+            approver: row.approverRoleId
+              ? (roleNameById.get(row.approverRoleId) ?? null)
+              : row.approverPersonId
+                ? (personNameById.get(row.approverPersonId) ?? null)
+                : null,
+            coApprover: row.coApproverRoleId ? (roleNameById.get(row.coApproverRoleId) ?? null) : null,
+            escalation: row.escalationRoleId ? (roleNameById.get(row.escalationRoleId) ?? null) : null,
+          }),
         })),
         involvedRoles: involved.map((roleId) => ({
           id: roleId,

@@ -6,7 +6,7 @@
  */
 
 import type { RaciIssue } from "./raci-validation";
-import type { AuthorityIssue, AuthorityUnit } from "./authority-table";
+import type { AuthorityIssue } from "./authority-table";
 
 export type StepType = "START" | "TASK" | "DECISION" | "END";
 
@@ -100,11 +100,14 @@ export type ProcessReviewContext = {
       rowId: string;
       label: string;
       skipped: boolean;
-      unit: AuthorityUnit;
+      slaDays: number | null;
+      directionLabel: string;
+      requiresApproval: boolean;
       threshold: number | null;
       approverLabel: string | null;
       coApprovalAboveThreshold: number | null;
       coApproverLabel: string | null;
+      escalationLabel: string | null;
     }[];
     issues: AuthorityIssue[];
   };
@@ -173,18 +176,22 @@ export function buildProcessReviewPrompt(context: ProcessReviewContext): string 
   } else {
     for (const row of activeAuthorityRows) {
       authorityLabelByRowId.set(row.rowId, row.label);
+      const sla = row.slaDays === null ? "no SLA set" : `SLA ${row.slaDays} day(s)`;
+      if (!row.requiresApproval) {
+        lines.push(`- ${row.label}: ${sla} — no approval required`);
+        continue;
+      }
       const threshold =
         row.threshold === null
-          ? "no threshold set"
-          : row.unit === "MONEY"
-            ? `up to $${row.threshold.toLocaleString()}`
-            : `up to ${row.threshold} day(s)`;
+          ? "no amount set"
+          : `${row.directionLabel.toLowerCase()} $${row.threshold.toLocaleString()}`;
       const approver = row.approverLabel ?? "no approver assigned";
       const co =
         row.coApproverLabel && row.coApprovalAboveThreshold !== null
-          ? `, co-approval from ${row.coApproverLabel} above ${row.unit === "MONEY" ? `$${row.coApprovalAboveThreshold.toLocaleString()}` : `${row.coApprovalAboveThreshold} day(s)`}`
+          ? `, co-approval from ${row.coApproverLabel} above $${row.coApprovalAboveThreshold.toLocaleString()}`
           : "";
-      lines.push(`- ${row.label}: ${threshold} — ${approver}${co}`);
+      const escalation = row.escalationLabel ? `, escalates to ${row.escalationLabel}` : "";
+      lines.push(`- ${row.label}: ${sla}, ${threshold} — ${approver}${co}${escalation}`);
     }
   }
   lines.push("");

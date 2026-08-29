@@ -2,7 +2,6 @@ import { notFound as nextNotFound, redirect } from "next/navigation";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { prisma } from "@/lib/db/client";
 import { WorkspaceSidebar } from "./workspace-sidebar";
-import { HeaderLogoPortal } from "./header-logo-portal";
 
 const DEFAULT_ACCENT = "#334155"; // slate-700 — a workspace with no logo/accent set yet
 const DEFAULT_ACCENT_SECONDARY = "#4338ca"; // indigo-700 — matches this app's existing accent look
@@ -33,7 +32,6 @@ export default async function WorkspaceLayout(
         } as React.CSSProperties
       }
     >
-      <HeaderLogoPortal logoDataUrl={workspace.logoDataUrl} workspaceName={workspace.name} />
       <WorkspaceSidebar
         workspaceId={workspaceId}
         workspaceName={workspace.name}
@@ -42,18 +40,17 @@ export default async function WorkspaceLayout(
       />
       <div className="relative min-w-0 flex-1">
         {workspace.logoDataUrl && (
-          // Sits in the margin next to every page's centered content — every
-          // workspace page shares the same "mx-auto max-w-4xl" wrapper, so
-          // this gutter exists everywhere, but its width grows with the
-          // viewport (sidebar width is fixed, content tops out at 896px).
-          // Small and close-in at xl (1280px, common laptop width — the
-          // gutter there is only ~80px) so it never touches that content,
-          // then grows once there's more room to spare at 2xl (1536px+).
+          // Sits in the margin beside every page's centered content — every
+          // workspace page shares the same "mx-auto max-w-4xl" wrapper (896px),
+          // so this gutter exists everywhere. Its width is whatever is left
+          // over, so the logo is sized to the gutter rather than to a fixed
+          // number: it grows to 240px on a wide screen and shrinks to fit on a
+          // narrow one, and can never reach the content it sits next to.
           // eslint-disable-next-line @next/next/no-img-element -- user-uploaded data: URL, not an optimizable static asset
           <img
             src={workspace.logoDataUrl}
             alt=""
-            className="pointer-events-none absolute left-4 top-8 hidden h-12 w-12 object-contain xl:block 2xl:left-8 2xl:h-28 2xl:w-28"
+            className="pointer-events-none absolute left-5 top-8 hidden h-auto w-[min(240px,calc((100%-896px)/2-28px))] object-contain xl:block"
           />
         )}
         {props.children}

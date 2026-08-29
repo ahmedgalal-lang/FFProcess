@@ -9,8 +9,27 @@
  * (Constitution Principle III).
  */
 
-export type AuthorityUnit = "MONEY" | "DAYS";
+export type AuthorityDirection =
+  | "GREATER_THAN"
+  | "GREATER_OR_EQUAL"
+  | "LESS_THAN"
+  | "LESS_OR_EQUAL"
+  | "EQUAL_NO_APPROVAL";
 export type StepType = "START" | "TASK" | "DECISION" | "END";
+
+/** Short symbol + wording for each direction, used in the table and in prose. */
+export const DIRECTION_LABELS: Record<AuthorityDirection, { symbol: string; label: string; phrase: string }> = {
+  GREATER_THAN: { symbol: ">", label: "More than", phrase: "more than" },
+  GREATER_OR_EQUAL: { symbol: "\u2265", label: "At or above", phrase: "at or above" },
+  LESS_THAN: { symbol: "<", label: "Below", phrase: "below" },
+  LESS_OR_EQUAL: { symbol: "\u2264", label: "At or below", phrase: "at or below" },
+  EQUAL_NO_APPROVAL: { symbol: "=", label: "Equal \u2014 no approval", phrase: "no approval required" },
+};
+
+/** A step with this direction has no approval gate at all — it renders dimmed. */
+export function requiresApproval(direction: AuthorityDirection): boolean {
+  return direction !== "EQUAL_NO_APPROVAL";
+}
 
 export type TableStep = { id: string; type: StepType; label: string };
 export type TableActivity = { id: string; name: string; relatedStepId: string | null; order: number };
@@ -19,12 +38,14 @@ export type AuthorityAssignmentData = {
   activityId: string | null;
   stepId: string | null;
   skipped: boolean;
-  unit: AuthorityUnit;
+  slaDays: number | null;
   threshold: number | null;
+  direction: AuthorityDirection;
   approverRoleId: string | null;
   approverPersonId: string | null;
   coApprovalAboveThreshold: number | null;
   coApproverRoleId: string | null;
+  escalationRoleId: string | null;
 };
 
 export type AuthorityTableRow = {
@@ -34,22 +55,26 @@ export type AuthorityTableRow = {
   stepType: StepType | null;
   label: string;
   skipped: boolean;
-  unit: AuthorityUnit;
+  slaDays: number | null;
   threshold: number | null;
+  direction: AuthorityDirection;
   approverRoleId: string | null;
   approverPersonId: string | null;
   coApprovalAboveThreshold: number | null;
   coApproverRoleId: string | null;
+  escalationRoleId: string | null;
 };
 
 const EMPTY_DATA: Omit<AuthorityAssignmentData, "activityId" | "stepId"> = {
   skipped: false,
-  unit: "MONEY",
+  slaDays: null,
   threshold: null,
+  direction: "GREATER_THAN",
   approverRoleId: null,
   approverPersonId: null,
   coApprovalAboveThreshold: null,
   coApproverRoleId: null,
+  escalationRoleId: null,
 };
 
 export function buildAuthorityTableRows(
@@ -90,12 +115,14 @@ export function buildAuthorityTableRows(
       stepType,
       label,
       skipped: data.skipped,
-      unit: data.unit,
+      slaDays: data.slaDays,
       threshold: data.threshold,
+      direction: data.direction,
       approverRoleId: data.approverRoleId,
       approverPersonId: data.approverPersonId,
       coApprovalAboveThreshold: data.coApprovalAboveThreshold,
       coApproverRoleId: data.coApproverRoleId,
+      escalationRoleId: data.escalationRoleId,
     };
   }
 
@@ -116,6 +143,68 @@ export function buildAuthorityTableRows(
   return [...stepRows, ...freestandingRows];
 }
 
+export function formatMoney(value: number): string {
+  return `$${value.toLocaleString()}`;
+}
+
+export function formatSla(days: number | null): string {
+  if (days === null) return "—";
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+export type AuthorityRuleNames = {
+  approver: string | null;
+  coApprover: string | null;
+  escalation: string | null;
+};
+
+/**
+ * States a row's rule as one plain sentence — the same wording the Authority
+ * Matrix shows under each row and the Export Report prints. Written here
+ * rather than in the component so both surfaces say exactly the same thing.
+ */
+export function describeAuthorityRule(row: AuthorityTableRow, names: AuthorityRuleNames): string {
+  const sla = row.slaDays === null ? null : formatSla(row.slaDays);
+
+  if (!requiresApproval(row.direction)) {
+    const base = "No approval required — this step proceeds on its own.";
+    return sla ? `${base} Turnaround expectation: within ${sla}.` : base;
+  }
+
+  const parts: string[] = [];
+  const amount = row.threshold === null ? null : formatMoney(row.threshold);
+  const phrase = DIRECTION_LABELS[row.direction].phrase;
+
+  if (amount && names.approver) {
+    parts.push(`${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} ${amount} needs approval from ${names.approver}`);
+  } else if (amount) {
+    parts.push(`${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} ${amount} needs approval`);
+  } else if (names.approver) {
+    parts.push(`Needs approval from ${names.approver}`);
+  } else {
+    parts.push("Needs approval");
+  }
+
+  if (sla) parts.push(`within ${sla}`);
+
+  let sentence = `${parts.join(", ")}.`;
+
+  if (row.coApprovalAboveThreshold !== null) {
+    const coAmount = formatMoney(row.coApprovalAboveThreshold);
+    sentence += names.coApprover
+      ? ` A second sign-off from ${names.coApprover} is required above ${coAmount}.`
+      : ` Co-approval is required above ${coAmount}, but no co-approver is assigned.`;
+  }
+
+  if (names.escalation) {
+    sentence += sla
+      ? ` If ${sla} pass with no decision, it escalates to ${names.escalation}.`
+      : ` Unresolved, it escalates to ${names.escalation}.`;
+  }
+
+  return sentence;
+}
+
 export type AuthorityIssue =
   | { rowId: string; type: "MISSING_APPROVER" }
   | { rowId: string; type: "MISSING_CO_APPROVER" };
@@ -123,12 +212,15 @@ export type AuthorityIssue =
 /**
  * Mirrors RACI's rule (validateRaciMatrix): every non-skipped row must be
  * complete. Here that means an approver assigned, and — if a co-approval
- * threshold is set — a co-approver assigned too.
+ * threshold is set — a co-approver assigned too. A row marked
+ * EQUAL_NO_APPROVAL is exempt: it deliberately has no approval gate, so
+ * demanding an approver for it would be a false alarm.
  */
 export function validateAuthorityTable(rows: AuthorityTableRow[]): AuthorityIssue[] {
   const issues: AuthorityIssue[] = [];
   for (const row of rows) {
     if (row.skipped) continue;
+    if (!requiresApproval(row.direction)) continue;
 
     if (row.approverRoleId === null && row.approverPersonId === null) {
       issues.push({ rowId: row.id, type: "MISSING_APPROVER" });

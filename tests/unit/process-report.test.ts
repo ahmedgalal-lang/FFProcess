@@ -17,12 +17,14 @@ describe("buildCombinedMatrixRows", () => {
         {
           id: "a1",
           skipped: false,
-          unit: "MONEY",
+          slaDays: 2,
           threshold: 10000,
+          direction: "GREATER_THAN",
           approverRoleId: "r1",
           approverPersonId: null,
           coApprovalAboveThreshold: null,
           coApproverRoleId: null,
+          escalationRoleId: null,
         },
       ]
     );
@@ -33,12 +35,14 @@ describe("buildCombinedMatrixRows", () => {
         stepType: "TASK",
         skipped: false,
         raciAssignments: { r1: "RESPONSIBLE" },
-        unit: "MONEY",
+        slaDays: 2,
         threshold: 10000,
+        direction: "GREATER_THAN",
         approverRoleId: "r1",
         approverPersonId: null,
         coApprovalAboveThreshold: null,
         coApproverRoleId: null,
+        escalationRoleId: null,
       },
     ]);
   });
@@ -48,7 +52,13 @@ describe("buildCombinedMatrixRows", () => {
       [{ id: "a1", label: "Create PO", stepType: "TASK", skipped: false, assignments: {} }],
       []
     );
-    expect(rows[0]).toMatchObject({ threshold: null, approverRoleId: null, unit: "MONEY" });
+    expect(rows[0]).toMatchObject({
+      slaDays: null,
+      threshold: null,
+      direction: "GREATER_THAN",
+      approverRoleId: null,
+      escalationRoleId: null,
+    });
   });
 
   it("excludes a row skipped in RACI even if not skipped in Authority", () => {
@@ -58,12 +68,14 @@ describe("buildCombinedMatrixRows", () => {
         {
           id: "a1",
           skipped: false,
-          unit: "MONEY",
+          slaDays: null,
           threshold: null,
+          direction: "GREATER_THAN",
           approverRoleId: null,
           approverPersonId: null,
           coApprovalAboveThreshold: null,
           coApproverRoleId: null,
+          escalationRoleId: null,
         },
       ]
     );
@@ -77,12 +89,14 @@ describe("buildCombinedMatrixRows", () => {
         {
           id: "a1",
           skipped: true,
-          unit: "MONEY",
+          slaDays: null,
           threshold: null,
+          direction: "GREATER_THAN",
           approverRoleId: null,
           approverPersonId: null,
           coApprovalAboveThreshold: null,
           coApproverRoleId: null,
+          escalationRoleId: null,
         },
       ]
     );
@@ -97,12 +111,14 @@ function row(overrides: Partial<CombinedMatrixRow>): CombinedMatrixRow {
     stepType: "DECISION",
     skipped: false,
     raciAssignments: {},
-    unit: "MONEY",
+    slaDays: null,
     threshold: null,
+    direction: "GREATER_THAN",
     approverRoleId: null,
     approverPersonId: null,
     coApprovalAboveThreshold: null,
     coApproverRoleId: null,
+    escalationRoleId: null,
     ...overrides,
   };
 }
@@ -139,12 +155,12 @@ describe("deriveControlPoints", () => {
     expect(points[0]!.statement).toContain("no co-approver is assigned");
   });
 
-  it("formats a days-based threshold without a dollar sign", () => {
+  it("always formats the co-approval limit as money, since amounts are money-only", () => {
     const points = deriveControlPoints(
-      [row({ unit: "DAYS", coApprovalAboveThreshold: 3, coApproverRoleId: "finance-manager" })],
+      [row({ coApprovalAboveThreshold: 3000, coApproverRoleId: "finance-manager" })],
       roleNameById
     );
-    expect(points[0]!.statement).toContain("above 3 days");
+    expect(points[0]!.statement).toContain("above $3,000");
   });
 });
 

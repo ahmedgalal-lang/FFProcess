@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { AuthorityPdfDocument } from "@/lib/export/pdf/authority-pdf";
 import { buildAuthorityWorkbook } from "@/lib/export/xlsx";
-import { buildAuthorityTableRows, validateAuthorityTable } from "@/lib/domain/authority-table";
+import { buildAuthorityTableRows, validateAuthorityTable, DIRECTION_LABELS } from "@/lib/domain/authority-table";
 import { auth } from "@/lib/auth/config";
 
 export async function GET(
@@ -56,8 +56,9 @@ export async function GET(
   const rowsForExport = rows.map((r) => ({
     id: r.id,
     label: r.label,
-    unit: r.unit,
+    slaDays: r.slaDays,
     threshold: r.threshold,
+    directionLabel: DIRECTION_LABELS[r.direction].label,
     approverLabel: r.approverRoleId
       ? (roleNameById.get(r.approverRoleId) ?? null)
       : r.approverPersonId
@@ -65,6 +66,7 @@ export async function GET(
         : null,
     coApprovalAboveThreshold: r.coApprovalAboveThreshold,
     coApproverLabel: r.coApproverRoleId ? (roleNameById.get(r.coApproverRoleId) ?? null) : null,
+    escalationLabel: r.escalationRoleId ? (roleNameById.get(r.escalationRoleId) ?? null) : null,
   }));
 
   const filenameBase = `${process.code}-authority-matrix`;
