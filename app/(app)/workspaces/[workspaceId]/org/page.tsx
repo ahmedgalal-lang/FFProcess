@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
+import { WorkspacePageHeader } from "../workspace-page-header";
 import { AddPersonForm, AddRoleForm, PersonRow, RoleRow } from "./org-forms";
 
 export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[workspaceId]/org">) {
@@ -17,19 +18,18 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Org Directory</h1>
-        <Link
-          href={`/workspaces/${workspaceId}/org/chart`}
-          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          View Org Chart →
-        </Link>
-      </div>
-      <p className="mt-1 text-sm text-slate-500">
-        Roles and people are shared across every process map, RACI matrix, and authority matrix in
-        this workspace.
-      </p>
+      <WorkspacePageHeader
+        title="Org Directory"
+        subtitle="Roles and people are shared across every process map, RACI matrix, and authority matrix in this workspace."
+        actions={
+          <Link
+            href={`/workspaces/${workspaceId}/org/chart`}
+            className="rounded-lg border border-[var(--accent-ink)]/30 bg-[var(--accent-ink)]/10 px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-ink)] hover:bg-[var(--accent-ink)]/20"
+          >
+            View Org Chart →
+          </Link>
+        }
+      />
 
       <section className="mt-6">
         <h2 className="mb-2 text-sm font-semibold text-slate-800">Roles</h2>

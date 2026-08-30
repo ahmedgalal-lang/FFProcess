@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/client";
+import { WorkspacePageHeader } from "../workspace-page-header";
 
 export default async function ExportPickerPage(props: PageProps<"/workspaces/[workspaceId]/export">) {
   const { workspaceId } = await props.params;
@@ -11,12 +12,10 @@ export default async function ExportPickerPage(props: PageProps<"/workspaces/[wo
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="text-xl font-semibold text-slate-900">Export Report</h1>
-      <p className="mt-1 mb-5 text-sm text-slate-500">
-        Pick which processes to include. The report opens as a clean, printable document — company name, a summary,
-        the org structure, then each process&rsquo;s documentation. Its content comes from each process&rsquo;s
-        Process Map page; anything not filled in there is left out of the report.
-      </p>
+      <WorkspacePageHeader
+        title="Export Report"
+        subtitle="Pick which processes to include. The report opens as a clean, printable document — company name, a summary, the org structure, then each process's documentation. Its content comes from each process's Process Map page; anything not filled in there is left out of the report."
+      />
 
       {processes.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-400">

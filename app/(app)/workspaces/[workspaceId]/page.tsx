@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
+import { WorkspacePageHeader } from "./workspace-page-header";
 import { WorkspaceProfile } from "./workspace-profile";
 import { WorkspaceBranding } from "./workspace-branding";
 
@@ -20,10 +21,9 @@ export default async function WorkspaceDashboardPage(
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="text-xl font-semibold text-slate-900">{workspace?.name}</h1>
-      <p className="mt-1 text-sm text-slate-500">Client engagement workspace overview.</p>
+      <WorkspacePageHeader title={workspace?.name ?? ""} subtitle="Client engagement workspace overview." />
 
-      <div className="mt-4">
+      <div>
         <WorkspaceBranding
           workspaceId={workspaceId}
           logoDataUrl={workspace?.logoDataUrl ?? null}

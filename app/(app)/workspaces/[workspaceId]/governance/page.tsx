@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/client";
+import { WorkspacePageHeader } from "../workspace-page-header";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { buildAuthorityTableRows } from "@/lib/domain/authority-table";
 import { buildCombinedMatrixRows, deriveControlPoints } from "@/lib/domain/process-report";
@@ -66,11 +67,10 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="text-xl font-semibold text-slate-900">Governance, Controls &amp; Metrics</h1>
-      <p className="mt-1 mb-5 text-sm text-slate-500">
-        Key Control Points come from each process&rsquo;s Authority Matrix. KPIs are set here, and both appear as the
-        final section of that process&rsquo;s Export Report.
-      </p>
+      <WorkspacePageHeader
+        title="Governance, Controls & Metrics"
+        subtitle="Key Control Points come from each process's Authority Matrix. KPIs are set here, and both appear as the final section of that process's Export Report."
+      />
 
       {sections.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">

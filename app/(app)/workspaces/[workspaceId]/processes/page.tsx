@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
+import { WorkspacePageHeader } from "../workspace-page-header";
 import { CreateProcessForm, CloneProcessButton, EditProcessButton, ArchiveProcessButton } from "./process-forms";
 import { GenerateTemplateForm } from "./template-form";
 
@@ -51,10 +52,10 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="text-xl font-semibold text-slate-900">Processes</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Every process has a unique code and can nest under a main process.
-      </p>
+      <WorkspacePageHeader
+        title="Processes"
+        subtitle="Every process has a unique code and can nest under a main process."
+      />
 
       <form method="GET" className="mt-4 flex items-center gap-2" role="search">
         <input

@@ -1,6 +1,7 @@
 import { notFound as nextNotFound, redirect } from "next/navigation";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { prisma } from "@/lib/db/client";
+import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
 const DEFAULT_ACCENT = "#334155"; // slate-700 — a workspace with no logo/accent set yet
@@ -21,14 +22,23 @@ export default async function WorkspaceLayout(
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) nextNotFound();
 
+  const primary = workspace.accentColor ?? DEFAULT_ACCENT;
+  const tertiary = workspace.accentColorTertiary ?? DEFAULT_ACCENT_TERTIARY;
+
   return (
     <div
       className="flex flex-1"
       style={
         {
-          "--accent": workspace.accentColor ?? DEFAULT_ACCENT,
+          "--accent": primary,
           "--accent-secondary": workspace.accentColorSecondary ?? DEFAULT_ACCENT_SECONDARY,
-          "--accent-tertiary": workspace.accentColorTertiary ?? DEFAULT_ACCENT_TERTIARY,
+          "--accent-tertiary": tertiary,
+          // The page header paints itself in the client's Primary, so its text
+          // colour is derived from that rather than assumed white — a pale
+          // logo would otherwise give white-on-yellow. Computed here so every
+          // page can just use the variable.
+          "--accent-ink": readableInkOn(primary),
+          "--accent-banner-to": mixHex(primary, tertiary, 0.3),
         } as React.CSSProperties
       }
     >
