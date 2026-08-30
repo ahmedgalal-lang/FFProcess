@@ -164,6 +164,27 @@ test.describe("Core workflows", () => {
     await expect(page.getByLabel("Edit KPIs for Purchase-to-Pay")).toBeVisible();
   });
 
+  test("Helicopter View draws every process as a card, connected by how work moves between them", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/helicopter");
+    await expect(page.locator("h1")).toHaveText("Helicopter View");
+    await expect(page.getByText("4 processes")).toBeVisible();
+
+    // One card per non-archived process, each linking through to its own map.
+    const cards = page.locator(".react-flow__node");
+    await expect(cards).toHaveCount(4);
+    await expect(cards.filter({ hasText: "PUR101" })).toContainText("9 steps");
+    await expect(cards.filter({ hasText: "PUR101" })).toContainText("under PUR100");
+
+    // The seeded cross-process step links are drawn, and spelled out in words
+    // underneath so the picture isn't the only way to read them.
+    const connections = page.locator("main section li");
+    await expect(connections).toHaveCount(2);
+    await expect(connections.first()).toContainText("PUR101 Purchase-to-Pay links to PUR102 Vendor Onboarding");
+
+    await cards.filter({ hasText: "PUR101" }).getByRole("link").click();
+    await page.waitForURL("**/processes/**/map");
+  });
+
   test("Inviting a new member produces a working accept link that provisions an account", async ({ page, context }) => {
     const email = `invite-test-${Date.now()}@example.com`;
 

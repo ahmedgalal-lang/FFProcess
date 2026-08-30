@@ -150,6 +150,13 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Helicopter View has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/helicopter");
+    await page.waitForSelector("h1");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("Processes list search results and new-category form have no automatically detectable violations", async ({
     page,
   }) => {
