@@ -700,6 +700,44 @@ export async function updateProcessStep(
   return ok({ id: updated.id });
 }
 
+const setStepMilestoneSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  stepId: z.string().min(1),
+  milestone: z.boolean(),
+});
+
+/**
+ * Marks a step as one of the few worth seeing from engagement level — the
+ * beads on this process's rail in the Helicopter View. Its own action rather
+ * than a field on the step editor because it's a one-click judgement made
+ * while reading the list, not part of editing a step's content.
+ */
+export async function setStepMilestone(
+  input: z.infer<typeof setStepMilestoneSchema>
+): Promise<ActionResult<{ id: string; milestone: boolean }>> {
+  const parsed = setStepMilestoneSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
+  if (!step || step.processId !== parsed.data.processId) return notFound();
+
+  const updated = await prisma.processStep.update({
+    where: { id: parsed.data.stepId },
+    data: { milestone: parsed.data.milestone },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/helicopter`);
+  return ok({ id: updated.id, milestone: updated.milestone });
+}
+
 const deleteStepSchema = z.object({
   workspaceId: z.string().min(1),
   processId: z.string().min(1),

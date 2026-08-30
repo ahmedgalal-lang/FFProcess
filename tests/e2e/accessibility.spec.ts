@@ -150,10 +150,15 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
-  test("Helicopter View has no automatically detectable violations", async ({ page }) => {
+  test("Helicopter View has no automatically detectable violations, in either mode", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/helicopter");
     await page.waitForSelector("h1");
-    const results = await new AxeBuilder({ page }).include("main").analyze();
+    let results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+
+    await page.getByRole("button", { name: /Cards/ }).click();
+    await page.waitForTimeout(300);
+    results = await new AxeBuilder({ page }).include("main").analyze();
     expect(results.violations).toEqual([]);
   });
 

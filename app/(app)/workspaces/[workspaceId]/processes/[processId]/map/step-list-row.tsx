@@ -9,6 +9,7 @@ import {
   createStepConnection,
   deleteStepConnection,
   moveProcessStep,
+  setStepMilestone,
 } from "@/lib/actions/process";
 
 const TYPE_STYLES: Record<string, string> = {
@@ -33,6 +34,7 @@ type StepT = {
   label: string;
   assignedRole: RoleRef | null;
   reviewNotes: string | null;
+  milestone: boolean;
   detailedAction: string[];
   exceptionHandling: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
@@ -76,6 +78,23 @@ export function StepListRow({
   const [connectionLabel, setConnectionLabel] = useState(incomingConnection?.label ?? "");
   const [detailedAction, setDetailedAction] = useState(step.detailedAction.join("\n"));
   const [exceptionHandling, setExceptionHandling] = useState(step.exceptionHandling ?? "");
+
+  function toggleMilestone() {
+    setError(null);
+    startTransition(async () => {
+      const result = await setStepMilestone({
+        workspaceId,
+        processId,
+        stepId: step.id,
+        milestone: !step.milestone,
+      });
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not update") : result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function move(direction: "UP" | "DOWN") {
     setError(null);
@@ -315,6 +334,11 @@ export function StepListRow({
               {step.assignedRole.name}
             </span>
           )}
+          {step.milestone && (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+              ★ Milestone
+            </span>
+          )}
           {(step.detailedAction.length > 0 || step.exceptionHandling) && (
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
               📄 Documented
@@ -371,6 +395,29 @@ export function StepListRow({
           <>
             <button
               type="button"
+              onClick={toggleMilestone}
+              disabled={pending}
+              aria-pressed={step.milestone}
+              aria-label={
+                step.milestone
+                  ? `Remove ${step.label} from the Helicopter View`
+                  : `Show ${step.label} on the Helicopter View`
+              }
+              title={
+                step.milestone
+                  ? "A milestone — shown on the Helicopter View"
+                  : "Mark as a milestone, to show on the Helicopter View"
+              }
+              className={`rounded-md p-1.5 ${
+                step.milestone
+                  ? "text-amber-500 hover:bg-amber-50 hover:text-amber-700"
+                  : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              }`}
+            >
+              <StarIcon filled={step.milestone} />
+            </button>
+            <button
+              type="button"
               onClick={startEditing}
               aria-label={`Edit ${step.label}`}
               title={`Edit ${step.label}`}
@@ -400,6 +447,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {label}
       {children}
     </label>
+  );
+}
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z" />
+    </svg>
   );
 }
 

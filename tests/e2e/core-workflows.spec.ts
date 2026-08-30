@@ -222,9 +222,53 @@ test.describe("Core workflows", () => {
     await expect(page.getByLabel("Move End down")).toBeHidden();
   });
 
-  test("Helicopter View draws every process as a card, connected by how work moves between them", async ({ page }) => {
+  test("Helicopter View draws a rail per process, with milestones and junctions as beads", async ({ page }) => {
+    // Milestones are marked from a process's own Steps List.
+    const openStepsList = async () => {
+      await page.goto("/workspaces/workspace-acme/processes");
+      await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
+      await page.waitForURL("**/map");
+      await page.click('button:has-text("Steps List")');
+    };
+
+    await openStepsList();
+    await page.getByLabel("Show Pay Vendor on the Helicopter View").click();
+    await page.click('button:has-text("Steps List")');
+    await expect(page.getByText("★ Milestone")).toBeVisible();
+
     await page.goto("/workspaces/workspace-acme/helicopter");
     await expect(page.locator("h1")).toHaveText("Helicopter View");
+    await expect(page.getByText("1 milestone marked")).toBeVisible();
+
+    // The board, not the written Connections list underneath it, which repeats
+    // the same step names in sentences.
+    const board = page.locator("main .overflow-x-auto").first();
+
+    // A rail per process, whether or not anything on it earned a bead.
+    await expect(board.getByText("Purchase-to-Pay", { exact: true })).toBeVisible();
+    await expect(board.getByText("No steps mapped yet").first()).toBeVisible();
+
+    // The marked step is a bead; so is a step that links out to another
+    // process, even though nobody marked it — the rails exist to show exactly
+    // those junctions.
+    await expect(board.getByText("Pay Vendor", { exact: true })).toBeVisible();
+    await expect(board.getByText("Send PO to Vendor", { exact: true })).toBeVisible();
+    await expect(board.getByText("🔗 PUR102")).toBeVisible();
+
+    // Unmarking puts it back, which also leaves the seeded data as it was.
+    // Navigating the way a person does — the sidebar link — so this also covers
+    // the marked/unmarked state reaching the view without a hard reload.
+    await openStepsList();
+    await page.getByLabel("Remove Pay Vendor from the Helicopter View").click();
+    await expect(page.getByText("★ Milestone")).toBeHidden();
+    await page.getByRole("link", { name: "Helicopter View" }).click();
+    await page.waitForURL("**/helicopter");
+    await expect(page.getByText("No milestones marked yet")).toBeVisible();
+  });
+
+  test("Helicopter View's Cards mode draws every process as a card connected by how work moves", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/helicopter");
+    await page.getByRole("button", { name: /Cards/ }).click();
     await expect(page.getByText("4 processes")).toBeVisible();
 
     // One card per non-archived process, each linking through to its own map.

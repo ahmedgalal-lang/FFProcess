@@ -16,6 +16,7 @@ type StepT = {
   assignedRole: RoleRef | null;
   swimlaneRole: RoleRef | null;
   reviewNotes: string | null;
+  milestone: boolean;
   detailedAction: string[];
   exceptionHandling: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];

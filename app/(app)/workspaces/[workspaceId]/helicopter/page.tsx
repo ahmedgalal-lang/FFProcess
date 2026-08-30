@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db/client";
 import { WorkspacePageHeader } from "../workspace-page-header";
 import { buildProcessLandscape, describeLandscape } from "@/lib/domain/process-landscape";
-import { ProcessLandscapeCanvas, type LandscapeProcessInput } from "./landscape-canvas";
+import type { LandscapeProcessInput } from "./landscape-canvas";
+import type { RailProcess } from "@/lib/domain/milestone-rails";
+import { HelicopterView } from "./helicopter-view";
 
 /**
  * The whole engagement in one picture: every process as a card, connected by
@@ -29,7 +31,14 @@ export default async function HelicopterViewPage(props: PageProps<"/workspaces/[
         // they supply both the outgoing links and the step numbering a branch
         // origin is described by.
         steps: {
-          select: { id: true, label: true, links: { select: { targetProcessId: true } } },
+          select: {
+            id: true,
+            label: true,
+            type: true,
+            milestone: true,
+            links: { select: { targetProcessId: true } },
+            branchedProcesses: { select: { code: true }, orderBy: { code: "asc" } },
+          },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
         },
       },
@@ -69,6 +78,36 @@ export default async function HelicopterViewPage(props: PageProps<"/workspaces/[
     };
   });
 
+  const codeById = new Map(processes.map((p) => [p.id, p.code]));
+
+  // The same processes, described the way the rails need them: every step that
+  // earns a bead — a marked milestone, or a junction another process depends on.
+  const railProcesses: RailProcess[] = landscapeProcesses.map((landscapeProcess) => {
+    const source = processes.find((p) => p.id === landscapeProcess.id)!;
+    return {
+      id: source.id,
+      code: source.code,
+      name: source.name,
+      stepCount: source._count.steps,
+      branchFrom:
+        source.branchFromStepId && stepIndex.has(source.branchFromStepId)
+          ? {
+              processId: stepIndex.get(source.branchFromStepId)!.processId,
+              stepId: source.branchFromStepId,
+            }
+          : null,
+      steps: source.steps.map((step, i) => ({
+        id: step.id,
+        label: step.label,
+        type: step.type,
+        number: i + 1,
+        milestone: step.milestone,
+        linksTo: step.links.flatMap((link) => codeById.get(link.targetProcessId) ?? []),
+        branchedBy: step.branchedProcesses.map((p) => p.code),
+      })),
+    };
+  });
+
   const landscape = buildProcessLandscape(landscapeProcesses);
 
   return (
@@ -78,10 +117,11 @@ export default async function HelicopterViewPage(props: PageProps<"/workspaces/[
         subtitle={`How ${workspace.name}'s processes connect — ${describeLandscape(landscape)}.`}
       />
 
-      <ProcessLandscapeCanvas
+      <HelicopterView
         workspaceId={workspaceId}
         workspaceName={workspace.name}
-        processes={landscapeProcesses}
+        cardProcesses={landscapeProcesses}
+        railProcesses={railProcesses}
       />
 
       <section className="mt-5">

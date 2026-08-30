@@ -352,6 +352,11 @@ model ProcessStep {
   /// time stranded it at the bottom no matter what it connected to.
   order Int @default(0)
 
+  /// Marked as one of the few steps worth seeing from the engagement level —
+  /// these are the beads on this process's rail in the Helicopter View. Off by
+  /// default: a milestone means something only because most steps aren't one.
+  milestone Boolean @default(false)
+
   /// This step's procedure for the Export Report — edited inline in the
   /// Process Map's Steps List view, one action per line; the report just
   /// displays it read-only.
