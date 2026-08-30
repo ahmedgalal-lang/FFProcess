@@ -64,3 +64,30 @@ export function wouldCreateCycle(
 
   return false;
 }
+
+/**
+ * True if branching `processId` off a step owned by `candidateSourceId` would
+ * make the process its own origin, walking the existing branch chain upward.
+ * `branchSourceOf` maps a Process id to the id of the Process whose step it
+ * branches from (or null when it starts on its own).
+ *
+ * Separate from wouldCreateCycle: a process's parent (filing) and the process
+ * it resumes from (flow) are independent, so each needs its own guard.
+ */
+export function wouldCreateBranchCycle(
+  processId: string,
+  candidateSourceId: string,
+  branchSourceOf: Map<string, string | null>
+): boolean {
+  let current: string | null = candidateSourceId;
+  const visited = new Set<string>();
+
+  while (current !== null) {
+    if (current === processId) return true;
+    if (visited.has(current)) return true; // guards against a pre-existing cycle in the data
+    visited.add(current);
+    current = branchSourceOf.get(current) ?? null;
+  }
+
+  return false;
+}

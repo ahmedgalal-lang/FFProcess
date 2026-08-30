@@ -4,7 +4,12 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
-import { generateProcessCode, isCodeAvailable, wouldCreateCycle } from "@/lib/domain/process-hierarchy";
+import {
+  generateProcessCode,
+  isCodeAvailable,
+  wouldCreateBranchCycle,
+  wouldCreateCycle,
+} from "@/lib/domain/process-hierarchy";
 import { validateConnections } from "@/lib/domain/process-graph";
 import { laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
@@ -16,12 +21,58 @@ async function loadProcessInWorkspace(workspaceId: string, processId: string) {
   return process;
 }
 
+/**
+ * Validates a "branches from" target: the step must exist, belong to a process
+ * in this workspace, not belong to the branching process itself, and not close
+ * a loop of processes each resuming from the next.
+ *
+ * Returns the owning process id on success so callers can reuse it.
+ */
+async function validateBranchSource(
+  workspaceId: string,
+  branchFromStepId: string,
+  branchingProcessId: string | null
+): Promise<{ ok: true; sourceProcessId: string } | { ok: false; error: ActionResult<never> }> {
+  const step = await prisma.processStep.findUnique({
+    where: { id: branchFromStepId },
+    select: { id: true, processId: true, process: { select: { workspaceId: true } } },
+  });
+  if (!step || step.process.workspaceId !== workspaceId) {
+    return { ok: false, error: notFound() as ActionResult<never> };
+  }
+  if (branchingProcessId && step.processId === branchingProcessId) {
+    return {
+      ok: false,
+      error: validationError("A process can't branch from one of its own steps.") as ActionResult<never>,
+    };
+  }
+
+  if (branchingProcessId) {
+    const all = await prisma.process.findMany({
+      where: { workspaceId },
+      select: { id: true, branchFromStep: { select: { processId: true } } },
+    });
+    const branchSourceOf = new Map<string, string | null>(
+      all.map((p) => [p.id, p.branchFromStep?.processId ?? null])
+    );
+    if (wouldCreateBranchCycle(branchingProcessId, step.processId, branchSourceOf)) {
+      return {
+        ok: false,
+        error: validationError("That would make the process resume from itself, in a loop.") as ActionResult<never>,
+      };
+    }
+  }
+
+  return { ok: true, sourceProcessId: step.processId };
+}
+
 const createProcessSchema = z.object({
   workspaceId: z.string().min(1),
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(2000).optional().or(z.literal("")),
   parentProcessId: z.string().min(1).optional().or(z.literal("")),
   categoryId: z.string().min(1).optional().or(z.literal("")),
+  branchFromStepId: z.string().min(1).optional().or(z.literal("")),
 });
 
 const MAX_CODE_GENERATION_ATTEMPTS = 5;
@@ -54,6 +105,14 @@ export async function createProcess(
     if (!category || category.firmId !== workspace.firmId) return notFound();
   }
 
+  // No cycle check on create: the process doesn't exist yet, so it can't be
+  // anywhere in a branch chain.
+  const branchFromStepId = parsed.data.branchFromStepId || undefined;
+  if (branchFromStepId) {
+    const branch = await validateBranchSource(parsed.data.workspaceId, branchFromStepId, null);
+    if (!branch.ok) return branch.error;
+  }
+
   for (let attempt = 0; attempt < MAX_CODE_GENERATION_ATTEMPTS; attempt++) {
     const existing = await prisma.process.findMany({
       where: { workspaceId: parsed.data.workspaceId },
@@ -75,6 +134,7 @@ export async function createProcess(
           description: parsed.data.description || undefined,
           parentProcessId,
           categoryId,
+          branchFromStepId,
         },
       });
       revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
@@ -230,6 +290,7 @@ const updateProcessSchema = z.object({
   description: z.string().trim().max(2000).optional(),
   categoryId: z.string().min(1).nullable().optional(),
   parentProcessId: z.string().min(1).nullable().optional(),
+  branchFromStepId: z.string().min(1).nullable().optional(),
 });
 
 export async function updateProcess(
@@ -269,6 +330,15 @@ export async function updateProcess(
     }
   }
 
+  if (parsed.data.branchFromStepId) {
+    const branch = await validateBranchSource(
+      parsed.data.workspaceId,
+      parsed.data.branchFromStepId,
+      parsed.data.processId
+    );
+    if (!branch.ok) return branch.error;
+  }
+
   const updated = await prisma.process.update({
     where: { id: parsed.data.processId },
     data: {
@@ -277,10 +347,12 @@ export async function updateProcess(
       description: parsed.data.description,
       categoryId: parsed.data.categoryId,
       parentProcessId: parsed.data.parentProcessId,
+      branchFromStepId: parsed.data.branchFromStepId,
     },
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
   return ok({ id: updated.id });
 }
 

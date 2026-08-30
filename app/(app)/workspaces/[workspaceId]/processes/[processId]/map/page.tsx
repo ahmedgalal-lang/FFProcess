@@ -15,11 +15,16 @@ export default async function ProcessMapPage(
     where: { id: processId },
     include: {
       parentProcess: true,
+      branchFromStep: {
+        select: { id: true, label: true, processId: true, process: { select: { id: true, code: true } } },
+      },
       steps: {
         include: {
           assignedRole: true,
           swimlaneRole: true,
           links: { include: { targetProcess: true } },
+          // Processes that pick up from this step — the other end of a branch.
+          branchedProcesses: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" } },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -38,6 +43,30 @@ export default async function ProcessMapPage(
   ]);
 
   const externalEntities = process.externalEntities as unknown as { name: string; description: string }[];
+
+  // The step this process picks up from, if any. Its number comes from the
+  // source process's own step order, so it matches what that map shows.
+  let branchFrom: {
+    stepId: string;
+    stepLabel: string;
+    stepNumber: number;
+    sourceProcessId: string;
+    sourceProcessCode: string;
+  } | null = null;
+  if (process.branchFromStep) {
+    const sourceSteps = await prisma.processStep.findMany({
+      where: { processId: process.branchFromStep.processId },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    branchFrom = {
+      stepId: process.branchFromStep.id,
+      stepLabel: process.branchFromStep.label,
+      stepNumber: sourceSteps.findIndex((s) => s.id === process.branchFromStep!.id) + 1,
+      sourceProcessId: process.branchFromStep.process.id,
+      sourceProcessCode: process.branchFromStep.process.code,
+    };
+  }
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -80,9 +109,10 @@ export default async function ProcessMapPage(
         workspaceId={workspaceId}
         processId={processId}
         processCode={process.code}
-        steps={process.steps}
+        steps={process.steps.map((s) => ({ ...s, branches: s.branchedProcesses }))}
         connections={connections}
         roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+        branchFrom={branchFrom}
       />
 
       <div className="mt-5 flex flex-col gap-3">

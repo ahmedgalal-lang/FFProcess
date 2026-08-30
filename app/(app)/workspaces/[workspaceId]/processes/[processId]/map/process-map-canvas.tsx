@@ -20,9 +20,27 @@ import {
   type OnEdgesChange,
 } from "@xyflow/react";
 import { updateStepPosition, createStepConnection, deleteStepConnection } from "@/lib/actions/process";
-import { TaskNode, DecisionNode, TerminalNode, LaneNode, type StepLinkData } from "./map-nodes";
+import {
+  TaskNode,
+  DecisionNode,
+  TerminalNode,
+  LaneNode,
+  BranchEntryNode,
+  BranchGutterNode,
+  type StepLinkData,
+} from "./map-nodes";
 
-const NODE_TYPES = { task: TaskNode, decision: DecisionNode, terminal: TerminalNode, lane: LaneNode };
+const NODE_TYPES = {
+  task: TaskNode,
+  decision: DecisionNode,
+  terminal: TerminalNode,
+  lane: LaneNode,
+  branchEntry: BranchEntryNode,
+  branchGutter: BranchGutterNode,
+};
+
+/** Matches FIRST_STEP_X (190) in lib/domain/process-layout, so the gutter never covers a step. */
+const BRANCH_GUTTER_WIDTH = 186;
 
 const HALF_SIZE: Record<string, { x: number; y: number }> = {
   task: { x: 66, y: 28 },
@@ -39,9 +57,19 @@ type StepT = {
   assignedRole: { id: string; name: string } | null;
   swimlaneRole: { id: string; name: string } | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
+  branches?: { id: string; code: string; name: string }[];
 };
 
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
+
+/** Where this process picks up, when it resumes mid-flow in another one. */
+export type BranchFromT = {
+  stepId: string;
+  stepLabel: string;
+  stepNumber: number;
+  sourceProcessId: string;
+  sourceProcessCode: string;
+};
 
 function nodeKindFor(type: StepT["type"]): keyof typeof NODE_TYPES {
   if (type === "DECISION") return "decision";
@@ -81,12 +109,14 @@ export function ProcessMapCanvas({
   processCode,
   steps,
   connections,
+  branchFrom,
 }: {
   workspaceId: string;
   processId: string;
   processCode: string;
   steps: StepT[];
   connections: ConnectionT[];
+  branchFrom?: BranchFromT | null;
 }) {
   const laneOrder = useMemo(() => {
     const order: string[] = [];
@@ -134,14 +164,46 @@ export function ProcessMapCanvas({
         id: s.id,
         type: kind,
         position: { x: s.positionX - half.x, y: s.positionY - half.y },
-        data: { label: s.label, roleName: s.assignedRole?.name, links, workspaceId },
+        data: { label: s.label, roleName: s.assignedRole?.name, links, branches: s.branches ?? [], workspaceId },
         ariaLabel: describeStep(s),
         zIndex: 1,
       };
     });
 
-    return [...laneNodes, ...stepNodes];
-  }, [laneOrder, laneLabel, steps, canvasWidth, workspaceId]);
+    if (!branchFrom) return [...laneNodes, ...stepNodes];
+
+    const canvasHeight = Math.max(laneOrder.length, 1) * 130 + 40;
+    const branchNodes: Node[] = [
+      {
+        id: "branch-gutter",
+        type: "branchGutter",
+        position: { x: 0, y: 0 },
+        data: { label: `↰ From ${branchFrom.sourceProcessCode}` },
+        style: { width: BRANCH_GUTTER_WIDTH, height: canvasHeight },
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        zIndex: 0,
+      },
+      {
+        id: "branch-entry",
+        type: "branchEntry",
+        position: { x: 22, y: 77 },
+        data: {
+          label: branchFrom.stepLabel,
+          sourceCode: branchFrom.sourceProcessCode,
+          sourceProcessId: branchFrom.sourceProcessId,
+          stepNumber: branchFrom.stepNumber,
+          workspaceId,
+        },
+        ariaLabel: `Inherited entry point: ${branchFrom.stepLabel}, step ${branchFrom.stepNumber} of ${branchFrom.sourceProcessCode}`,
+        draggable: false,
+        zIndex: 1,
+      },
+    ];
+
+    return [...laneNodes, ...branchNodes, ...stepNodes];
+  }, [laneOrder, laneLabel, steps, canvasWidth, workspaceId, branchFrom]);
 
   const stepById = useMemo(() => new Map(steps.map((s) => [s.id, s])), [steps]);
 
@@ -171,10 +233,29 @@ export function ProcessMapCanvas({
     [stepById]
   );
 
-  const initialEdges: Edge[] = useMemo(
-    () => connections.flatMap((c) => buildEdge(c.id, c.fromStepId, c.toStepId, c.label) ?? []),
-    [connections, buildEdge]
-  );
+  const initialEdges: Edge[] = useMemo(() => {
+    const stepEdges = connections.flatMap((c) => buildEdge(c.id, c.fromStepId, c.toStepId, c.label) ?? []);
+    if (!branchFrom) return stepEdges;
+
+    // Draw the inherited entry into this process's own entry points — the
+    // steps nothing here feeds — rather than guessing a single "first" step.
+    const hasIncoming = new Set(connections.map((c) => c.toStepId));
+    const entryEdges: Edge[] = steps
+      .filter((s) => !hasIncoming.has(s.id))
+      .map((s) => ({
+        id: `branch-entry-${s.id}`,
+        source: "branch-entry",
+        target: s.id,
+        sourceHandle: "right",
+        targetHandle: "left-t",
+        type: "smoothstep",
+        deletable: false,
+        ariaLabel: `Picks up from ${branchFrom.stepLabel} in ${branchFrom.sourceProcessCode}`,
+        style: { stroke: "#b45309", strokeDasharray: "5 4" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#b45309" },
+      }));
+    return [...stepEdges, ...entryEdges];
+  }, [connections, buildEdge, branchFrom, steps]);
 
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);

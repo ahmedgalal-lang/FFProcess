@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ProcessMapCanvas } from "./process-map-canvas";
+import { ProcessMapCanvas, type BranchFromT } from "./process-map-canvas";
 import { StepListRow } from "./step-list-row";
 
 type RoleRef = { id: string; name: string };
@@ -27,6 +27,7 @@ export function MapView({
   steps,
   connections,
   roles,
+  branchFrom,
 }: {
   workspaceId: string;
   processId: string;
@@ -34,6 +35,7 @@ export function MapView({
   steps: StepT[];
   connections: ConnectionT[];
   roles: RoleRef[];
+  branchFrom?: BranchFromT | null;
 }) {
   const [mode, setMode] = useState<"diagram" | "list">("diagram");
   const incomingConnectionOf = new Map<string, ConnectionT>();
@@ -73,6 +75,7 @@ export function MapView({
           processCode={processCode}
           steps={steps}
           connections={connections}
+          branchFrom={branchFrom}
         />
       ) : (
         <div className="flex flex-col gap-2">

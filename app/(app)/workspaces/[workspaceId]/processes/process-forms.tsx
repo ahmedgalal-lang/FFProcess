@@ -5,8 +5,69 @@ import { useRouter } from "next/navigation";
 import { createProcess, cloneProcess, updateProcess, archiveProcess } from "@/lib/actions/process";
 import { createProcessCategory } from "@/lib/actions/process-category";
 
-type ProcessOption = { id: string; code: string; name: string };
+type StepOption = { id: string; label: string };
+type ProcessOption = { id: string; code: string; name: string; steps?: StepOption[] };
 type CategoryOption = { id: string; name: string };
+
+/**
+ * Optional "this process picks up mid-flow in another one" pair of selects.
+ * Two dependent dropdowns rather than one long flat list, because a workspace
+ * with several 17-step processes would otherwise produce an unusable menu.
+ * `excludeProcessId` keeps a process from offering its own steps.
+ */
+function BranchFromFields({
+  processes,
+  excludeProcessId,
+  sourceProcessId,
+  stepId,
+  onChange,
+}: {
+  processes: ProcessOption[];
+  excludeProcessId?: string;
+  sourceProcessId: string;
+  stepId: string;
+  onChange: (next: { sourceProcessId: string; stepId: string }) => void;
+}) {
+  const candidates = processes.filter((p) => p.id !== excludeProcessId && (p.steps?.length ?? 0) > 0);
+  const steps = candidates.find((p) => p.id === sourceProcessId)?.steps ?? [];
+
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+        Branches from
+        <select
+          value={sourceProcessId}
+          onChange={(e) => onChange({ sourceProcessId: e.target.value, stepId: "" })}
+          className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+        >
+          <option value="">— starts on its own —</option>
+          {candidates.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.code} — {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {sourceProcessId && (
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Starts at step
+          <select
+            value={stepId}
+            onChange={(e) => onChange({ sourceProcessId, stepId: e.target.value })}
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          >
+            <option value="">— pick a step —</option>
+            {steps.map((step, i) => (
+              <option key={step.id} value={step.id}>
+                {i + 1} · {step.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </>
+  );
+}
 
 export function CreateProcessForm({
   workspaceId,
@@ -20,6 +81,7 @@ export function CreateProcessForm({
   const [name, setName] = useState("");
   const [parentProcessId, setParentProcessId] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [branch, setBranch] = useState({ sourceProcessId: "", stepId: "" });
   const [categoryOptions, setCategoryOptions] = useState(categories);
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -62,6 +124,7 @@ export function CreateProcessForm({
             name,
             parentProcessId: parentProcessId || undefined,
             categoryId: categoryId || undefined,
+            branchFromStepId: branch.stepId || undefined,
           });
           if (!result.ok) {
             setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid input" : result.error);
@@ -69,6 +132,7 @@ export function CreateProcessForm({
           }
           setName("");
           setParentProcessId("");
+          setBranch({ sourceProcessId: "", stepId: "" });
           setLastCreatedCode(result.data.code);
           router.refresh();
         });
@@ -114,6 +178,12 @@ export function CreateProcessForm({
           ))}
         </select>
       </label>
+      <BranchFromFields
+        processes={processes}
+        sourceProcessId={branch.sourceProcessId}
+        stepId={branch.stepId}
+        onChange={setBranch}
+      />
       <button
         type="submit"
         disabled={pending}
@@ -303,7 +373,15 @@ export function EditProcessButton({
   categories,
 }: {
   workspaceId: string;
-  process: { id: string; name: string; description: string; categoryId: string | null; parentProcessId: string | null };
+  process: {
+    id: string;
+    name: string;
+    description: string;
+    categoryId: string | null;
+    parentProcessId: string | null;
+    branchFromStepId: string | null;
+    branchFromProcessId: string | null;
+  };
   processes: ProcessOption[];
   categories: CategoryOption[];
 }) {
@@ -312,6 +390,10 @@ export function EditProcessButton({
   const [description, setDescription] = useState(process.description);
   const [categoryId, setCategoryId] = useState(process.categoryId ?? "");
   const [parentProcessId, setParentProcessId] = useState(process.parentProcessId ?? "");
+  const [branch, setBranch] = useState({
+    sourceProcessId: process.branchFromProcessId ?? "",
+    stepId: process.branchFromStepId ?? "",
+  });
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -325,6 +407,10 @@ export function EditProcessButton({
           setDescription(process.description);
           setCategoryId(process.categoryId ?? "");
           setParentProcessId(process.parentProcessId ?? "");
+          setBranch({
+            sourceProcessId: process.branchFromProcessId ?? "",
+            stepId: process.branchFromStepId ?? "",
+          });
           setError(null);
           setOpen(true);
         }}
@@ -357,6 +443,7 @@ export function EditProcessButton({
               description,
               categoryId: categoryId || null,
               parentProcessId: parentProcessId || null,
+              branchFromStepId: branch.stepId || null,
             });
             if (!result.ok) {
               setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save") : result.error);
@@ -419,6 +506,15 @@ export function EditProcessButton({
               ))}
           </select>
         </label>
+        <div className="mt-3 flex flex-col gap-3">
+          <BranchFromFields
+            processes={processes}
+            excludeProcessId={process.id}
+            sourceProcessId={branch.sourceProcessId}
+            stepId={branch.stepId}
+            onChange={setBranch}
+          />
+        </div>
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <button

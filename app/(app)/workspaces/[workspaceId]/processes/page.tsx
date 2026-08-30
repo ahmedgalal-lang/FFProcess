@@ -34,11 +34,22 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
         raciMatrixStatus: true,
         parentProcess: true,
         category: true,
+        // Steps feed the "Branches from → starts at step" picker; the branch
+        // origin feeds the sub-line under a branching process's name.
+        steps: { select: { id: true, label: true }, orderBy: { createdAt: "asc" } },
+        branchFromStep: { select: { id: true, label: true, process: { select: { id: true, code: true } } } },
       },
       orderBy: { code: "asc" },
     }),
     prisma.processCategory.findMany({ where: { firmId: workspace.firmId }, orderBy: { name: "asc" } }),
   ]);
+
+  const processOptions = processes.map((proc) => ({
+    id: proc.id,
+    code: proc.code,
+    name: proc.name,
+    steps: proc.steps.map((step) => ({ id: step.id, label: step.label })),
+  }));
 
   // Group as a simple two-level tree: top-level processes, each followed by its children.
   // Search results are shown flat (by code) instead — a match's parent may not itself match.
@@ -110,6 +121,11 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                       sub-process of {p.parentProcess?.code}
                     </span>
                   )}
+                  {p.branchFromStep && (
+                    <span className="block text-xs font-normal text-amber-700">
+                      ↰ branches from {p.branchFromStep.process.code} · {p.branchFromStep.label}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-2">
                   {p.category ? (
@@ -146,8 +162,10 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                         description: p.description ?? "",
                         categoryId: p.categoryId,
                         parentProcessId: p.parentProcessId,
+                        branchFromStepId: p.branchFromStepId,
+                        branchFromProcessId: p.branchFromStep?.process.id ?? null,
                       }}
-                      processes={processes.map((proc) => ({ id: proc.id, code: proc.code, name: proc.name }))}
+                      processes={processOptions}
                       categories={categories.map((c) => ({ id: c.id, name: c.name }))}
                     />
                     <CloneProcessButton
@@ -155,7 +173,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                       sourceProcessId={p.id}
                       sourceName={p.name}
                       sourceParentProcessId={p.parentProcessId}
-                      processes={processes.map((proc) => ({ id: proc.id, code: proc.code, name: proc.name }))}
+                      processes={processOptions}
                     />
                     <ArchiveProcessButton workspaceId={workspaceId} processId={p.id} />
                     <Link
@@ -182,7 +200,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
       <div className="mt-4 flex flex-col gap-3">
         <CreateProcessForm
           workspaceId={workspaceId}
-          processes={processes.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
+          processes={processOptions}
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
         />
         <GenerateTemplateForm workspaceId={workspaceId} />

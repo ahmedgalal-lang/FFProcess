@@ -264,6 +264,14 @@ model Process {
   /// computeVisibleRoleIds in lib/domain/raci-table.ts).
   raciVisibleRoleIds String[] @default([])
 
+  /// The step in ANOTHER process that this one picks up from — a process that
+  /// doesn't start on its own but resumes mid-flow elsewhere, with its own
+  /// people and RACI from that point on. Independent of parentProcessId:
+  /// that one is filing (where a process sits in the tree), this is flow
+  /// (where the work actually continues). Also independent of
+  /// ProcessStepLink, which points the other way and stays as it is.
+  branchFromStepId String?
+
   /// Process-level documentation feeding the Export Report — edited on the
   /// Process Map page (not in the report itself, which is read-only), so the
   /// report never has to show an empty editable field.
@@ -279,6 +287,9 @@ model Process {
   category      ProcessCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   parentProcess Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
   subProcesses  Process[]        @relation("ProcessHierarchy")
+  /// SetNull rather than Cascade: deleting the source step must not delete a
+  /// process someone else owns — the branch link is simply dropped.
+  branchFromStep ProcessStep?    @relation("ProcessBranchOrigin", fields: [branchFromStepId], references: [id], onDelete: SetNull)
 
   steps                ProcessStep[]
   activities           Activity[]
@@ -293,6 +304,7 @@ model Process {
   @@unique([workspaceId, code])
   @@index([workspaceId, parentProcessId])
   @@index([categoryId])
+  @@index([branchFromStepId])
   @@map("processes")
 }
 
@@ -350,6 +362,7 @@ model ProcessStep {
   activities          Activity[]
   reviewFindings      ReviewFinding[]
   authorityAssignment AuthorityAssignment?
+  branchedProcesses   Process[]            @relation("ProcessBranchOrigin")
 
   createdAt DateTime @default(now())
 

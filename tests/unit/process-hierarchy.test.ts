@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { generateProcessCode, isCodeAvailable, wouldCreateCycle } from "@/lib/domain/process-hierarchy";
+import {
+  generateProcessCode,
+  isCodeAvailable,
+  wouldCreateBranchCycle,
+  wouldCreateCycle,
+} from "@/lib/domain/process-hierarchy";
 
 describe("isCodeAvailable", () => {
   it("is available when no other process uses it", () => {
@@ -89,5 +94,38 @@ describe("wouldCreateCycle", () => {
       ["PUR102", null],
     ]);
     expect(wouldCreateCycle("PUR102", "PUR101", parentOf)).toBe(false);
+  });
+});
+
+describe("wouldCreateBranchCycle", () => {
+  it("is true when a process would branch off its own step", () => {
+    expect(wouldCreateBranchCycle("a", "a", new Map())).toBe(true);
+  });
+
+  it("is false for a process branching off an independent one", () => {
+    const branchSourceOf = new Map<string, string | null>([["b", null]]);
+    expect(wouldCreateBranchCycle("a", "b", branchSourceOf)).toBe(false);
+  });
+
+  it("is true when the chain leads back to the process", () => {
+    // b already branches from a, so branching a off b closes the loop.
+    const branchSourceOf = new Map<string, string | null>([["b", "a"], ["a", null]]);
+    expect(wouldCreateBranchCycle("a", "b", branchSourceOf)).toBe(true);
+  });
+
+  it("follows a longer chain before deciding", () => {
+    const branchSourceOf = new Map<string, string | null>([
+      ["d", "c"],
+      ["c", "b"],
+      ["b", "a"],
+      ["a", null],
+    ]);
+    expect(wouldCreateBranchCycle("a", "d", branchSourceOf)).toBe(true);
+    expect(wouldCreateBranchCycle("e", "d", branchSourceOf)).toBe(false);
+  });
+
+  it("terminates on a pre-existing cycle in the data rather than looping forever", () => {
+    const branchSourceOf = new Map<string, string | null>([["x", "y"], ["y", "x"]]);
+    expect(wouldCreateBranchCycle("z", "x", branchSourceOf)).toBe(true);
   });
 });
