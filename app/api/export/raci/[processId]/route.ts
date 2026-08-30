@@ -35,7 +35,7 @@ export async function GET(
     prisma.processStep.findMany({
       where: { processId },
       select: { id: true, type: true, label: true, raciSkipped: true },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
     prisma.raciMatrixStatus.findUnique({ where: { processId } }),
     auth(),

@@ -164,6 +164,36 @@ test.describe("Core workflows", () => {
     await expect(page.getByLabel("Edit KPIs for Purchase-to-Pay")).toBeVisible();
   });
 
+  test("Steps List can reorder steps, and offers where a new step should land", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
+    await page.waitForURL("**/map");
+    await page.click('button:has-text("Steps List")');
+
+    const labels = page.locator("main .rounded-xl.border.border-slate-200.bg-white.p-3\\.5 .text-sm.font-semibold");
+    const seeded = await labels.allInnerTexts();
+    expect(seeded.slice(0, 3)).toEqual(["Start", "Create Purchase Order", "Approve PO?"]);
+
+    // A new step can be placed rather than always landing at the bottom.
+    const addForm = page.locator("form").filter({ hasText: "+ Add Step" }).first();
+    await expect(addForm.getByLabel("Insert")).toHaveValue("AUTO");
+
+    // Moving is a swap, so moving back restores the seeded order exactly.
+    await page.getByLabel("Move Approve PO? up").click();
+    await page.click('button:has-text("Steps List")');
+    await expect(labels.nth(1)).toHaveText("Approve PO?");
+    await expect(labels.nth(2)).toHaveText("Create Purchase Order");
+
+    await page.getByLabel("Move Approve PO? down").click();
+    await page.click('button:has-text("Steps List")');
+    await expect(labels.nth(1)).toHaveText("Create Purchase Order");
+    await expect(await labels.allInnerTexts()).toEqual(seeded);
+
+    // The first step can't move up and the last can't move down.
+    await expect(page.getByLabel("Move Start up")).toBeHidden();
+    await expect(page.getByLabel("Move End down")).toBeHidden();
+  });
+
   test("Helicopter View draws every process as a card, connected by how work moves between them", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/helicopter");
     await expect(page.locator("h1")).toHaveText("Helicopter View");

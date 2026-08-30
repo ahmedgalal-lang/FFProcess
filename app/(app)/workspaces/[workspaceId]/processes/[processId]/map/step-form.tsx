@@ -34,6 +34,11 @@ export function AddStepForm({
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
   const [fromStepId, setFromStepId] = useState(steps.at(-1)?.id ?? "");
   const [connectionLabel, setConnectionLabel] = useState("");
+  // Where the step lands in the Steps List. "AUTO" puts it straight after
+  // whatever it connects from, which is almost always where it belongs — the
+  // common case being a step remembered late that would otherwise be stranded
+  // at the bottom. "END" is the old behaviour, kept for when that's wanted.
+  const [insertAfter, setInsertAfter] = useState<string>("AUTO");
   const [linkedProcessIds, setLinkedProcessIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -58,6 +63,8 @@ export function AddStepForm({
             },
             fromStepId: fromStepId || undefined,
             connectionLabel: connectionLabel || undefined,
+            insertAfterStepId:
+              insertAfter === "AUTO" ? fromStepId || undefined : insertAfter === "END" ? undefined : insertAfter,
           });
           if (!result.ok) {
             setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid step" : result.error);
@@ -126,6 +133,21 @@ export function AddStepForm({
             placeholder="Yes / No"
             className="w-28 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
           />
+        </Field>
+        <Field label="Insert">
+          <select
+            value={insertAfter}
+            onChange={(e) => setInsertAfter(e.target.value)}
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+          >
+            <option value="AUTO">after the step it connects from</option>
+            <option value="END">at the end of the list</option>
+            {steps.map((s) => (
+              <option key={s.id} value={s.id}>
+                after [{STEP_TYPE_PREFIX[s.type]}] {s.label}
+              </option>
+            ))}
+          </select>
         </Field>
       </div>
 

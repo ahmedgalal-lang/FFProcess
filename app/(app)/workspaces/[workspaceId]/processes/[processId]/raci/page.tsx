@@ -26,7 +26,7 @@ export default async function RaciMatrixPage(
     prisma.processStep.findMany({
       where: { processId },
       select: { id: true, type: true, label: true, raciSkipped: true },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
     getProcessStepperCounts(processId),
   ]);

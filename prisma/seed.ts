@@ -167,11 +167,13 @@ async function main() {
   ];
 
   const stepIds: Record<string, string> = {};
-  for (const s of stepDefs) {
+  for (const [index, s] of stepDefs.entries()) {
     const id = `step-${p2p.id}-${s.key}`;
     await prisma.processStep.upsert({
       where: { id },
-      update: {},
+      // Steps carry an explicit order, so a reseed lands them in the same
+      // sequence the Steps List shows rather than relying on insert order.
+      update: { order: index },
       create: {
         id,
         processId: p2p.id,
@@ -181,6 +183,7 @@ async function main() {
         swimlaneRoleId: s.role ? roles[s.role] : undefined,
         positionX: s.x,
         positionY: s.y,
+        order: index,
       },
     });
     stepIds[s.key] = id;

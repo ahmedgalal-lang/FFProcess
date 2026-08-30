@@ -12,6 +12,7 @@ import {
 } from "@/lib/domain/process-hierarchy";
 import { validateConnections } from "@/lib/domain/process-graph";
 import { laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
+import { arrangeByFlow, insertPositionAfter, moveStepInOrder } from "@/lib/domain/step-order";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
 /** Verifies processId actually belongs to workspaceId, not just that the caller can access workspaceId. */
@@ -174,7 +175,10 @@ export async function cloneProcess(
 
   const source = await prisma.process.findUnique({
     where: { id: parsed.data.sourceProcessId },
-    include: { steps: true, activities: { include: { raciAssignments: true } } },
+    include: {
+      steps: { orderBy: { order: "asc" } },
+      activities: { include: { raciAssignments: true } },
+    },
   });
   if (!source || source.workspaceId !== parsed.data.workspaceId) return notFound();
 
@@ -226,6 +230,7 @@ export async function cloneProcess(
               swimlaneRoleId: s.swimlaneRoleId,
               positionX: s.positionX,
               positionY: s.positionY,
+              order: s.order,
             },
           });
           stepIdMap.set(s.id, newStep.id);
@@ -477,6 +482,8 @@ const addStepSchema = z.object({
   step: stepInputSchema.omit({ id: true }),
   fromStepId: z.string().min(1).optional(),
   connectionLabel: z.string().trim().max(60).optional().or(z.literal("")),
+  /** Put the new step straight after this one; omit to append to the end. */
+  insertAfterStepId: z.string().min(1).optional().or(z.literal("")),
 });
 
 /**
@@ -492,15 +499,15 @@ export async function addProcessStep(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const { processId, step, fromStepId, connectionLabel } = parsed.data;
+  const { processId, step, fromStepId, connectionLabel, insertAfterStepId } = parsed.data;
 
   const process = await loadProcessInWorkspace(parsed.data.workspaceId, processId);
   if (!process) return notFound();
 
   const stepsInProcess = await prisma.processStep.findMany({
     where: { processId },
-    select: { id: true, positionX: true, swimlaneRoleId: true, assignedRoleId: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
+    select: { id: true, positionX: true, swimlaneRoleId: true, assignedRoleId: true, order: true },
+    orderBy: { order: "asc" },
   });
 
   if (fromStepId) {
@@ -519,7 +526,20 @@ export async function addProcessStep(
   const positionX = nextStepX(stepsInProcess.map((s) => s.positionX));
   const positionY = laneY(resolvedRoleId, laneOrder);
 
+  // Where it lands in the Steps List. The end by default, so adding a step
+  // behaves as it always has, unless the caller says it belongs mid-flow.
+  const orderedIds = stepsInProcess.map((s) => s.id);
+  const position = insertPositionAfter(orderedIds, insertAfterStepId || null);
+
   const created = await prisma.$transaction(async (tx) => {
+    // Make room: everything from the insertion point on moves down one.
+    if (position < orderedIds.length) {
+      await tx.processStep.updateMany({
+        where: { processId, id: { in: orderedIds.slice(position) } },
+        data: { order: { increment: 1 } },
+      });
+    }
+
     const newStep = await tx.processStep.create({
       data: {
         processId,
@@ -529,6 +549,7 @@ export async function addProcessStep(
         swimlaneRoleId: step.swimlaneRoleId || undefined,
         positionX,
         positionY,
+        order: position,
         links: step.linkedProcessIds.length
           ? { create: step.linkedProcessIds.map((targetProcessId) => ({ targetProcessId })) }
           : undefined,
@@ -586,8 +607,8 @@ export async function addProcessStepsBulk(
 
   const stepsInProcess = await prisma.processStep.findMany({
     where: { processId },
-    select: { id: true, positionX: true, swimlaneRoleId: true, assignedRoleId: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
+    select: { id: true, positionX: true, swimlaneRoleId: true, assignedRoleId: true, order: true },
+    orderBy: { order: "asc" },
   });
 
   const laneOrder: string[] = [];
@@ -598,13 +619,15 @@ export async function addProcessStepsBulk(
   const positionY = laneY(null, laneOrder);
   let nextX = nextStepX(stepsInProcess.map((s) => s.positionX));
   let previousStepId = stepsInProcess.at(-1)?.id;
+  let nextOrder = stepsInProcess.length;
 
   const ids = await prisma.$transaction(async (tx) => {
     const createdIds: string[] = [];
     for (const label of labels) {
       const newStep = await tx.processStep.create({
-        data: { processId, type: "TASK", label, positionX: nextX, positionY },
+        data: { processId, type: "TASK", label, positionX: nextX, positionY, order: nextOrder },
       });
+      nextOrder += 1;
       if (previousStepId) {
         await tx.stepConnection.create({
           data: { processId, fromStepId: previousStepId, toStepId: newStep.id },
@@ -802,6 +825,138 @@ export async function updateStepPosition(
   });
 
   return ok({ id: step.id });
+}
+
+/**
+ * Writes an explicit position for every step of a process, in one statement per
+ * step inside a transaction — the list is small (a map is tens of steps, not
+ * thousands) and doing it as a unit means a half-applied order can't be seen.
+ */
+async function writeStepOrder(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  processId: string,
+  orderedStepIds: string[]
+): Promise<void> {
+  for (const [index, id] of orderedStepIds.entries()) {
+    await tx.processStep.update({ where: { id, processId }, data: { order: index } });
+  }
+}
+
+/** The process's step ids in their current order, or null if it isn't reachable. */
+async function loadOrderedStepIds(
+  workspaceId: string,
+  processId: string
+): Promise<string[] | null> {
+  const process = await loadProcessInWorkspace(workspaceId, processId);
+  if (!process) return null;
+  const steps = await prisma.processStep.findMany({
+    where: { processId },
+    select: { id: true },
+    orderBy: { order: "asc" },
+  });
+  return steps.map((s) => s.id);
+}
+
+const moveStepSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  stepId: z.string().min(1),
+  direction: z.enum(["UP", "DOWN"]),
+});
+
+/**
+ * Moves one step one place up or down the Steps List. Connections are left
+ * exactly as they are: this changes the order the steps are listed and
+ * reported in, not what flows into what.
+ */
+export async function moveProcessStep(
+  input: z.infer<typeof moveStepSchema>
+): Promise<ActionResult<{ orderedStepIds: string[] }>> {
+  const parsed = moveStepSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const orderedStepIds = await loadOrderedStepIds(parsed.data.workspaceId, parsed.data.processId);
+  if (!orderedStepIds) return notFound();
+  if (!orderedStepIds.includes(parsed.data.stepId)) return notFound();
+
+  const next = moveStepInOrder(orderedStepIds, parsed.data.stepId, parsed.data.direction);
+  await prisma.$transaction((tx) => writeStepOrder(tx, parsed.data.processId, next));
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ orderedStepIds: next });
+}
+
+const reorderStepsSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  orderedStepIds: z.array(z.string().min(1)).min(1),
+});
+
+/** Sets the whole list's order at once, from an explicit list of step ids. */
+export async function reorderProcessSteps(
+  input: z.infer<typeof reorderStepsSchema>
+): Promise<ActionResult<{ orderedStepIds: string[] }>> {
+  const parsed = reorderStepsSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const current = await loadOrderedStepIds(parsed.data.workspaceId, parsed.data.processId);
+  if (!current) return notFound();
+
+  // The new order has to be a rearrangement of exactly this process's steps —
+  // anything else would silently drop a step off the list or renumber a step
+  // belonging to another process.
+  const submitted = new Set(parsed.data.orderedStepIds);
+  const sameSet =
+    submitted.size === parsed.data.orderedStepIds.length &&
+    submitted.size === current.length &&
+    current.every((id) => submitted.has(id));
+  if (!sameSet) return validationError("That order doesn't match this process's steps.");
+
+  await prisma.$transaction((tx) => writeStepOrder(tx, parsed.data.processId, parsed.data.orderedStepIds));
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ orderedStepIds: parsed.data.orderedStepIds });
+}
+
+const arrangeStepsSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+});
+
+/**
+ * Re-orders the Steps List to follow the connections — every step after
+ * whatever leads into it. This is the one-click fix for a step added late:
+ * it's already connected in the right place, it just isn't listed there.
+ */
+export async function arrangeProcessStepsByFlow(
+  input: z.infer<typeof arrangeStepsSchema>
+): Promise<ActionResult<{ orderedStepIds: string[] }>> {
+  const parsed = arrangeStepsSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const orderedStepIds = await loadOrderedStepIds(parsed.data.workspaceId, parsed.data.processId);
+  if (!orderedStepIds) return notFound();
+  if (orderedStepIds.length === 0) return ok({ orderedStepIds });
+
+  const connections = await prisma.stepConnection.findMany({
+    where: { processId: parsed.data.processId },
+    select: { fromStepId: true, toStepId: true },
+  });
+
+  const next = arrangeByFlow(orderedStepIds, connections);
+  await prisma.$transaction((tx) => writeStepOrder(tx, parsed.data.processId, next));
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  return ok({ orderedStepIds: next });
 }
 
 const createActivitySchema = z.object({

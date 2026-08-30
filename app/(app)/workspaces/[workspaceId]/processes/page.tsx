@@ -36,7 +36,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
         category: true,
         // Steps feed the "Branches from → starts at step" picker; the branch
         // origin feeds the sub-line under a branching process's name.
-        steps: { select: { id: true, label: true }, orderBy: { createdAt: "asc" } },
+        steps: { select: { id: true, label: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] },
         branchFromStep: { select: { id: true, label: true, process: { select: { id: true, code: true } } } },
       },
       orderBy: { code: "asc" },

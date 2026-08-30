@@ -22,7 +22,7 @@ export default async function ProcessReviewPage(
     prisma.processStep.findMany({
       where: { processId },
       select: { id: true, type: true, label: true },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 

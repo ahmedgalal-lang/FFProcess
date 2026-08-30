@@ -25,7 +25,7 @@ export async function GET(
     prisma.processStep.findMany({
       where: { processId },
       include: { assignedRole: true, links: { include: { targetProcess: true } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
     prisma.stepConnection.findMany({ where: { processId } }),
     auth(),

@@ -56,7 +56,7 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
         prisma.processStep.findMany({
           where: { processId: process.id },
           include: { assignedRole: true, swimlaneRole: true, links: { include: { targetProcess: true } } },
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
         }),
         prisma.stepConnection.findMany({ where: { processId: process.id } }),
         prisma.activity.findMany({

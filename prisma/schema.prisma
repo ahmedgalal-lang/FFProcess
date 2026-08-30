@@ -346,6 +346,12 @@ model ProcessStep {
   raciSkipped    Boolean  @default(false)
   reviewNotes    String?
 
+  /// Where this step sits in the Steps List, and therefore in the Export
+  /// Report and every export. Explicit rather than implied by createdAt: a
+  /// step added later often belongs in the middle, and ordering by creation
+  /// time stranded it at the bottom no matter what it connected to.
+  order Int @default(0)
+
   /// This step's procedure for the Export Report — edited inline in the
   /// Process Map's Steps List view, one action per line; the report just
   /// displays it read-only.
@@ -367,6 +373,7 @@ model ProcessStep {
   createdAt DateTime @default(now())
 
   @@index([processId])
+  @@index([processId, order])
   @@map("process_steps")
 }
 

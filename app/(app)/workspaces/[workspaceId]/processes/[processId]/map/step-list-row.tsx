@@ -8,6 +8,7 @@ import {
   deleteProcessStep,
   createStepConnection,
   deleteStepConnection,
+  moveProcessStep,
 } from "@/lib/actions/process";
 
 const TYPE_STYLES: Record<string, string> = {
@@ -43,6 +44,8 @@ export function StepListRow({
   workspaceId,
   processId,
   index,
+  isFirst,
+  isLast,
   step,
   predecessor,
   incomingConnection,
@@ -52,6 +55,8 @@ export function StepListRow({
   workspaceId: string;
   processId: string;
   index: number;
+  isFirst: boolean;
+  isLast: boolean;
   step: StepT;
   predecessor: StepOption | undefined;
   incomingConnection: ConnectionT | undefined;
@@ -71,6 +76,18 @@ export function StepListRow({
   const [connectionLabel, setConnectionLabel] = useState(incomingConnection?.label ?? "");
   const [detailedAction, setDetailedAction] = useState(step.detailedAction.join("\n"));
   const [exceptionHandling, setExceptionHandling] = useState(step.exceptionHandling ?? "");
+
+  function move(direction: "UP" | "DOWN") {
+    setError(null);
+    startTransition(async () => {
+      const result = await moveProcessStep({ workspaceId, processId, stepId: step.id, direction });
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not move") : result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function startEditing() {
     setLabel(step.label);
@@ -262,8 +279,30 @@ export function StepListRow({
 
   return (
     <div className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
-      <div className="flex h-6 w-6 flex-none items-center justify-center rounded-md bg-indigo-50 font-mono text-xs font-bold text-indigo-700">
-        {index + 1}
+      <div className="flex flex-none flex-col items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => move("UP")}
+          disabled={pending || isFirst}
+          aria-label={`Move ${step.label} up`}
+          title="Move up"
+          className="rounded text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
+        >
+          ▲
+        </button>
+        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 font-mono text-xs font-bold text-indigo-700">
+          {index + 1}
+        </div>
+        <button
+          type="button"
+          onClick={() => move("DOWN")}
+          disabled={pending || isLast}
+          aria-label={`Move ${step.label} down`}
+          title="Move down"
+          className="rounded text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
+        >
+          ▼
+        </button>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">

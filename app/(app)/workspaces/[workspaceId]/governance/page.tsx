@@ -26,7 +26,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
   const sections = await Promise.all(
     processes.map(async (process) => {
       const [steps, activities, authorityAssignments] = await Promise.all([
-        prisma.processStep.findMany({ where: { processId: process.id }, orderBy: { createdAt: "asc" } }),
+        prisma.processStep.findMany({ where: { processId: process.id }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
         prisma.activity.findMany({
           where: { processId: process.id },
           include: { raciAssignments: true },

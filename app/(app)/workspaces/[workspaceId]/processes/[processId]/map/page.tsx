@@ -26,7 +26,7 @@ export default async function ProcessMapPage(
           // Processes that pick up from this step — the other end of a branch.
           branchedProcesses: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" } },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }],
       },
     },
   });
@@ -57,7 +57,7 @@ export default async function ProcessMapPage(
     const sourceSteps = await prisma.processStep.findMany({
       where: { processId: process.branchFromStep.processId },
       select: { id: true },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     });
     branchFrom = {
       stepId: process.branchFromStep.id,

@@ -30,7 +30,7 @@ export default async function HelicopterViewPage(props: PageProps<"/workspaces/[
         // origin is described by.
         steps: {
           select: { id: true, label: true, links: { select: { targetProcessId: true } } },
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
         },
       },
       orderBy: { code: "asc" },

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { arrangeProcessStepsByFlow } from "@/lib/actions/process";
 import { ProcessMapCanvas, type BranchFromT } from "./process-map-canvas";
 import { StepListRow } from "./step-list-row";
 
@@ -38,6 +40,9 @@ export function MapView({
   branchFrom?: BranchFromT | null;
 }) {
   const [mode, setMode] = useState<"diagram" | "list">("diagram");
+  const [arrangeError, setArrangeError] = useState<string | null>(null);
+  const [arranging, startArranging] = useTransition();
+  const router = useRouter();
   const incomingConnectionOf = new Map<string, ConnectionT>();
   for (const c of connections) incomingConnectionOf.set(c.toStepId, c);
   const stepById = new Map(steps.map((s) => [s.id, s]));
@@ -60,13 +65,39 @@ export function MapView({
             </button>
           ))}
         </div>
-        <a
-          href={`/api/export/process-map/${processId}`}
-          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Export PDF
-        </a>
+        <div className="flex items-center gap-2">
+          {mode === "list" && steps.length > 1 && (
+            <button
+              type="button"
+              disabled={arranging}
+              onClick={() => {
+                setArrangeError(null);
+                startArranging(async () => {
+                  const result = await arrangeProcessStepsByFlow({ workspaceId, processId });
+                  if (!result.ok) {
+                    setArrangeError(
+                      result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not arrange") : result.error
+                    );
+                    return;
+                  }
+                  router.refresh();
+                });
+              }}
+              title="Renumber the steps so each one follows whatever connects into it"
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              {arranging ? "Arranging…" : "↓↑ Arrange by flow"}
+            </button>
+          )}
+          <a
+            href={`/api/export/process-map/${processId}`}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Export PDF
+          </a>
+        </div>
       </div>
+      {arrangeError && <p className="mb-2 text-xs text-red-600">{arrangeError}</p>}
 
       {mode === "diagram" ? (
         <ProcessMapCanvas
@@ -94,6 +125,8 @@ export function MapView({
                 workspaceId={workspaceId}
                 processId={processId}
                 index={i}
+                isFirst={i === 0}
+                isLast={i === steps.length - 1}
                 step={step}
                 predecessor={predecessor}
                 incomingConnection={incomingConnection}
