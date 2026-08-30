@@ -26,13 +26,41 @@ test.describe("Core workflows", () => {
 
     await expect(page.locator("h1")).toContainText("Purchase-to-Pay");
 
-    // Diagram view (default): React Flow renders one node per step plus one per swimlane.
-    const laneNodes = page.locator(".react-flow__node").filter({ hasText: /^(AP Clerk|Finance Manager|Procurement Lead)$/i });
-    await expect(laneNodes).toHaveCount(3);
-    const stepNodes = page.locator(".react-flow__node").filter({ hasNotText: /^(AP Clerk|Finance Manager|Procurement Lead)$/i });
+    // Diagram view (default): React Flow renders one node per step plus one per
+    // swimlane — three roles, plus an Unassigned lane for the seeded Start step,
+    // which has no role and so belongs to no role's lane.
+    const laneText = /^(AP Clerk|Finance Manager|Procurement Lead|Unassigned)$/i;
+    const laneNodes = page.locator(".react-flow__node").filter({ hasText: laneText });
+    await expect(laneNodes).toHaveCount(4);
+    const stepNodes = page.locator(".react-flow__node").filter({ hasNotText: laneText });
     await expect(stepNodes).toHaveCount(9);
     await expect(page.locator("text=🔗 PUR102")).toBeVisible();
     await expect(page.locator("text=🔗 SAL101")).toBeVisible();
+
+    // Every step sits inside its own role's lane. This used to be wrong: lanes
+    // were drawn from the roles but nodes were placed from a coordinate frozen
+    // when the step was created, so a role assigned later left the node behind.
+    const laneTop = async (name: string) =>
+      (await laneNodes.filter({ hasText: new RegExp(`^${name}$`, "i") }).boundingBox())!.y;
+    const stepTop = async (label: string) =>
+      (await stepNodes.filter({ hasText: label }).first().boundingBox())!.y;
+
+    const [apClerk, financeManager, procurementLead, unassigned] = await Promise.all([
+      laneTop("AP Clerk"),
+      laneTop("Finance Manager"),
+      laneTop("Procurement Lead"),
+      laneTop("Unassigned"),
+    ]);
+
+    // A step's top edge falls inside its lane's band, between that lane's top
+    // and the next lane's.
+    expect(await stepTop("Create Purchase Order")).toBeGreaterThan(apClerk!);
+    expect(await stepTop("Create Purchase Order")).toBeLessThan(financeManager!);
+    expect(await stepTop("Approve PO?")).toBeGreaterThan(financeManager!);
+    expect(await stepTop("Approve PO?")).toBeLessThan(procurementLead!);
+    expect(await stepTop("Receive Goods")).toBeGreaterThan(procurementLead!);
+    expect(await stepTop("Receive Goods")).toBeLessThan(unassigned!);
+    expect(await stepTop("Start")).toBeGreaterThan(unassigned!);
 
     // Steps List view: same 9 steps, rendered as boxes instead of a diagram.
     await page.click('button:has-text("Steps List")');

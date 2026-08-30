@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toPng } from "html-to-image";
 import {
   ReactFlow,
@@ -20,6 +21,14 @@ import {
   type OnEdgesChange,
 } from "@xyflow/react";
 import { updateStepPosition, createStepConnection, deleteStepConnection } from "@/lib/actions/process";
+import {
+  assignSwimlanes,
+  laneIndexAtY,
+  roleIdForLane,
+  LANE_HEIGHT,
+  LANE_NODE_Y_OFFSET,
+  LANE_TOP_OFFSET,
+} from "@/lib/domain/process-layout";
 import {
   TaskNode,
   DecisionNode,
@@ -94,9 +103,9 @@ function describeStep(s: StepT): string {
 }
 
 /** Picks handle ids on each side based on the geometric relationship between two steps. */
-function chooseHandles(from: StepT, to: StepT) {
-  const dx = to.positionX - from.positionX;
-  const dy = to.positionY - from.positionY;
+function chooseHandles(from: { x: number; y: number }, to: { x: number; y: number }) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
   if (Math.abs(dx) >= Math.abs(dy)) {
     return dx >= 0 ? { sourceHandle: "right", targetHandle: "left-t" } : { sourceHandle: "left", targetHandle: "right-t" };
   }
@@ -118,14 +127,22 @@ export function ProcessMapCanvas({
   connections: ConnectionT[];
   branchFrom?: BranchFromT | null;
 }) {
-  const laneOrder = useMemo(() => {
-    const order: string[] = [];
-    for (const s of steps) {
-      const roleId = s.swimlaneRole?.id ?? s.assignedRole?.id;
-      if (roleId && !order.includes(roleId)) order.push(roleId);
-    }
-    return order;
-  }, [steps]);
+  // Lanes and node placement come from the same answer, so a step is always
+  // drawn in the lane its role says it belongs to. Its stored positionY is
+  // deliberately not used: it was frozen when the step was created, so a role
+  // assigned afterwards left the node behind in the wrong lane.
+  const layout = useMemo(
+    () =>
+      assignSwimlanes(
+        steps.map((s) => ({
+          id: s.id,
+          assignedRoleId: s.assignedRole?.id ?? null,
+          swimlaneRoleId: s.swimlaneRole?.id ?? null,
+        }))
+      ),
+    [steps]
+  );
+  const { laneOrder } = layout;
 
   const laneLabel = useMemo(() => {
     const map = new Map<string, string>();
@@ -142,14 +159,30 @@ export function ProcessMapCanvas({
     const laneNodes: Node[] = laneOrder.map((roleId, i) => ({
       id: `lane-${roleId}`,
       type: "lane",
-      position: { x: 0, y: i * 130 + 40 },
+      position: { x: 0, y: i * LANE_HEIGHT + LANE_TOP_OFFSET },
       data: { label: laneLabel.get(roleId) ?? "" },
-      style: { width: canvasWidth, height: 130 },
+      style: { width: canvasWidth, height: LANE_HEIGHT },
       draggable: false,
       selectable: false,
       focusable: false,
       zIndex: 0,
     }));
+
+    // Steps with no role at all get a lane of their own rather than floating
+    // below the diagram in no lane, which is what used to happen.
+    if (layout.hasUnassignedLane) {
+      laneNodes.push({
+        id: "lane-unassigned",
+        type: "lane",
+        position: { x: 0, y: laneOrder.length * LANE_HEIGHT + LANE_TOP_OFFSET },
+        data: { label: "Unassigned" },
+        style: { width: canvasWidth, height: LANE_HEIGHT },
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        zIndex: 0,
+      });
+    }
 
     const stepNodes: Node[] = steps.map((s) => {
       const kind = nodeKindFor(s.type);
@@ -163,7 +196,7 @@ export function ProcessMapCanvas({
       return {
         id: s.id,
         type: kind,
-        position: { x: s.positionX - half.x, y: s.positionY - half.y },
+        position: { x: s.positionX - half.x, y: (layout.yOf.get(s.id) ?? s.positionY) - half.y },
         data: { label: s.label, roleName: s.assignedRole?.name, links, branches: s.branches ?? [], workspaceId },
         ariaLabel: describeStep(s),
         zIndex: 1,
@@ -172,7 +205,7 @@ export function ProcessMapCanvas({
 
     if (!branchFrom) return [...laneNodes, ...stepNodes];
 
-    const canvasHeight = Math.max(laneOrder.length, 1) * 130 + 40;
+    const canvasHeight = Math.max(layout.laneCount, 1) * LANE_HEIGHT + LANE_TOP_OFFSET;
     const branchNodes: Node[] = [
       {
         id: "branch-gutter",
@@ -203,7 +236,7 @@ export function ProcessMapCanvas({
     ];
 
     return [...laneNodes, ...branchNodes, ...stepNodes];
-  }, [laneOrder, laneLabel, steps, canvasWidth, workspaceId, branchFrom]);
+  }, [laneOrder, layout, laneLabel, steps, canvasWidth, workspaceId, branchFrom]);
 
   const stepById = useMemo(() => new Map(steps.map((s) => [s.id, s])), [steps]);
 
@@ -213,7 +246,10 @@ export function ProcessMapCanvas({
       const to = stepById.get(toStepId);
       if (!from || !to) return null;
       const isLoop = to.positionX < from.positionX;
-      const { sourceHandle, targetHandle } = chooseHandles(from, to);
+      const { sourceHandle, targetHandle } = chooseHandles(
+        { x: from.positionX, y: layout.yOf.get(from.id) ?? from.positionY },
+        { x: to.positionX, y: layout.yOf.get(to.id) ?? to.positionY }
+      );
       return {
         id,
         source: fromStepId,
@@ -230,7 +266,7 @@ export function ProcessMapCanvas({
         labelBgStyle: { fill: "#fff" },
       };
     },
-    [stepById]
+    [stepById, layout]
   );
 
   const initialEdges: Edge[] = useMemo(() => {
@@ -257,6 +293,7 @@ export function ProcessMapCanvas({
     return [...stepEdges, ...entryEdges];
   }, [connections, buildEdge, branchFrom, steps]);
 
+  const router = useRouter();
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [saving, setSaving] = useState(false);
@@ -296,17 +333,34 @@ export function ProcessMapCanvas({
 
   const onNodeDragStop: OnNodeDrag = useCallback(
     (_event, node) => {
-      if (node.type === "lane") return;
+      if (node.type === "lane" || node.type === "branchEntry" || node.type === "branchGutter") return;
       const kind = node.type as keyof typeof HALF_SIZE;
       const half = HALF_SIZE[kind];
       const centerX = Math.round(node.position.x + half.x);
       const centerY = Math.round(node.position.y + half.y);
+
+      // Vertical position isn't free — it *is* the lane. Where a node is
+      // dropped decides which lane it joins, and joining a lane means taking
+      // that lane's role, which is what puts it there on the next render.
+      const laneIndex = laneIndexAtY(centerY, layout.laneCount);
+      const droppedRoleId = roleIdForLane(laneIndex, laneOrder);
+      const currentLane = layout.laneIndexOf.get(node.id);
+
       setSaving(true);
-      updateStepPosition({ workspaceId, processId, stepId: node.id, positionX: centerX, positionY: centerY }).finally(
-        () => setSaving(false)
-      );
+      updateStepPosition({
+        workspaceId,
+        processId,
+        stepId: node.id,
+        positionX: centerX,
+        positionY: laneIndex * LANE_HEIGHT + LANE_TOP_OFFSET + LANE_NODE_Y_OFFSET,
+        ...(laneIndex === currentLane ? {} : { swimlaneRoleId: droppedRoleId ?? "" }),
+      })
+        .then((result) => {
+          if (result.ok && laneIndex !== currentLane) router.refresh();
+        })
+        .finally(() => setSaving(false));
     },
-    [workspaceId, processId]
+    [workspaceId, processId, layout, laneOrder, router]
   );
 
   return (

@@ -11,7 +11,7 @@ import {
   wouldCreateCycle,
 } from "@/lib/domain/process-hierarchy";
 import { validateConnections } from "@/lib/domain/process-graph";
-import { laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
+import { assignSwimlanes, laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
 import { arrangeByFlow, insertPositionAfter, moveStepInOrder } from "@/lib/domain/step-order";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
@@ -691,6 +691,11 @@ export async function updateProcessStep(
     },
   });
 
+  // A role change moves the step to a different lane, and can add or remove a
+  // lane for every other step too, so the whole map's vertical placement is
+  // recomputed rather than just this step's.
+  await realignSwimlanes(parsed.data.processId);
+
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
   return ok({ id: updated.id });
 }
@@ -801,6 +806,12 @@ const updateStepPositionSchema = z.object({
   stepId: z.string().min(1),
   positionX: z.number(),
   positionY: z.number(),
+  /**
+   * Set when the drag crossed into another lane. A lane belongs to a Role, so
+   * moving a step between lanes is the same thing as changing which Role's
+   * lane it sits in; an empty string drops it into the unassigned lane.
+   */
+  swimlaneRoleId: z.string().optional(),
 });
 
 /** Persists a drag-to-reposition on the Process Map canvas (autosave, FR-017). */
@@ -819,12 +830,53 @@ export async function updateStepPosition(
   const existingStep = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
   if (!existingStep || existingStep.processId !== parsed.data.processId) return notFound();
 
+  if (parsed.data.swimlaneRoleId) {
+    const role = await prisma.role.findUnique({ where: { id: parsed.data.swimlaneRoleId } });
+    if (!role || role.workspaceId !== parsed.data.workspaceId) return notFound();
+  }
+
   const step = await prisma.processStep.update({
     where: { id: parsed.data.stepId },
-    data: { positionX: parsed.data.positionX, positionY: parsed.data.positionY },
+    data: {
+      positionX: parsed.data.positionX,
+      positionY: parsed.data.positionY,
+      ...(parsed.data.swimlaneRoleId === undefined
+        ? {}
+        : { swimlaneRoleId: parsed.data.swimlaneRoleId || null }),
+    },
   });
 
+  if (parsed.data.swimlaneRoleId !== undefined) {
+    await realignSwimlanes(parsed.data.processId);
+    revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  }
+
   return ok({ id: step.id });
+}
+
+/**
+ * Rewrites every step's stored positionY to match the lane its Role puts it
+ * in. The canvas derives lanes itself, so this isn't what makes the picture
+ * correct — it keeps the stored value from drifting into disagreeing with what
+ * is drawn, which is how steps ended up stranded in the wrong lane to begin
+ * with. Horizontal position is left alone: that one really is the user's.
+ */
+async function realignSwimlanes(processId: string): Promise<void> {
+  const steps = await prisma.processStep.findMany({
+    where: { processId },
+    select: { id: true, assignedRoleId: true, swimlaneRoleId: true, positionY: true },
+    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+  });
+
+  const layout = assignSwimlanes(steps);
+  const moved = steps.filter((s) => layout.yOf.get(s.id) !== s.positionY);
+  if (moved.length === 0) return;
+
+  await prisma.$transaction(
+    moved.map((s) =>
+      prisma.processStep.update({ where: { id: s.id }, data: { positionY: layout.yOf.get(s.id)! } })
+    )
+  );
 }
 
 /**

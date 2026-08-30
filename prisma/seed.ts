@@ -171,9 +171,18 @@ async function main() {
     const id = `step-${p2p.id}-${s.key}`;
     await prisma.processStep.upsert({
       where: { id },
-      // Steps carry an explicit order, so a reseed lands them in the same
-      // sequence the Steps List shows rather than relying on insert order.
-      update: { order: index },
+      // Reseeding restores a step's canonical shape — its order, its role, and
+      // the swimlane position that follows from that role — so a database
+      // poked at during development comes back to a known state.
+      update: {
+        type: s.type,
+        label: s.label,
+        assignedRoleId: s.role ? roles[s.role] : null,
+        swimlaneRoleId: s.role ? roles[s.role] : null,
+        positionX: s.x,
+        positionY: s.y,
+        order: index,
+      },
       create: {
         id,
         processId: p2p.id,
