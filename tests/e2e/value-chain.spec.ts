@@ -27,6 +27,9 @@ test.afterAll(async () => {
 });
 
 test("Value Chain: import a spreadsheet, then read, filter and re-phase the board", async ({ page }) => {
+  // A board with a column per phase needs room: at the default width the later
+  // columns sit off-screen, where a pointer can't reach them to drop a card.
+  await page.setViewportSize({ width: 1500, height: 1000 });
   await page.goto("/login");
   await page.click('button[type="submit"]');
   await page.waitForURL("**/workspaces");
@@ -82,9 +85,69 @@ test("Value Chain: import a spreadsheet, then read, filter and re-phase the boar
     await page.getByLabel("Phase for Final Invoice").inputValue()
   );
 
-  // --- Deleting a phase leaves its activities in place, unphased ---
+  // --- A card is editable in place, and the edit is to the step itself ---
+  await page.getByRole("button", { name: "Edit Technical Review" }).click();
+  const editor = page.locator("form", { hasText: "Supporting departments" });
+  await editor.getByLabel("Activity").fill("Technical Review & Sizing");
+  await editor.getByLabel("Owner").selectOption({ label: "Commercial" });
+  await editor.getByLabel("Description").fill("Assess what the work needs, and how big it is.");
+  await editor.getByRole("checkbox", { name: "Finance", exact: true }).check();
+  await editor.getByRole("button", { name: "Save" }).click();
+  await page.waitForTimeout(1200);
+
+  await expect(page.getByRole("heading", { name: "Technical Review & Sizing" })).toBeVisible();
+  await expect(page.getByText("Assess what the work needs, and how big it is.")).toBeVisible();
+  await expect(page.getByText("Support: Finance", { exact: true })).toBeVisible();
+
+  // The board edits the same step the Process Map holds, not a copy of it.
+  await page.goto("/workspaces/workspace-acme/processes");
+  await page.locator("tr", { hasText: "Sample Value Chain" }).first().locator("text=Open").click();
+  await page.waitForURL("**/map");
+  await page.click('button:has-text("Steps List")');
+  await expect(page.getByText("Technical Review & Sizing", { exact: true })).toBeVisible();
+  await page.goto("/workspaces/workspace-acme/value-chain");
+
+  // --- Dragging a card from one phase to another moves it ---
+  // Put it in the first column first, so the drag starts from a known place
+  // rather than wherever the earlier steps left it — a column far to the right
+  // can be scrolled out of reach of the pointer.
+  await page.getByLabel("Phase for Enquiry Received").selectOption({ label: "Initiation" });
+  await page.waitForTimeout(1200);
+  await page.reload();
+
+  const card = page.locator("article", { hasText: "Enquiry Received" }).first();
+  const proposal = page
+    .locator("section[data-column-key]")
+    .filter({ has: page.getByRole("heading", { name: /^Proposal/ }) })
+    .first();
+  await expect(card).toBeVisible();
+  await expect(proposal).toBeVisible();
+  const from = (await card.boundingBox())!;
+  const to = (await proposal.boundingBox())!;
+
+  await page.mouse.move(from.x + 60, from.y + 30);
+  await page.mouse.down();
+  // Past the threshold that separates a drag from a click, then over the column.
+  await page.mouse.move(from.x + 90, from.y + 40, { steps: 5 });
+  await page.mouse.move(to.x + 100, to.y + 120, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(2000);
+  await page.reload();
+  await expect(proposal).toBeVisible();
+
+  await expect(proposal.getByRole("heading", { name: "Enquiry Received" })).toBeVisible();
+
+  // --- A phase can be renamed after it was created ---
   await page.getByRole("button", { name: "Manage phases" }).click();
-  await page.getByLabel("Delete Delivery").click();
+  await page.getByRole("button", { name: "Rename Delivery" }).click();
+  await page.getByLabel("Rename Delivery").fill("Mobilisation & Delivery");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.waitForTimeout(1200);
+  await expect(page.getByRole("heading", { name: /Mobilisation & Delivery/i })).toBeVisible();
+
+  // --- Deleting a phase leaves its activities in place, unphased ---
+  // The phases panel is already open from the rename above.
+  await page.getByLabel("Delete Mobilisation & Delivery").click();
   await page.getByRole("button", { name: "Yes" }).click();
   await page.waitForTimeout(1200);
   await expect(page.getByRole("heading", { name: /unphased/i })).toBeVisible();

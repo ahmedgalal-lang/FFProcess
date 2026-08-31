@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -9,19 +9,24 @@ import {
   groupByPhase,
   ownerOptions,
   type ActivityCard,
+  type BoardColumn,
   type PhaseRef,
 } from "@/lib/domain/value-chain";
-import { createActivity, setStepPhase } from "@/lib/actions/value-chain";
+import { createActivity, setStepPhase, updateActivity } from "@/lib/actions/value-chain";
+import { deleteProcessStep } from "@/lib/actions/process";
 
 type ProcessRef = { id: string; code: string; name: string };
 type RoleRef = { id: string; name: string };
+
+/** How far the pointer must travel before a press becomes a drag rather than a click. */
+const DRAG_THRESHOLD_PX = 5;
 
 /**
  * The engagement's value chain as a board: phases across, activities down.
  *
  * Every card is a real step on a real process — this is a second way to read
- * the same data the Process Map holds, not a second place to keep it — so
- * moving a card changes that step's phase and nothing else.
+ * and edit the same data the Process Map holds, not a second place to keep it —
+ * so moving or editing a card changes that step itself.
  */
 export function ValueChainBoard({
   workspaceId,
@@ -40,7 +45,7 @@ export function ValueChainBoard({
   const [search, setSearch] = useState("");
   const [ownerId, setOwnerId] = useState<string>("");
   const [addingTo, setAddingTo] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -53,17 +58,26 @@ export function ValueChainBoard({
   const totals = useMemo(() => boardTotals(cards, phases), [cards, phases]);
   const owners = useMemo(() => ownerOptions(cards), [cards]);
 
-  function moveToPhase(stepId: string, phaseId: string | null) {
-    setError(null);
-    startTransition(async () => {
-      const result = await setStepPhase({ workspaceId, stepId, phaseId: phaseId ?? "" });
-      if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not move") : result.error);
-        return;
-      }
-      router.refresh();
-    });
-  }
+  const moveToPhase = useCallback(
+    (stepId: string, phaseId: string | null) => {
+      setError(null);
+      startTransition(async () => {
+        const result = await setStepPhase({ workspaceId, stepId, phaseId: phaseId ?? "" });
+        if (!result.ok) {
+          setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not move") : result.error);
+          return;
+        }
+        router.refresh();
+      });
+    },
+    [workspaceId, router]
+  );
+
+  const drag = useCardDrag({
+    enabled: groupBy === "phase",
+    onDrop: moveToPhase,
+    onClick: (stepId) => setEditing(stepId),
+  });
 
   const shownCards = columns.reduce((n, column) => n + column.cards.length, 0);
 
@@ -99,7 +113,11 @@ export function ValueChainBoard({
             ))}
           </select>
         </label>
-        <div className="ml-auto inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5" role="group" aria-label="Group activities by">
+        <div
+          className="ml-auto inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5"
+          role="group"
+          aria-label="Group activities by"
+        >
           {(["phase", "owner"] as const).map((mode) => (
             <button
               key={mode}
@@ -117,11 +135,12 @@ export function ValueChainBoard({
       </div>
 
       {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
-      {(search || ownerId) && (
-        <p className="mb-2 text-xs text-slate-600">
-          {shownCards} of {totals.activities} activities match.
-        </p>
-      )}
+      <p className="mb-2 text-xs text-slate-600">
+        {search || ownerId ? `${shownCards} of ${totals.activities} activities match. ` : ""}
+        {groupBy === "phase"
+          ? "Click a card to edit it; drag it to another phase to move it."
+          : "Grouped by department — switch to By Phase to move activities."}
+      </p>
 
       {columns.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-600">
@@ -130,44 +149,14 @@ export function ValueChainBoard({
       ) : (
         <div className="flex items-start gap-3 overflow-x-auto pb-2">
           {columns.map((column) => (
-            <section
+            <Column
               key={column.key}
-              onDragOver={(e) => {
-                if (groupBy === "phase" && dragging) e.preventDefault();
-              }}
-              onDrop={() => {
-                if (groupBy !== "phase" || !dragging) return;
-                moveToPhase(dragging, column.phaseId);
-                setDragging(null);
-              }}
-              className="flex w-[264px] flex-none flex-col rounded-xl border border-slate-200 bg-slate-50/70 p-2"
+              column={column}
+              isDropTarget={groupBy === "phase" && drag.overColumnKey === column.key}
+              canAdd={groupBy === "phase" && column.phaseId !== null}
+              isAdding={addingTo === column.key}
+              onToggleAdd={() => setAddingTo(addingTo === column.key ? null : column.key)}
             >
-              <h2 className="mb-2 flex items-center gap-2 px-1 py-1">
-                {column.color && (
-                  <span
-                    aria-hidden="true"
-                    className="h-2.5 w-2.5 flex-none rounded-full"
-                    style={{ backgroundColor: column.color }}
-                  />
-                )}
-                <span className="truncate text-xs font-bold uppercase tracking-wide text-slate-700">
-                  {column.title}
-                </span>
-                <span className="flex-none rounded-full bg-white px-1.5 py-px text-[10px] font-bold text-slate-600">
-                  {column.cards.length}
-                </span>
-                {groupBy === "phase" && column.phaseId && (
-                  <button
-                    type="button"
-                    onClick={() => setAddingTo(addingTo === column.key ? null : column.key)}
-                    aria-label={`Add an activity to ${column.title}`}
-                    className="ml-auto flex-none rounded-md px-1.5 text-sm font-bold text-slate-500 hover:bg-white hover:text-slate-900"
-                  >
-                    +
-                  </button>
-                )}
-              </h2>
-
               {addingTo === column.key && column.phaseId && (
                 <NewActivityForm
                   workspaceId={workspaceId}
@@ -182,31 +171,201 @@ export function ValueChainBoard({
                 />
               )}
 
-              <div className="flex flex-col gap-2">
-                {column.cards.map((card) => (
+              {column.cards.map((card) =>
+                editing === card.stepId ? (
+                  <EditActivityForm
+                    key={card.stepId}
+                    workspaceId={workspaceId}
+                    card={card}
+                    roles={roles}
+                    onDone={() => {
+                      setEditing(null);
+                      router.refresh();
+                    }}
+                    onCancel={() => setEditing(null)}
+                  />
+                ) : (
                   <Card
                     key={card.stepId}
                     card={card}
                     workspaceId={workspaceId}
                     phases={phases}
-                    draggable={groupBy === "phase"}
                     pending={pending}
-                    onDragStart={() => setDragging(card.stepId)}
-                    onDragEnd={() => setDragging(null)}
+                    isDragging={drag.stepId === card.stepId}
+                    draggable={groupBy === "phase"}
+                    onPointerDown={(e) => drag.onPointerDown(e, card.stepId)}
+                    onEdit={() => setEditing(card.stepId)}
                     onPhaseChange={(phaseId) => moveToPhase(card.stepId, phaseId)}
                   />
-                ))}
-                {column.cards.length === 0 && (
-                  <p className="rounded-lg border border-dashed border-slate-300 px-2 py-4 text-center text-[11px] text-slate-500">
-                    Nothing here
-                  </p>
-                )}
-              </div>
-            </section>
+                )
+              )}
+
+              {column.cards.length === 0 && !(addingTo === column.key) && (
+                <p className="rounded-lg border border-dashed border-slate-300 px-2 py-4 text-center text-[11px] text-slate-500">
+                  {drag.stepId ? "Drop here" : "Nothing here"}
+                </p>
+              )}
+            </Column>
           ))}
         </div>
       )}
+
+      {drag.ghost && (
+        <div
+          className="pointer-events-none fixed z-50 w-[240px] rounded-lg border border-[var(--accent)] bg-white p-2.5 text-[13px] font-semibold text-slate-900 shadow-lg"
+          style={{ left: drag.ghost.x + 12, top: drag.ghost.y + 12 }}
+          aria-hidden="true"
+        >
+          {drag.ghost.label}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Dragging a card, on pointer events rather than HTML5 drag-and-drop: it works
+ * the same with a mouse, a trackpad and a finger, and a press that doesn't move
+ * stays a click, so the same gesture can open the card for editing.
+ */
+function useCardDrag({
+  enabled,
+  onDrop,
+  onClick,
+}: {
+  enabled: boolean;
+  onDrop: (stepId: string, phaseId: string | null) => void;
+  onClick: (stepId: string) => void;
+}) {
+  const [stepId, setStepId] = useState<string | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
+  const press = useRef<{ stepId: string; label: string; x: number; y: number; moved: boolean } | null>(null);
+
+  const columnAt = (x: number, y: number) => {
+    const element = document.elementFromPoint(x, y);
+    return element?.closest<HTMLElement>("[data-column-key]") ?? null;
+  };
+
+  // Attached for the life of the board rather than only while a press is in
+  // flight: the press is held in a ref, and a ref changing doesn't re-run an
+  // effect, so a guard here would mean the very first press had no listener to
+  // finish it. Both handlers do nothing when there is no press.
+  useEffect(() => {
+    function onMove(event: PointerEvent) {
+      const current = press.current;
+      if (!current) return;
+
+      if (!current.moved) {
+        const far =
+          Math.abs(event.clientX - current.x) > DRAG_THRESHOLD_PX ||
+          Math.abs(event.clientY - current.y) > DRAG_THRESHOLD_PX;
+        if (!far) return;
+        current.moved = true;
+        setStepId(current.stepId);
+      }
+
+      setGhost({ x: event.clientX, y: event.clientY, label: current.label });
+      const column = columnAt(event.clientX, event.clientY);
+      setOverColumnKey(column?.dataset["columnKey"] ?? null);
+    }
+
+    function onUp(event: PointerEvent) {
+      const current = press.current;
+      press.current = null;
+      setStepId(null);
+      setGhost(null);
+      setOverColumnKey(null);
+      if (!current) return;
+
+      // A press that never moved is a click — open the card instead of moving it.
+      if (!current.moved) {
+        onClick(current.stepId);
+        return;
+      }
+
+      const column = columnAt(event.clientX, event.clientY);
+      const key = column?.dataset["columnKey"];
+      if (!key) return;
+      const phaseId = column?.dataset["phaseId"] || null;
+      onDrop(current.stepId, phaseId);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [onDrop, onClick]);
+
+  return {
+    stepId,
+    ghost,
+    overColumnKey,
+    onPointerDown(event: React.PointerEvent, cardStepId: string) {
+      if (!enabled || event.button !== 0) return;
+      // Let the card's own controls — its links and its phase select — behave
+      // normally rather than starting a drag.
+      if ((event.target as HTMLElement).closest("a,select,button,input,textarea")) return;
+      const label = (event.currentTarget as HTMLElement).querySelector("h3")?.textContent ?? "";
+      press.current = { stepId: cardStepId, label, x: event.clientX, y: event.clientY, moved: false };
+      setStepId(null);
+    },
+  };
+}
+
+function Column({
+  column,
+  isDropTarget,
+  canAdd,
+  isAdding,
+  onToggleAdd,
+  children,
+}: {
+  column: BoardColumn;
+  isDropTarget: boolean;
+  canAdd: boolean;
+  isAdding: boolean;
+  onToggleAdd: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      data-column-key={column.key}
+      data-phase-id={column.phaseId ?? ""}
+      className={`flex w-[264px] flex-none flex-col rounded-xl border p-2 transition-colors ${
+        isDropTarget ? "border-[var(--accent)] bg-slate-100" : "border-slate-200 bg-slate-50/70"
+      }`}
+    >
+      <h2 className="mb-2 flex items-center gap-2 px-1 py-1">
+        {column.color && (
+          <span
+            aria-hidden="true"
+            className="h-2.5 w-2.5 flex-none rounded-full"
+            style={{ backgroundColor: column.color }}
+          />
+        )}
+        <span className="truncate text-xs font-bold uppercase tracking-wide text-slate-700">{column.title}</span>
+        <span className="flex-none rounded-full bg-white px-1.5 py-px text-[10px] font-bold text-slate-600">
+          {column.cards.length}
+        </span>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onToggleAdd}
+            aria-expanded={isAdding}
+            aria-label={`Add an activity to ${column.title}`}
+            className="ml-auto flex-none rounded-md px-1.5 text-sm font-bold text-slate-500 hover:bg-white hover:text-slate-900"
+          >
+            +
+          </button>
+        )}
+      </h2>
+      <div className="flex flex-col gap-2">{children}</div>
+    </section>
   );
 }
 
@@ -223,27 +382,29 @@ function Card({
   card,
   workspaceId,
   phases,
-  draggable,
   pending,
-  onDragStart,
-  onDragEnd,
+  isDragging,
+  draggable,
+  onPointerDown,
+  onEdit,
   onPhaseChange,
 }: {
   card: ActivityCard;
   workspaceId: string;
   phases: PhaseRef[];
-  draggable: boolean;
   pending: boolean;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  isDragging: boolean;
+  draggable: boolean;
+  onPointerDown: (event: React.PointerEvent) => void;
+  onEdit: () => void;
   onPhaseChange: (phaseId: string | null) => void;
 }) {
   return (
     <article
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm"
+      onPointerDown={onPointerDown}
+      className={`rounded-lg border bg-white p-2.5 shadow-sm ${draggable ? "cursor-grab" : ""} ${
+        isDragging ? "border-[var(--accent)] opacity-40" : "border-slate-200"
+      }`}
     >
       <div className="flex items-baseline justify-between gap-2">
         <Link
@@ -252,7 +413,17 @@ function Card({
         >
           {card.processCode}
         </Link>
-        {card.isMilestone && <span className="flex-none text-[10px] text-amber-500">★</span>}
+        <div className="flex flex-none items-center gap-1">
+          {card.isMilestone && <span className="text-[10px] text-amber-500">★</span>}
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${card.label}`}
+            className="rounded px-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          >
+            Edit
+          </button>
+        </div>
       </div>
       <h3 className="mt-0.5 text-[13px] font-semibold leading-tight text-slate-900">{card.label}</h3>
       {card.description && <p className="mt-1 text-[11px] leading-snug text-slate-600">{card.description}</p>}
@@ -274,17 +445,14 @@ function Card({
         </div>
       )}
 
-      {/* The same move as dragging, reachable from the keyboard. Pointless when
-          there's nowhere else to put the card, so it only appears once the
-          workspace has a phase to move it to. */}
+      {/* The same move as dragging, reachable from a keyboard. */}
       {phases.length > 0 && (
-      <label className="mt-2 flex items-center gap-1 text-[10px] font-medium text-slate-500">
         <select
           value={card.phaseId ?? ""}
           disabled={pending}
           onChange={(e) => onPhaseChange(e.target.value || null)}
           aria-label={`Phase for ${card.label}`}
-          className="w-full rounded border border-slate-200 px-1 py-0.5 text-[10px] text-slate-600"
+          className="mt-2 w-full rounded border border-slate-200 px-1 py-0.5 text-[10px] text-slate-600"
         >
           <option value="">— unphased —</option>
           {phases.map((phase) => (
@@ -293,9 +461,178 @@ function Card({
             </option>
           ))}
         </select>
-      </label>
       )}
     </article>
+  );
+}
+
+function EditActivityForm({
+  workspaceId,
+  card,
+  roles,
+  onDone,
+  onCancel,
+}: {
+  workspaceId: string;
+  card: ActivityCard;
+  roles: RoleRef[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = useState(card.label);
+  const [ownerRoleId, setOwnerRoleId] = useState(card.ownerId ?? "");
+  const [description, setDescription] = useState(card.description);
+  const [supportIds, setSupportIds] = useState<string[]>(card.supportIds);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <form
+      className="rounded-lg border border-[var(--accent)] bg-white p-2.5 shadow-sm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError(null);
+        startTransition(async () => {
+          const result = await updateActivity({
+            workspaceId,
+            stepId: card.stepId,
+            label,
+            ownerRoleId: ownerRoleId || undefined,
+            supportingRoleIds: supportIds,
+            description: description || undefined,
+          });
+          if (!result.ok) {
+            setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save") : result.error);
+            return;
+          }
+          onDone();
+        });
+      }}
+    >
+      <label className="flex flex-col gap-0.5 text-[10px] font-medium text-slate-600">
+        Activity
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          required
+          autoFocus
+          className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+        />
+      </label>
+
+      <label className="mt-1.5 flex flex-col gap-0.5 text-[10px] font-medium text-slate-600">
+        Owner
+        <select
+          value={ownerRoleId}
+          onChange={(e) => setOwnerRoleId(e.target.value)}
+          className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+        >
+          <option value="">— none yet —</option>
+          {roles.map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="mt-1.5 flex flex-col gap-0.5 text-[10px] font-medium text-slate-600">
+        Description
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+        />
+      </label>
+
+      <fieldset className="mt-1.5">
+        <legend className="text-[10px] font-medium text-slate-600">Supporting departments</legend>
+        <div className="mt-1 max-h-28 overflow-y-auto rounded border border-slate-200 p-1.5">
+          {roles.length === 0 && <p className="text-[10px] text-slate-500">No departments yet.</p>}
+          {roles.map((role) => (
+            <label key={role.id} className="flex items-center gap-1.5 text-[11px] text-slate-700">
+              <input
+                type="checkbox"
+                checked={supportIds.includes(role.id)}
+                onChange={(e) =>
+                  setSupportIds((prev) =>
+                    e.target.checked ? [...prev, role.id] : prev.filter((id) => id !== role.id)
+                  )
+                }
+              />
+              {role.name}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      {error && <p className="mt-1.5 text-[10px] text-red-600">{error}</p>}
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={pending}
+          className="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+        {confirmingDelete ? (
+          <>
+            <span className="text-[10px] text-slate-600">Delete?</span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setError(null);
+                startTransition(async () => {
+                  const result = await deleteProcessStep({
+                    workspaceId,
+                    processId: card.processId,
+                    stepId: card.stepId,
+                  });
+                  if (!result.ok) {
+                    setError(
+                      result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not delete") : result.error
+                    );
+                    return;
+                  }
+                  onDone();
+                });
+              }}
+              className="rounded bg-red-600 px-1.5 py-1 text-[11px] font-semibold text-white disabled:opacity-60"
+            >
+              Yes
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-slate-700"
+            >
+              No
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            aria-label={`Delete ${card.label}`}
+            className="ml-auto rounded px-1.5 py-1 text-[11px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
+          >
+            Delete
+          </button>
+        )}
+      </div>
+    </form>
   );
 }
 
@@ -322,7 +659,7 @@ function NewActivityForm({
 
   if (processes.length === 0) {
     return (
-      <p className="mb-2 rounded-lg border border-dashed border-slate-300 px-2 py-3 text-[11px] text-slate-600">
+      <p className="rounded-lg border border-dashed border-slate-300 px-2 py-3 text-[11px] text-slate-600">
         Create a process first — an activity is a step on one.
       </p>
     );
@@ -330,7 +667,7 @@ function NewActivityForm({
 
   return (
     <form
-      className="mb-2 flex flex-col gap-1.5 rounded-lg border border-slate-300 bg-white p-2"
+      className="flex flex-col gap-1.5 rounded-lg border border-slate-300 bg-white p-2"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);

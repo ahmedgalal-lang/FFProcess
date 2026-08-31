@@ -240,6 +240,65 @@ export async function setStepSupportingRoles(
   return ok({ id: parsed.data.stepId });
 }
 
+const updateActivitySchema = z.object({
+  workspaceId: z.string().min(1),
+  stepId: z.string().min(1),
+  label: z.string().trim().min(1).max(200),
+  ownerRoleId: z.string().optional(),
+  supportingRoleIds: z.array(z.string().min(1)).default([]),
+  description: z.string().trim().max(2000).optional(),
+});
+
+/**
+ * Edits an activity from the board — its name, who owns it, who supports it and
+ * what happens in it. These are the step's own fields, so the change shows up
+ * on the Process Map and in the Export Report too; the board is a second way to
+ * edit the same work, not a copy of it.
+ */
+export async function updateActivity(
+  input: z.infer<typeof updateActivitySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateActivitySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid activity", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const step = await prisma.processStep.findUnique({
+    where: { id: parsed.data.stepId },
+    select: { id: true, processId: true, process: { select: { workspaceId: true } } },
+  });
+  if (!step || step.process.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  // Every role named has to belong to this workspace — an id from elsewhere
+  // would otherwise quietly attach another client's department to this step.
+  const roleIds = [
+    ...new Set([...(parsed.data.ownerRoleId ? [parsed.data.ownerRoleId] : []), ...parsed.data.supportingRoleIds]),
+  ];
+  if (roleIds.length > 0) {
+    const roles = await prisma.role.findMany({
+      where: { id: { in: roleIds }, workspaceId: parsed.data.workspaceId },
+      select: { id: true },
+    });
+    if (roles.length !== roleIds.length) return notFound();
+  }
+
+  await prisma.processStep.update({
+    where: { id: parsed.data.stepId },
+    data: {
+      label: parsed.data.label,
+      assignedRoleId: parsed.data.ownerRoleId || null,
+      swimlaneRoleId: parsed.data.ownerRoleId || null,
+      detailedAction: parsed.data.description ? [parsed.data.description] : [],
+      supportingRoles: { set: parsed.data.supportingRoleIds.map((id) => ({ id })) },
+    },
+  });
+
+  revalidateBoard(parsed.data.workspaceId);
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${step.processId}/map`);
+  return ok({ id: parsed.data.stepId });
+}
+
 const createActivitySchema = z.object({
   workspaceId: z.string().min(1),
   processId: z.string().min(1),

@@ -2,7 +2,14 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createPhase, deletePhase, importValueChain, movePhase, type ImportPreview } from "@/lib/actions/value-chain";
+import {
+  createPhase,
+  deletePhase,
+  importValueChain,
+  movePhase,
+  renamePhase,
+  type ImportPreview,
+} from "@/lib/actions/value-chain";
 import type { PhaseRef } from "@/lib/domain/value-chain";
 
 type ProcessRef = { id: string; code: string; name: string };
@@ -50,6 +57,7 @@ function PhaseManager({ workspaceId, phases }: { workspaceId: string; phases: Ph
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -69,7 +77,8 @@ function PhaseManager({ workspaceId, phases }: { workspaceId: string; phases: Ph
     <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3.5">
       <h2 className="text-sm font-semibold text-slate-900">Phases</h2>
       <p className="mt-0.5 text-xs text-slate-600">
-        The stages of the value chain, left to right. Deleting one leaves its activities in place, unphased.
+        The stages of the value chain, left to right. Rename one, move it along the chain with ← and →, or delete
+        it — deleting leaves its activities in place, unphased.
       </p>
 
       <ul className="mt-3 flex flex-col gap-1.5">
@@ -78,7 +87,53 @@ function PhaseManager({ workspaceId, phases }: { workspaceId: string; phases: Ph
             {phase.color && (
               <span aria-hidden="true" className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: phase.color }} />
             )}
-            <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{phase.name}</span>
+            {renaming?.id === phase.id ? (
+              <>
+                <input
+                  value={renaming.name}
+                  onChange={(e) => setRenaming({ id: phase.id, name: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setRenaming(null);
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    const next = renaming.name;
+                    setRenaming(null);
+                    run(() => renamePhase({ workspaceId, phaseId: phase.id, name: next }));
+                  }}
+                  aria-label={`Rename ${phase.name}`}
+                  autoFocus
+                  className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    const next = renaming.name;
+                    setRenaming(null);
+                    run(() => renamePhase({ workspaceId, phaseId: phase.id, name: next }));
+                  }}
+                  className="rounded bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white disabled:opacity-60"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRenaming(null)}
+                  className="rounded border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+            <button
+              type="button"
+              onClick={() => setRenaming({ id: phase.id, name: phase.name })}
+              aria-label={`Rename ${phase.name}`}
+              className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left text-sm text-slate-900 hover:bg-slate-100"
+            >
+              {phase.name}
+            </button>
             <button
               type="button"
               disabled={pending || index === 0}
@@ -128,6 +183,8 @@ function PhaseManager({ workspaceId, phases }: { workspaceId: string; phases: Ph
               >
                 ✕
               </button>
+            )}
+              </>
             )}
           </li>
         ))}

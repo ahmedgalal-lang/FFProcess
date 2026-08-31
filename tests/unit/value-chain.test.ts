@@ -20,6 +20,7 @@ function card(overrides: Partial<ActivityCard> & { stepId: string; label: string
     ownerName: null,
     ownerId: null,
     supportNames: [],
+    supportIds: [],
     phaseId: null,
     linksTo: [],
     isMilestone: false,

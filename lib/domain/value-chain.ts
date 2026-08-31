@@ -40,6 +40,8 @@ export type ActivityCard = {
   ownerName: string | null;
   ownerId: string | null;
   supportNames: string[];
+  /** Ids of the same departments, so an editor can match them exactly. */
+  supportIds: string[];
   phaseId: string | null;
   /** Codes of processes this step hands off to, so a card shows its links. */
   linksTo: string[];
