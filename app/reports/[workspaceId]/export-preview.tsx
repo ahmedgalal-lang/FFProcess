@@ -66,6 +66,20 @@ const CODE_LETTER: Record<RaciCode, string> = {
   INFORMED: "I",
 };
 
+/** One phase's worth of the value chain, as the report prints it. */
+export type ValueChainColumn = {
+  title: string;
+  color: string | null;
+  activities: {
+    stepId: string;
+    label: string;
+    ownerName: string | null;
+    supportNames: string[];
+    processCode: string;
+    linksTo: string[];
+  }[];
+};
+
 export function ExportPreview({
   workspaceId,
   companyName,
@@ -74,6 +88,8 @@ export function ExportPreview({
   accentSecondary,
   people,
   processes,
+  valueChain,
+  unphasedActivityCount,
 }: {
   workspaceId: string;
   companyName: string;
@@ -82,6 +98,8 @@ export function ExportPreview({
   accentSecondary: string | null;
   people: PersonT[];
   processes: ExportProcessData[];
+  valueChain: ValueChainColumn[];
+  unphasedActivityCount: number;
 }) {
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
 
@@ -116,6 +134,19 @@ export function ExportPreview({
           Print / Save as PDF
         </button>
       </div>
+
+      {unphasedActivityCount > 0 && (
+        <div className="no-print mx-auto mt-4 w-full max-w-5xl rounded-xl border border-slate-300 bg-slate-50 px-4 py-3">
+          <div className="text-sm font-semibold text-slate-800">
+            {unphasedActivityCount} {unphasedActivityCount === 1 ? "activity is" : "activities are"} not in a phase
+            yet
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            They are documented in the process sections as usual, but are left off the Value Chain page — put them
+            in a phase on the Value Chain board to include them.
+          </p>
+        </div>
+      )}
 
       {allGaps.length > 0 && (
         <div className="no-print mx-auto mt-4 w-full max-w-5xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
@@ -157,6 +188,10 @@ export function ExportPreview({
             <p className="mt-1 mb-4 text-sm text-slate-500">Reporting lines across {companyName}.</p>
             <OrgChartCanvas people={people} />
           </section>
+        )}
+
+        {valueChain.length > 0 && (
+          <ValueChainPage columns={valueChain} companyName={companyName} />
         )}
 
         {processes.map((process) => (
@@ -423,6 +458,69 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
           )}
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * The whole engagement in one page, before the process documents: each phase
+ * and the activities in it, with who owns each. Names and owners only — the
+ * detail is the process sections that follow, and repeating it here would make
+ * the pack say everything twice.
+ */
+function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[]; companyName: string }) {
+  const printed = columns.flatMap((column) => column.activities);
+  const activityCount = printed.length;
+  // Counted from what this page actually prints, so the three numbers in the
+  // line below can't disagree with each other.
+  const departmentCount = new Set(
+    printed.flatMap((activity) => [...(activity.ownerName ? [activity.ownerName] : []), ...activity.supportNames])
+  ).size;
+
+  return (
+    <section className="print-page">
+      <div className="border-b-2 border-slate-300 pb-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
+          Business Process Documentation &amp; Procedure Standard
+        </div>
+        <h2 className="mt-1 text-2xl font-bold text-slate-900">{companyName} Value Chain</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {activityCount} {activityCount === 1 ? "activity" : "activities"} · {columns.length}{" "}
+          {columns.length === 1 ? "phase" : "phases"} · {departmentCount}{" "}
+          {departmentCount === 1 ? "department" : "departments"}
+        </p>
+      </div>
+
+      <SectionHeading num="0.1" title="The chain, end to end" />
+
+      <div className="grid grid-cols-2 gap-x-5 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
+        {columns.map((column) => (
+          <div key={column.title} className="break-inside-avoid">
+            <h3
+              className="border-b-2 pb-1 text-[10px] font-bold uppercase tracking-wide"
+              style={{ borderColor: column.color ?? "#cbd5e1", color: column.color ?? "#475569" }}
+            >
+              {column.title}
+            </h3>
+            <ul className="mt-2 flex flex-col gap-2">
+              {column.activities.map((activity) => (
+                <li key={activity.stepId} className="text-xs leading-tight">
+                  <span className="font-semibold text-slate-900">{activity.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500">
+                    {activity.ownerName ?? "No owner yet"}
+                    {activity.supportNames.length > 0 && ` · support ${activity.supportNames.join(", ")}`}
+                    {activity.linksTo.length > 0 && ` → ${activity.linksTo.join(", ")}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-6 text-xs text-slate-500">
+        Each activity is documented in full in the process sections that follow.
+      </p>
     </section>
   );
 }

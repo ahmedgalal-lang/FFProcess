@@ -5,6 +5,7 @@ import {
   groupByPhase,
   ownerOptions,
   phaseColorFor,
+  valueChainSummary,
   PHASE_COLORS,
   UNOWNED_COLUMN,
   UNPHASED_COLUMN,
@@ -231,5 +232,55 @@ describe("phaseColorFor", () => {
 
   it("cycles rather than running out", () => {
     expect(phaseColorFor(PHASE_COLORS.length)).toBe(PHASE_COLORS[0]);
+  });
+});
+
+describe("valueChainSummary", () => {
+  it("keeps the phases in order, with their activities", () => {
+    const { columns } = valueChainSummary(
+      [
+        card({ stepId: "s1", label: "RFQ Receipt", phaseId: "init", ownerName: "Commercial", ownerId: "c" }),
+        card({ stepId: "s2", label: "Pricing", phaseId: "prop", ownerName: "Commercial", ownerId: "c" }),
+      ],
+      phases
+    );
+
+    expect(columns.map((c) => c.title)).toEqual(["Initiation", "Proposal"]);
+    expect(columns[1]!.cards.map((c) => c.label)).toEqual(["Pricing"]);
+  });
+
+  it("leaves out a phase none of the exported processes touch", () => {
+    // A printed document carries no empty boxes, unlike the board, where an
+    // empty stage is something to notice and fill.
+    const { columns } = valueChainSummary([card({ stepId: "s1", label: "RFQ Receipt", phaseId: "init" })], phases);
+    expect(columns.map((c) => c.title)).toEqual(["Initiation"]);
+  });
+
+  it("counts unphased work rather than printing it — it's a backlog, not a stage", () => {
+    const { columns, unphasedCount } = valueChainSummary(
+      [
+        card({ stepId: "s1", label: "RFQ", phaseId: "init" }),
+        card({ stepId: "s2", label: "Loose end" }),
+        card({ stepId: "s3", label: "Another" }),
+      ],
+      phases
+    );
+
+    expect(columns.map((c) => c.title)).toEqual(["Initiation"]);
+    expect(columns.map((c) => c.title)).not.toContain(UNPHASED_COLUMN);
+    expect(unphasedCount).toBe(2);
+  });
+
+  it("counts an activity pointing at a phase that no longer exists as unphased", () => {
+    const { columns, unphasedCount } = valueChainSummary(
+      [card({ stepId: "s1", label: "Orphan", phaseId: "deleted" })],
+      phases
+    );
+    expect(columns).toEqual([]);
+    expect(unphasedCount).toBe(1);
+  });
+
+  it("has no columns when nothing has been phased at all", () => {
+    expect(valueChainSummary([], phases)).toEqual({ columns: [], unphasedCount: 0 });
   });
 });

@@ -11,6 +11,7 @@ import {
   involvedRoleIds,
   deriveRoleDuties,
 } from "@/lib/domain/process-report";
+import { valueChainSummary, type ActivityCard, type PhaseRef } from "@/lib/domain/value-chain";
 import { ExportPreview, type ExportProcessData } from "./export-preview";
 
 /**
@@ -34,7 +35,7 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) nextNotFound();
 
-  const [people, roles, processes] = await Promise.all([
+  const [people, roles, processes, phases, chainSteps] = await Promise.all([
     prisma.person.findMany({
       where: { workspaceId, archivedAt: null },
       include: { personRoles: { include: { role: true } } },
@@ -45,7 +46,65 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
       where: { id: { in: processIds }, workspaceId, archivedAt: null },
       orderBy: { code: "asc" },
     }),
+    prisma.phase.findMany({ where: { workspaceId }, orderBy: [{ order: "asc" }, { name: "asc" }] }),
+    // Only the steps of the processes in this pack: the chain page promises
+    // that each activity is documented in the sections that follow, and an
+    // activity from a process nobody exported would make that untrue.
+    prisma.processStep.findMany({
+      where: { processId: { in: processIds }, process: { workspaceId, archivedAt: null } },
+      select: {
+        id: true,
+        label: true,
+        phaseId: true,
+        phaseOrder: true,
+        milestone: true,
+        detailedAction: true,
+        processId: true,
+        process: { select: { code: true } },
+        assignedRole: { select: { id: true, name: true } },
+        supportingRoles: { select: { id: true, name: true }, orderBy: { name: "asc" } },
+        links: { select: { targetProcess: { select: { code: true } } } },
+      },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+    }),
   ]);
+
+  const chainCards: ActivityCard[] = chainSteps.map((step) => ({
+    stepId: step.id,
+    label: step.label,
+    description: step.detailedAction.join(" "),
+    processId: step.processId,
+    processCode: step.process.code,
+    ownerName: step.assignedRole?.name ?? null,
+    ownerId: step.assignedRole?.id ?? null,
+    supportNames: step.supportingRoles.map((role) => role.name),
+    supportIds: step.supportingRoles.map((role) => role.id),
+    phaseId: step.phaseId,
+    phaseOrder: step.phaseOrder,
+    linksTo: step.links.map((link) => link.targetProcess.code),
+    isMilestone: step.milestone,
+  }));
+
+  const phaseRefs: PhaseRef[] = phases.map((phase) => ({
+    id: phase.id,
+    name: phase.name,
+    order: phase.order,
+    color: phase.color,
+  }));
+
+  const chain = valueChainSummary(chainCards, phaseRefs);
+  const valueChain = chain.columns.map((column) => ({
+    title: column.title,
+    color: column.color,
+    activities: column.cards.map((activity) => ({
+      stepId: activity.stepId,
+      label: activity.label,
+      ownerName: activity.ownerName,
+      supportNames: activity.supportNames,
+      processCode: activity.processCode,
+      linksTo: activity.linksTo,
+    })),
+  }));
 
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
   const personNameById = new Map(people.map((p) => [p.id, p.name]));
@@ -174,6 +233,8 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
       industry={workspace.industry}
       description={workspace.description}
       accentSecondary={workspace.accentColorSecondary}
+      valueChain={valueChain}
+      unphasedActivityCount={chain.unphasedCount}
       people={people.map((p) => ({
         id: p.id,
         name: p.name,

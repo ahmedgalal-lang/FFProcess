@@ -190,6 +190,34 @@ export function boardTotals(cards: ActivityCard[], phases: PhaseRef[]): BoardTot
   return { activities: cards.length, phases: phases.length, departments: departments.size };
 }
 
+export type ValueChainSummary = {
+  /** Real phases that hold at least one of the exported activities. */
+  columns: BoardColumn[];
+  /** Activities not in any phase — counted, not printed. */
+  unphasedCount: number;
+};
+
+/**
+ * The chain as the Export Report prints it.
+ *
+ * Two differences from the board. A phase with nothing in it is dropped: the
+ * board keeps one because an empty stage is something to notice and fill, while
+ * a printed document should carry no empty boxes. And unphased work is counted
+ * rather than listed — it's a backlog, not part of the chain, and printing it
+ * beside the real phases would put the longest column in the document under a
+ * heading that means "not decided yet".
+ */
+export function valueChainSummary(cards: ActivityCard[], phases: PhaseRef[]): ValueChainSummary {
+  const columns = groupByPhase(cards, phases).filter(
+    (column) => column.phaseId !== null && column.cards.length > 0
+  );
+  const known = new Set(phases.map((phase) => phase.id));
+  return {
+    columns,
+    unphasedCount: cards.filter((card) => !card.phaseId || !known.has(card.phaseId)).length,
+  };
+}
+
 /** Owners that actually appear on the board, for the filter's dropdown. */
 export function ownerOptions(cards: ActivityCard[]): { id: string; name: string }[] {
   const byId = new Map<string, string>();

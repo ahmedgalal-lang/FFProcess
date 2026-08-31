@@ -154,6 +154,36 @@ test("Value Chain: import a spreadsheet, then read, filter and re-phase the boar
   await expect(page.getByLabel(`Move ${before[1]} up in this phase`)).toBeHidden();
   await expect(page.getByLabel(`Move ${before[0]} down in this phase`)).toBeHidden();
 
+  // --- The chain reaches the Export Report as a page of its own ---
+  await page.goto("/workspaces/workspace-acme/export");
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+
+  const chainPage = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: /Value Chain$/ }) })
+    .first();
+  await expect(chainPage.getByRole("heading", { name: "The chain, end to end" })).toBeVisible();
+
+  // Activity names and owners only — the detail belongs to the process sections.
+  await expect(chainPage.getByText("Enquiry Received")).toBeVisible();
+  await expect(chainPage.getByText("Commercial · support Executive", { exact: true })).toBeVisible();
+
+  // The counts describe what this page actually prints. Asserting the
+  // invariant rather than fixed numbers, since the edits earlier in this
+  // journey change how many phases still hold an activity.
+  const summary = await chainPage.getByText(/\d+ activities · \d+ phases · \d+ departments/).innerText();
+  const [activities, phaseCount] = summary.match(/\d+/g)!.map(Number);
+  expect(await chainPage.locator("li").count()).toBe(activities);
+  // One list per phase, one item per activity.
+  expect(await chainPage.locator("ul").count()).toBe(phaseCount);
+
+  // Unphased work is counted in a preview-only note, not printed as a column.
+  await expect(chainPage.getByText(/Unphased/i)).toBeHidden();
+  await expect(page.getByText(/activities are not in a phase yet/)).toBeVisible();
+
+  await page.goto("/workspaces/workspace-acme/value-chain");
+
   // --- A phase is renamed, reordered and deleted from its own column ---
   await page.getByRole("button", { name: "Rename Delivery" }).click();
   await page.getByLabel("Rename Delivery").fill("Mobilisation & Delivery");
