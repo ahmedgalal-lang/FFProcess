@@ -182,6 +182,12 @@ async function main() {
         positionX: s.x,
         positionY: s.y,
         order: index,
+        // Reseeding is a full reset, so anything a session added to a step —
+        // a milestone mark, a value-chain phase — comes off again.
+        milestone: false,
+        phaseId: null,
+        phaseOrder: 0,
+        supportingRoles: { set: [] },
       },
       create: {
         id,

@@ -384,6 +384,12 @@ model ProcessStep {
   /// is looking at the engagement as one value chain.
   phaseId String?
 
+  /// Where this step sits *within* its phase on the value-chain board. A
+  /// separate axis from `order`: that one is the step's place in its own
+  /// process, this one is its place among activities from every process that
+  /// share a stage, which is a different sequence and a different judgement.
+  phaseOrder Int @default(0)
+
   /// Marked as one of the few steps worth seeing from the engagement level —
   /// these are the beads on this process's rail in the Helicopter View. Off by
   /// default: a milestone means something only because most steps aren't one.

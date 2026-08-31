@@ -12,7 +12,15 @@ import {
   type BoardColumn,
   type PhaseRef,
 } from "@/lib/domain/value-chain";
-import { createActivity, setStepPhase, updateActivity } from "@/lib/actions/value-chain";
+import {
+  createActivity,
+  deletePhase,
+  moveActivityInPhase,
+  movePhase,
+  renamePhase,
+  setStepPhase,
+  updateActivity,
+} from "@/lib/actions/value-chain";
 import { deleteProcessStep } from "@/lib/actions/process";
 
 type ProcessRef = { id: string; code: string; name: string };
@@ -63,6 +71,21 @@ export function ValueChainBoard({
       setError(null);
       startTransition(async () => {
         const result = await setStepPhase({ workspaceId, stepId, phaseId: phaseId ?? "" });
+        if (!result.ok) {
+          setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not move") : result.error);
+          return;
+        }
+        router.refresh();
+      });
+    },
+    [workspaceId, router]
+  );
+
+  const moveWithinPhase = useCallback(
+    (stepId: string, direction: "UP" | "DOWN") => {
+      setError(null);
+      startTransition(async () => {
+        const result = await moveActivityInPhase({ workspaceId, stepId, direction });
         if (!result.ok) {
           setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not move") : result.error);
           return;
@@ -138,7 +161,7 @@ export function ValueChainBoard({
       <p className="mb-2 text-xs text-slate-600">
         {search || ownerId ? `${shownCards} of ${totals.activities} activities match. ` : ""}
         {groupBy === "phase"
-          ? "Click a card to edit it; drag it to another phase to move it."
+          ? "Click a card to edit it, drag it to another phase, or use ▲▼ to order it within its phase."
           : "Grouped by department — switch to By Phase to move activities."}
       </p>
 
@@ -151,11 +174,15 @@ export function ValueChainBoard({
           {columns.map((column) => (
             <Column
               key={column.key}
+              workspaceId={workspaceId}
               column={column}
               isDropTarget={groupBy === "phase" && drag.overColumnKey === column.key}
               canAdd={groupBy === "phase" && column.phaseId !== null}
               isAdding={addingTo === column.key}
               onToggleAdd={() => setAddingTo(addingTo === column.key ? null : column.key)}
+              phaseIndex={phases.findIndex((phase) => phase.id === column.phaseId)}
+              phaseCount={phases.length}
+              onChanged={() => router.refresh()}
             >
               {addingTo === column.key && column.phaseId && (
                 <NewActivityForm
@@ -171,7 +198,7 @@ export function ValueChainBoard({
                 />
               )}
 
-              {column.cards.map((card) =>
+              {column.cards.map((card, index) =>
                 editing === card.stepId ? (
                   <EditActivityForm
                     key={card.stepId}
@@ -196,6 +223,10 @@ export function ValueChainBoard({
                     onPointerDown={(e) => drag.onPointerDown(e, card.stepId)}
                     onEdit={() => setEditing(card.stepId)}
                     onPhaseChange={(phaseId) => moveToPhase(card.stepId, phaseId)}
+                    canMove={groupBy === "phase"}
+                    isFirst={index === 0}
+                    isLast={index === column.cards.length - 1}
+                    onMove={(direction) => moveWithinPhase(card.stepId, direction)}
                   />
                 )
               )}
@@ -318,20 +349,49 @@ function useCardDrag({
 }
 
 function Column({
+  workspaceId,
   column,
   isDropTarget,
   canAdd,
   isAdding,
   onToggleAdd,
+  phaseIndex,
+  phaseCount,
+  onChanged,
   children,
 }: {
+  workspaceId: string;
   column: BoardColumn;
   isDropTarget: boolean;
   canAdd: boolean;
   isAdding: boolean;
   onToggleAdd: () => void;
+  /** Position among the phases, or -1 for a column that isn't one. */
+  phaseIndex: number;
+  phaseCount: number;
+  onChanged: () => void;
   children: React.ReactNode;
 }) {
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const phaseId = column.phaseId;
+  const managed = canAdd && phaseId !== null;
+
+  function run(work: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
+    setError(null);
+    startTransition(async () => {
+      const result = await work();
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save") : result.error!);
+        return;
+      }
+      onChanged();
+    });
+  }
+
   return (
     <section
       data-column-key={column.key}
@@ -340,31 +400,147 @@ function Column({
         isDropTarget ? "border-[var(--accent)] bg-slate-100" : "border-slate-200 bg-slate-50/70"
       }`}
     >
-      <h2 className="mb-2 flex items-center gap-2 px-1 py-1">
-        {column.color && (
-          <span
-            aria-hidden="true"
-            className="h-2.5 w-2.5 flex-none rounded-full"
-            style={{ backgroundColor: column.color }}
+      {renaming !== null && phaseId ? (
+        <div className="mb-2 flex items-center gap-1 px-1">
+          <input
+            value={renaming}
+            onChange={(e) => setRenaming(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setRenaming(null);
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              const name = renaming;
+              setRenaming(null);
+              run(() => renamePhase({ workspaceId, phaseId, name }));
+            }}
+            aria-label={`Rename ${column.title}`}
+            autoFocus
+            className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-1 text-xs"
           />
-        )}
-        <span className="truncate text-xs font-bold uppercase tracking-wide text-slate-700">{column.title}</span>
-        <span className="flex-none rounded-full bg-white px-1.5 py-px text-[10px] font-bold text-slate-600">
-          {column.cards.length}
-        </span>
-        {canAdd && (
           <button
             type="button"
-            onClick={onToggleAdd}
-            aria-expanded={isAdding}
-            aria-label={`Add an activity to ${column.title}`}
-            className="ml-auto flex-none rounded-md px-1.5 text-sm font-bold text-slate-500 hover:bg-white hover:text-slate-900"
+            disabled={pending}
+            onClick={() => {
+              const name = renaming;
+              setRenaming(null);
+              run(() => renamePhase({ workspaceId, phaseId, name }));
+            }}
+            className="flex-none rounded bg-slate-900 px-1.5 py-1 text-[10px] font-semibold text-white disabled:opacity-60"
           >
-            +
+            Save
           </button>
-        )}
-      </h2>
-      <div className="flex flex-col gap-2">{children}</div>
+          <button
+            type="button"
+            onClick={() => setRenaming(null)}
+            className="flex-none rounded border border-slate-300 px-1.5 py-1 text-[10px] font-semibold text-slate-700"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <h2 className="mb-2 flex items-center gap-1.5 px-1 py-1">
+          {column.color && (
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 flex-none rounded-full"
+              style={{ backgroundColor: column.color }}
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate text-xs font-bold uppercase tracking-wide text-slate-700">
+            {column.title}
+          </span>
+          <span className="flex-none rounded-full bg-white px-1.5 py-px text-[10px] font-bold text-slate-600">
+            {column.cards.length}
+          </span>
+          {canAdd && (
+            <button
+              type="button"
+              onClick={onToggleAdd}
+              aria-expanded={isAdding}
+              aria-label={`Add an activity to ${column.title}`}
+              className="flex-none rounded-md px-1 text-sm font-bold text-slate-500 hover:bg-white hover:text-slate-900"
+            >
+              +
+            </button>
+          )}
+        </h2>
+      )}
+
+      {/* Managing the phase itself, on the column rather than tucked away in a
+          panel — this is where someone is looking when they decide a stage is
+          misnamed, in the wrong place, or not a stage at all. */}
+      {managed && renaming === null && (
+        <div className="mb-2 flex items-center gap-0.5 px-1">
+          {confirmingDelete ? (
+            <>
+              <span className="text-[10px] text-slate-600">Delete phase?</span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  run(() => deletePhase({ workspaceId, phaseId }));
+                }}
+                className="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white disabled:opacity-60"
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"
+              >
+                No
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={pending || phaseIndex <= 0}
+                onClick={() => run(() => movePhase({ workspaceId, phaseId, direction: "LEFT" }))}
+                aria-label={`Move ${column.title} earlier`}
+                title="Move earlier"
+                className="rounded px-1 text-[11px] text-slate-500 hover:bg-white hover:text-slate-900 disabled:opacity-30"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                disabled={pending || phaseIndex === -1 || phaseIndex >= phaseCount - 1}
+                onClick={() => run(() => movePhase({ workspaceId, phaseId, direction: "RIGHT" }))}
+                aria-label={`Move ${column.title} later`}
+                title="Move later"
+                className="rounded px-1 text-[11px] text-slate-500 hover:bg-white hover:text-slate-900 disabled:opacity-30"
+              >
+                →
+              </button>
+              <button
+                type="button"
+                onClick={() => setRenaming(column.title)}
+                aria-label={`Rename ${column.title}`}
+                className="rounded px-1.5 text-[10px] font-semibold text-slate-500 hover:bg-white hover:text-slate-900"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                aria-label={`Delete ${column.title}`}
+                className="ml-auto rounded px-1.5 text-[10px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
+              >
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {error && <p className="mb-1.5 px-1 text-[10px] text-red-600">{error}</p>}
+      {/* The column scrolls inside itself rather than stretching the page: one
+          phase holding everything unplaced would otherwise leave every other
+          column stranded at the top of a very long scroll. */}
+      <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-0.5">{children}</div>
     </section>
   );
 }
@@ -388,6 +564,10 @@ function Card({
   onPointerDown,
   onEdit,
   onPhaseChange,
+  canMove,
+  isFirst,
+  isLast,
+  onMove,
 }: {
   card: ActivityCard;
   workspaceId: string;
@@ -398,6 +578,10 @@ function Card({
   onPointerDown: (event: React.PointerEvent) => void;
   onEdit: () => void;
   onPhaseChange: (phaseId: string | null) => void;
+  canMove: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  onMove: (direction: "UP" | "DOWN") => void;
 }) {
   return (
     <article
@@ -413,8 +597,32 @@ function Card({
         >
           {card.processCode}
         </Link>
-        <div className="flex flex-none items-center gap-1">
-          {card.isMilestone && <span className="text-[10px] text-amber-500">★</span>}
+        <div className="flex flex-none items-center gap-0.5">
+          {card.isMilestone && <span className="mr-0.5 text-[10px] text-amber-500">★</span>}
+          {canMove && (
+            <>
+              <button
+                type="button"
+                disabled={pending || isFirst}
+                onClick={onMove.bind(null, "UP")}
+                aria-label={`Move ${card.label} up in this phase`}
+                title="Move up"
+                className="rounded px-1 text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                disabled={pending || isLast}
+                onClick={onMove.bind(null, "DOWN")}
+                aria-label={`Move ${card.label} down in this phase`}
+                title="Move down"
+                className="rounded px-1 text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
+              >
+                ▼
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={onEdit}

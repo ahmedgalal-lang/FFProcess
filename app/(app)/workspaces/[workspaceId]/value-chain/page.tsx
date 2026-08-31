@@ -36,6 +36,7 @@ export default async function ValueChainPage(props: PageProps<"/workspaces/[work
         label: true,
         detailedAction: true,
         phaseId: true,
+        phaseOrder: true,
         milestone: true,
         processId: true,
         process: { select: { code: true } },
@@ -61,6 +62,7 @@ export default async function ValueChainPage(props: PageProps<"/workspaces/[work
     supportNames: step.supportingRoles.map((role) => role.name),
     supportIds: step.supportingRoles.map((role) => role.id),
     phaseId: step.phaseId,
+    phaseOrder: step.phaseOrder,
     linksTo: step.links.map((link) => link.targetProcess.code),
     isMilestone: step.milestone,
   }));

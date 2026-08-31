@@ -137,16 +137,38 @@ test("Value Chain: import a spreadsheet, then read, filter and re-phase the boar
 
   await expect(proposal.getByRole("heading", { name: "Enquiry Received" })).toBeVisible();
 
-  // --- A phase can be renamed after it was created ---
-  await page.getByRole("button", { name: "Manage phases" }).click();
+  // --- Activities can be ordered within their own phase ---
+  // Proposal now holds Enquiry Received and Pricing; moving one past the other
+  // is a different sequence from either step's place in its own process.
+  const proposalCards = () => proposal.locator("article h3");
+  const before = await proposalCards().allInnerTexts();
+  expect(before).toHaveLength(2);
+
+  await page.getByLabel(`Move ${before[1]} up in this phase`).click();
+  await page.waitForTimeout(1200);
+  await page.reload();
+  await expect(proposal).toBeVisible();
+  expect(await proposalCards().allInnerTexts()).toEqual([before[1], before[0]]);
+
+  // The first card can't move up and the last can't move down.
+  await expect(page.getByLabel(`Move ${before[1]} up in this phase`)).toBeHidden();
+  await expect(page.getByLabel(`Move ${before[0]} down in this phase`)).toBeHidden();
+
+  // --- A phase is renamed, reordered and deleted from its own column ---
   await page.getByRole("button", { name: "Rename Delivery" }).click();
   await page.getByLabel("Rename Delivery").fill("Mobilisation & Delivery");
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForTimeout(1200);
   await expect(page.getByRole("heading", { name: /Mobilisation & Delivery/i })).toBeVisible();
 
-  // --- Deleting a phase leaves its activities in place, unphased ---
-  // The phases panel is already open from the rename above.
+  // Moving it earlier reorders the chain itself, so the columns swap.
+  const headings = () => page.locator("main section h2");
+  await page.getByLabel("Move Mobilisation & Delivery earlier").click();
+  await page.waitForTimeout(1200);
+  await expect(headings().nth(2)).toContainText("Mobilisation & Delivery");
+  await expect(headings().nth(3)).toContainText("Proposal");
+
+  // Deleting leaves its activities in place, unphased.
   await page.getByLabel("Delete Mobilisation & Delivery").click();
   await page.getByRole("button", { name: "Yes" }).click();
   await page.waitForTimeout(1200);

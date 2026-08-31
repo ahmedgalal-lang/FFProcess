@@ -22,6 +22,7 @@ function card(overrides: Partial<ActivityCard> & { stepId: string; label: string
     supportNames: [],
     supportIds: [],
     phaseId: null,
+    phaseOrder: 0,
     linksTo: [],
     isMilestone: false,
     ...overrides,
@@ -53,6 +54,43 @@ describe("groupByPhase", () => {
     const columns = groupByPhase([card({ stepId: "s1", label: "RFQ Receipt", phaseId: "init" })], phases);
     expect(columns).toHaveLength(3);
     expect(columns[1]!.cards).toEqual([]);
+  });
+
+  it("orders activities within a phase by the position someone put them in", () => {
+    const columns = groupByPhase(
+      [
+        card({ stepId: "s1", label: "Third", phaseId: "init", phaseOrder: 2 }),
+        card({ stepId: "s2", label: "First", phaseId: "init", phaseOrder: 0 }),
+        card({ stepId: "s3", label: "Second", phaseId: "init", phaseOrder: 1 }),
+      ],
+      phases
+    );
+
+    expect(columns[0]!.cards.map((c) => c.label)).toEqual(["First", "Second", "Third"]);
+  });
+
+  it("falls back to the activity name when nothing has been arranged yet", () => {
+    // Every step starts at position 0, so an untouched phase still needs a
+    // stable order rather than whatever the database happened to return.
+    const columns = groupByPhase(
+      [
+        card({ stepId: "s1", label: "Beta", phaseId: "init" }),
+        card({ stepId: "s2", label: "Alpha", phaseId: "init" }),
+      ],
+      phases
+    );
+    expect(columns[0]!.cards.map((c) => c.label)).toEqual(["Alpha", "Beta"]);
+  });
+
+  it("orders the unphased column the same way", () => {
+    const columns = groupByPhase(
+      [
+        card({ stepId: "s1", label: "Later", phaseOrder: 5 }),
+        card({ stepId: "s2", label: "Earlier", phaseOrder: 1 }),
+      ],
+      phases
+    );
+    expect(columns.at(-1)!.cards.map((c) => c.label)).toEqual(["Earlier", "Later"]);
   });
 
   it("collects unphased work into a column of its own, only when there is some", () => {

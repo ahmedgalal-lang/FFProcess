@@ -2,14 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  createPhase,
-  deletePhase,
-  importValueChain,
-  movePhase,
-  renamePhase,
-  type ImportPreview,
-} from "@/lib/actions/value-chain";
+import { createPhase, importValueChain, type ImportPreview } from "@/lib/actions/value-chain";
 import type { PhaseRef } from "@/lib/domain/value-chain";
 
 type ProcessRef = { id: string; code: string; name: string };
@@ -35,7 +28,7 @@ export function ValueChainSetup({
           aria-expanded={open === "phases"}
           className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
         >
-          Manage phases
+          Add a phase
         </button>
         <button
           type="button"
@@ -47,158 +40,45 @@ export function ValueChainSetup({
         </button>
       </div>
 
-      {open === "phases" && <PhaseManager workspaceId={workspaceId} phases={phases} />}
+      {open === "phases" && <AddPhaseForm workspaceId={workspaceId} phases={phases} />}
       {open === "import" && <ImportPanel workspaceId={workspaceId} processes={processes} />}
     </div>
   );
 }
 
-function PhaseManager({ workspaceId, phases }: { workspaceId: string; phases: PhaseRef[] }) {
+/**
+ * Adding a stage. Renaming one, moving it along the chain and deleting it are
+ * on the board's own column headers — where someone is looking when they decide
+ * a stage is misnamed or in the wrong place — rather than duplicated here.
+ */
+function AddPhaseForm({ workspaceId, phases }: { workspaceId: string; phases: PhaseRef[] }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
-
-  function run(work: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
-    setError(null);
-    startTransition(async () => {
-      const result = await work();
-      if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save") : result.error!);
-        return;
-      }
-      router.refresh();
-    });
-  }
 
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3.5">
       <h2 className="text-sm font-semibold text-slate-900">Phases</h2>
       <p className="mt-0.5 text-xs text-slate-600">
-        The stages of the value chain, left to right. Rename one, move it along the chain with ← and →, or delete
-        it — deleting leaves its activities in place, unphased.
+        {phases.length === 0
+          ? "The stages of the value chain. Add the first one and it becomes a column on the board."
+          : `${phases.map((phase) => phase.name).join(" → ")}. Rename, reorder or delete a stage from its column on the board below.`}
       </p>
-
-      <ul className="mt-3 flex flex-col gap-1.5">
-        {phases.map((phase, index) => (
-          <li key={phase.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
-            {phase.color && (
-              <span aria-hidden="true" className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: phase.color }} />
-            )}
-            {renaming?.id === phase.id ? (
-              <>
-                <input
-                  value={renaming.name}
-                  onChange={(e) => setRenaming({ id: phase.id, name: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") setRenaming(null);
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    const next = renaming.name;
-                    setRenaming(null);
-                    run(() => renamePhase({ workspaceId, phaseId: phase.id, name: next }));
-                  }}
-                  aria-label={`Rename ${phase.name}`}
-                  autoFocus
-                  className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-sm"
-                />
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => {
-                    const next = renaming.name;
-                    setRenaming(null);
-                    run(() => renamePhase({ workspaceId, phaseId: phase.id, name: next }));
-                  }}
-                  className="rounded bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white disabled:opacity-60"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRenaming(null)}
-                  className="rounded border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-            <button
-              type="button"
-              onClick={() => setRenaming({ id: phase.id, name: phase.name })}
-              aria-label={`Rename ${phase.name}`}
-              className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left text-sm text-slate-900 hover:bg-slate-100"
-            >
-              {phase.name}
-            </button>
-            <button
-              type="button"
-              disabled={pending || index === 0}
-              onClick={() => run(() => movePhase({ workspaceId, phaseId: phase.id, direction: "LEFT" }))}
-              aria-label={`Move ${phase.name} earlier`}
-              className="rounded px-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:invisible"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              disabled={pending || index === phases.length - 1}
-              onClick={() => run(() => movePhase({ workspaceId, phaseId: phase.id, direction: "RIGHT" }))}
-              aria-label={`Move ${phase.name} later`}
-              className="rounded px-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:invisible"
-            >
-              →
-            </button>
-            {confirming === phase.id ? (
-              <>
-                <span className="text-[11px] text-slate-600">Delete?</span>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => {
-                    setConfirming(null);
-                    run(() => deletePhase({ workspaceId, phaseId: phase.id }));
-                  }}
-                  className="rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white disabled:opacity-60"
-                >
-                  Yes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirming(null)}
-                  className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700"
-                >
-                  No
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirming(phase.id)}
-                aria-label={`Delete ${phase.name}`}
-                className="rounded px-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-600"
-              >
-                ✕
-              </button>
-            )}
-              </>
-            )}
-          </li>
-        ))}
-        {phases.length === 0 && <li className="text-xs text-slate-600">No phases yet.</li>}
-      </ul>
 
       <form
         className="mt-3 flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          run(async () => {
+          setError(null);
+          startTransition(async () => {
             const result = await createPhase({ workspaceId, name });
-            if (result.ok) setName("");
-            return result;
+            if (!result.ok) {
+              setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not add") : result.error);
+              return;
+            }
+            setName("");
+            router.refresh();
           });
         }}
       >

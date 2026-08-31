@@ -7,6 +7,7 @@ import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import ExcelJS from "exceljs";
 import { phaseColorFor } from "@/lib/domain/value-chain";
 import { buildImportPlan, matchHeaders, type ImportPlan } from "@/lib/domain/value-chain-import";
+import { moveStepInOrder } from "@/lib/domain/step-order";
 import { FIRST_STEP_X, laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
 import { generateProcessCode } from "@/lib/domain/process-hierarchy";
 import { ok, notFound, validationError, type ActionResult } from "@/lib/actions/errors";
@@ -193,14 +194,71 @@ export async function setStepPhase(
     if (!phase || phase.workspaceId !== parsed.data.workspaceId) return notFound();
   }
 
+  // A card dropped into a phase joins the end of it. Every step starts at 0, so
+  // without this an arriving card would tie with everything already there and
+  // land wherever the name-based tiebreak put it.
+  const arrivingAt = await prisma.processStep.count({
+    where: {
+      phaseId: parsed.data.phaseId || null,
+      process: { workspaceId: parsed.data.workspaceId },
+      id: { not: parsed.data.stepId },
+    },
+  });
+
   await prisma.processStep.update({
     where: { id: parsed.data.stepId },
-    data: { phaseId: parsed.data.phaseId || null },
+    data: { phaseId: parsed.data.phaseId || null, phaseOrder: arrivingAt },
   });
 
   revalidateBoard(parsed.data.workspaceId);
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${step.processId}/map`);
   return ok({ id: parsed.data.stepId });
+}
+
+const moveActivitySchema = z.object({
+  workspaceId: z.string().min(1),
+  stepId: z.string().min(1),
+  direction: z.enum(["UP", "DOWN"]),
+});
+
+/**
+ * Moves an activity one place up or down *within its phase* — a different
+ * sequence from the step's place in its own process, which is left alone.
+ * Renumbers the whole phase from zero, so an order half-written by an earlier
+ * import or drop settles into something consistent.
+ */
+export async function moveActivityInPhase(
+  input: z.infer<typeof moveActivitySchema>
+): Promise<ActionResult<{ orderedStepIds: string[] }>> {
+  const parsed = moveActivitySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const step = await prisma.processStep.findUnique({
+    where: { id: parsed.data.stepId },
+    select: { id: true, phaseId: true, process: { select: { workspaceId: true } } },
+  });
+  if (!step || step.process.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  // The same phase's activities, in the order the board shows them — including
+  // the name tiebreak, so moving a card behaves as what's on screen implies.
+  const siblings = await prisma.processStep.findMany({
+    where: { phaseId: step.phaseId, process: { workspaceId: parsed.data.workspaceId } },
+    select: { id: true, label: true, phaseOrder: true },
+  });
+  const ordered = siblings
+    .sort((a, b) => a.phaseOrder - b.phaseOrder || a.label.localeCompare(b.label))
+    .map((s) => s.id);
+
+  const next = moveStepInOrder(ordered, parsed.data.stepId, parsed.data.direction);
+  await prisma.$transaction(
+    next.map((id, index) => prisma.processStep.update({ where: { id }, data: { phaseOrder: index } }))
+  );
+
+  revalidateBoard(parsed.data.workspaceId);
+  return ok({ orderedStepIds: next });
 }
 
 const setSupportingRolesSchema = z.object({

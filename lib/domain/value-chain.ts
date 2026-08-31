@@ -43,6 +43,8 @@ export type ActivityCard = {
   /** Ids of the same departments, so an editor can match them exactly. */
   supportIds: string[];
   phaseId: string | null;
+  /** Where this activity sits within its phase — the board's own sequence. */
+  phaseOrder: number;
   /** Codes of processes this step hands off to, so a card shows its links. */
   linksTo: string[];
   isMilestone: boolean;
@@ -89,6 +91,16 @@ function matches(card: ActivityCard, filter: BoardFilter): boolean {
 }
 
 /**
+ * Activities in the order someone arranged them within their phase, with the
+ * activity name settling ties — every step starts at position 0, so an
+ * untouched phase needs *some* stable order rather than whatever the database
+ * happened to return.
+ */
+function sortWithinPhase(cards: ActivityCard[]): ActivityCard[] {
+  return [...cards].sort((a, b) => a.phaseOrder - b.phaseOrder || a.label.localeCompare(b.label));
+}
+
+/**
  * Columns in phase order, then a catch-all for anything unphased. Every phase
  * gets a column even when nothing is in it — an empty stage of the value chain
  * is information, not something to hide — but the catch-all only appears when
@@ -107,13 +119,19 @@ export function groupByPhase(
     title: phase.name,
     color: phase.color,
     phaseId: phase.id,
-    cards: visible.filter((card) => card.phaseId === phase.id),
+    cards: sortWithinPhase(visible.filter((card) => card.phaseId === phase.id)),
   }));
 
   const known = new Set(phases.map((p) => p.id));
   const unphased = visible.filter((card) => !card.phaseId || !known.has(card.phaseId));
   if (unphased.length > 0) {
-    columns.push({ key: "unphased", title: UNPHASED_COLUMN, color: null, phaseId: null, cards: unphased });
+    columns.push({
+      key: "unphased",
+      title: UNPHASED_COLUMN,
+      color: null,
+      phaseId: null,
+      cards: sortWithinPhase(unphased),
+    });
   }
 
   return columns;
