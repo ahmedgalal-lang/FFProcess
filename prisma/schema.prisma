@@ -154,6 +154,7 @@ model Workspace {
   roles     Role[]
   people    Person[]
   processes Process[]
+  phases    Phase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -198,6 +199,7 @@ model Role {
   personRoles          PersonRole[]
   processSteps         ProcessStep[]         @relation("StepAssignedRole")
   swimlaneSteps        ProcessStep[]         @relation("StepSwimlaneRole")
+  supportedSteps       ProcessStep[]         @relation("StepSupportingRoles")
   raciAssignments      RaciAssignment[]
   authorityApprovals   AuthorityAssignment[] @relation("AuthorityApproverRole")
   authorityCoApprovals AuthorityAssignment[] @relation("AuthorityCoApproverRole")
@@ -334,6 +336,31 @@ enum StepType {
   END
 }
 
+/// A named stage of the engagement's value chain — Initiation, Evaluation,
+/// Proposal, Award, Execution, Finance, Closure. Workspace-scoped and ordered,
+/// because every client names and sequences their own.
+///
+/// Distinct from ProcessCategory, which is firm-wide and files a whole Process;
+/// a Phase groups individual steps, and steps from different Processes share
+/// one — which is what makes a cross-process value-chain board possible.
+model Phase {
+  id          String @id @default(uuid())
+  workspaceId String
+  name        String
+  order       Int    @default(0)
+  /// Hex colour for the board's column dot, chosen when the Phase is created.
+  color       String?
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  steps     ProcessStep[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, order])
+  @@map("phases")
+}
+
 model ProcessStep {
   id             String   @id @default(uuid())
   processId      String
@@ -352,6 +379,11 @@ model ProcessStep {
   /// time stranded it at the bottom no matter what it connected to.
   order Int @default(0)
 
+  /// Which stage of the value chain this step belongs to. Optional: a process
+  /// map is perfectly valid without phases, and they only matter once someone
+  /// is looking at the engagement as one value chain.
+  phaseId String?
+
   /// Marked as one of the few steps worth seeing from the engagement level —
   /// these are the beads on this process's rail in the Helicopter View. Off by
   /// default: a milestone means something only because most steps aren't one.
@@ -367,6 +399,16 @@ model ProcessStep {
   assignedRole Role?   @relation("StepAssignedRole", fields: [assignedRoleId], references: [id])
   swimlaneRole Role?   @relation("StepSwimlaneRole", fields: [swimlaneRoleId], references: [id])
 
+  /// SetNull rather than Cascade: deleting a Phase must not delete the work
+  /// that sat in it — the steps simply become unphased.
+  phase Phase? @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+
+  /// The other departments involved in this step, as the value-chain board's
+  /// "Supporting Departments" column. Lighter than RACI on purpose: RACI is
+  /// per-Activity and governs accountability, this is the handful of names a
+  /// card needs to show who else is in the room.
+  supportingRoles Role[] @relation("StepSupportingRoles")
+
   links               ProcessStepLink[]
   outgoingEdges       StepConnection[]     @relation("FromStep")
   incomingEdges       StepConnection[]     @relation("ToStep")
@@ -379,6 +421,7 @@ model ProcessStep {
 
   @@index([processId])
   @@index([processId, order])
+  @@index([phaseId])
   @@map("process_steps")
 }
 

@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/org", label: "Org Directory" },
   { href: "/processes", label: "Processes" },
   { href: "/helicopter", label: "Helicopter View" },
+  { href: "/value-chain", label: "Value Chain" },
   { href: "/governance", label: "Governance" },
   { href: "/members", label: "Members" },
   { href: "/export", label: "Export Report" },

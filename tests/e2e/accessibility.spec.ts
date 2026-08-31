@@ -150,6 +150,21 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("Value Chain board has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/value-chain");
+    await page.waitForSelector("h1");
+    let results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+
+    // Both panels, and the By Owner grouping, since each renders its own controls.
+    await page.getByRole("button", { name: "Manage phases" }).click();
+    await page.getByRole("button", { name: "Import from spreadsheet" }).click();
+    await page.getByRole("button", { name: "By Owner" }).click();
+    await page.waitForTimeout(300);
+    results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test("Helicopter View has no automatically detectable violations, in either mode", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/helicopter");
     await page.waitForSelector("h1");
