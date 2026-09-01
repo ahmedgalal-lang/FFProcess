@@ -140,8 +140,16 @@ export function StaticProcessMapDiagram({
     [connections, stepById]
   );
 
+  // Tall enough to give a many-lane process real room, but capped — this is a
+  // printed page, not an infinite canvas — clamped between a one-lane minimum
+  // and roughly half an A4-landscape page.
+  const diagramHeight = Math.max(320, Math.min(640, laneOrder.length * 130 + 80));
+
   return (
-    <div className="relative h-[440px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div
+      className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white"
+      style={{ height: diagramHeight }}
+    >
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
@@ -154,8 +162,16 @@ export function StaticProcessMapDiagram({
           zoomOnScroll={false}
           zoomOnPinch={false}
           zoomOnDoubleClick={false}
+          // No pan or zoom is offered here — this is a static, printed
+          // rendering, not the interactive Process Map — so the *initial* fit
+          // has to show the whole diagram or nothing ever will. The default
+          // zoom floor (0.5) refuses to shrink a wide or many-lane process far
+          // enough to fit a fixed-height box, silently clipping it instead;
+          // both zoom clamps are lowered here so fitView can always reach
+          // whatever scale the content actually needs.
+          minZoom={0.05}
           fitView
-          fitViewOptions={{ padding: 0.15 }}
+          fitViewOptions={{ padding: 0.12, minZoom: 0.05 }}
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={20} size={1} color="#e2e8f0" />
