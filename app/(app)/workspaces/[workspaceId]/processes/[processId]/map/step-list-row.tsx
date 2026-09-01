@@ -11,6 +11,7 @@ import {
   moveProcessStep,
   setStepMilestone,
 } from "@/lib/actions/process";
+import { STEP_GAP_DESCRIPTIONS, STEP_GAP_LABELS, type StepGap } from "@/lib/domain/step-readiness";
 
 const TYPE_STYLES: Record<string, string> = {
   START: "bg-emerald-50 text-emerald-700",
@@ -35,6 +36,7 @@ type StepT = {
   assignedRole: RoleRef | null;
   reviewNotes: string | null;
   milestone: boolean;
+  gaps: StepGap[];
   detailedAction: string[];
   exceptionHandling: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
@@ -337,6 +339,14 @@ export function StepListRow({
           {step.milestone && (
             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
               ★ Milestone
+            </span>
+          )}
+          {step.gaps.length > 0 && (
+            <span
+              className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800"
+              title={step.gaps.map((gap) => STEP_GAP_DESCRIPTIONS[gap]).join("\n")}
+            >
+              ⚠ {step.gaps.map((gap) => STEP_GAP_LABELS[gap]).join(" · ")}
             </span>
           )}
           {(step.detailedAction.length > 0 || step.exceptionHandling) && (

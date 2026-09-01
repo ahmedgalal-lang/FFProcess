@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
+import { deriveGapsByStep } from "@/lib/domain/step-readiness";
 import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
 import { AddStepForm, BulkAddStepsForm } from "./step-form";
 import { MapView } from "./map-view";
@@ -32,7 +33,7 @@ export default async function ProcessMapPage(
   });
   if (!process || process.workspaceId !== workspaceId) notFound();
 
-  const [roles, otherProcesses, connections, stepperCounts] = await Promise.all([
+  const [roles, otherProcesses, connections, stepperCounts, activities, authorityAssignments] = await Promise.all([
     prisma.role.findMany({ where: { workspaceId, archivedAt: null }, orderBy: { name: "asc" } }),
     prisma.process.findMany({
       where: { workspaceId, archivedAt: null, id: { not: processId } },
@@ -40,9 +41,51 @@ export default async function ProcessMapPage(
     }),
     prisma.stepConnection.findMany({ where: { processId } }),
     getProcessStepperCounts(processId),
+    // Enough of the RACI and Authority matrices to say what each step is still
+    // missing, so the Steps List can show it without anyone opening either.
+    prisma.activity.findMany({
+      where: { processId },
+      include: { raciAssignments: true },
+      orderBy: { order: "asc" },
+    }),
+    prisma.authorityAssignment.findMany({ where: { processId } }),
   ]);
 
   const externalEntities = process.externalEntities as unknown as { name: string; description: string }[];
+
+  // What each step still needs — derived through the very builders and
+  // validators the RACI and Authority pages use, so the chip in the list and
+  // the flag on those pages can never disagree.
+  const gapsByStepId = deriveGapsByStep({
+    steps: process.steps.map((step) => ({
+      id: step.id,
+      type: step.type,
+      label: step.label,
+      raciSkipped: step.raciSkipped,
+    })),
+    activities: activities.map((activity) => ({
+      id: activity.id,
+      name: activity.name,
+      relatedStepId: activity.relatedStepId,
+      order: activity.order,
+      assignments: activity.raciAssignments.map((a) => ({ roleId: a.roleId, code: a.code })),
+    })),
+    authorityAssignments: authorityAssignments.map((a) => ({
+      activityId: a.activityId,
+      stepId: a.stepId,
+      skipped: a.skipped,
+      slaDays: a.slaDays,
+      threshold: a.threshold === null ? null : Number(a.threshold),
+      direction: a.direction,
+      approverRoleId: a.approverRoleId,
+      approverPersonId: a.approverPersonId,
+      coApprovalAboveThreshold:
+        a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
+      coApproverRoleId: a.coApproverRoleId,
+      escalationRoleId: a.escalationRoleId,
+    })),
+    incomingStepIds: new Set(connections.map((c) => c.toStepId)),
+  });
 
   // The step this process picks up from, if any. Its number comes from the
   // source process's own step order, so it matches what that map shows.
@@ -109,7 +152,11 @@ export default async function ProcessMapPage(
         workspaceId={workspaceId}
         processId={processId}
         processCode={process.code}
-        steps={process.steps.map((s) => ({ ...s, branches: s.branchedProcesses }))}
+        steps={process.steps.map((s) => ({
+          ...s,
+          branches: s.branchedProcesses,
+          gaps: gapsByStepId.get(s.id) ?? [],
+        }))}
         connections={connections}
         roles={roles.map((r) => ({ id: r.id, name: r.name }))}
         branchFrom={branchFrom}

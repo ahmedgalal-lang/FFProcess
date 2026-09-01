@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { arrangeProcessStepsByFlow } from "@/lib/actions/process";
+import type { StepGap } from "@/lib/domain/step-readiness";
 import { ProcessMapCanvas, type BranchFromT } from "./process-map-canvas";
 import { StepListRow } from "./step-list-row";
 
@@ -17,6 +18,7 @@ type StepT = {
   swimlaneRole: RoleRef | null;
   reviewNotes: string | null;
   milestone: boolean;
+  gaps: StepGap[];
   detailedAction: string[];
   exceptionHandling: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];

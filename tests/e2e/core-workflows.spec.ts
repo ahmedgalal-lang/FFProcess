@@ -68,6 +68,43 @@ test.describe("Core workflows", () => {
     await expect(steps).toHaveCount(9);
   });
 
+  test("Steps List says what each step still needs, agreeing with the matrices", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
+    await page.waitForURL("**/map");
+    await page.click('button:has-text("Steps List")');
+
+    const row = (label: string) =>
+      page.locator("main .rounded-xl.border.border-slate-200.bg-white.p-3\\.5").filter({ hasText: label }).first();
+
+    // The seeded gaps, named on the step itself rather than only on the page
+    // that validates them.
+    await expect(row("Send PO to Vendor")).toContainText("no accountable");
+    await expect(row("Send PO to Vendor")).toContainText("no approver");
+    await expect(row("Receive Goods")).toContainText("no accountable");
+
+    // A step that is fully documented says nothing — the chip is a gap list,
+    // not a status badge, so a quiet row means there is nothing to do.
+    await expect(row("Pay Vendor")).not.toContainText("⚠");
+
+    // A START step legitimately begins the flow, so it is never asked what
+    // connects into it. Asserted on the chip, since the row separately carries
+    // its own "Entry point — no predecessor" line.
+    await expect(row("Start").locator("span", { hasText: "⚠" }).first()).toHaveText(
+      "⚠ no accountable · no responsible"
+    );
+
+    // And the chips agree with the matrices they summarise: an authority row
+    // can hang off a step's Activity rather than the step, and reading only
+    // the step reported approvers as missing when they were not.
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
+    await page.waitForURL("**/map");
+    await page.goto(page.url().replace("/map", "/authority"));
+    const flaggedInMatrix = page.locator("tbody tr").filter({ hasText: "Create Purchase Order" });
+    await expect(flaggedInMatrix).not.toContainText("has a validation issue");
+  });
+
   test("RACI matrix flags the seeded validation gap and blocks finalization", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();

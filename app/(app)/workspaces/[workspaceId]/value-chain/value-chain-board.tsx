@@ -22,6 +22,7 @@ import {
   updateActivity,
 } from "@/lib/actions/value-chain";
 import { deleteProcessStep } from "@/lib/actions/process";
+import { STEP_GAP_DESCRIPTIONS, STEP_GAP_LABELS } from "@/lib/domain/step-readiness";
 
 type ProcessRef = { id: string; code: string; name: string };
 type RoleRef = { id: string; name: string };
@@ -642,6 +643,18 @@ function Card({
           <div className="text-slate-600">Support: {card.supportNames.join(", ")}</div>
         )}
       </div>
+
+      {/* An activity added here is a real step, and a real step needs a RACI
+          row and an authority rule too — this says so on the card rather than
+          leaving it to be discovered on those pages. */}
+      {(card.gaps ?? []).length > 0 && (
+        <div
+          className="mt-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800"
+          title={(card.gaps ?? []).map((gap) => STEP_GAP_DESCRIPTIONS[gap]).join("\n")}
+        >
+          ⚠ {(card.gaps ?? []).map((gap) => STEP_GAP_LABELS[gap]).join(" · ")}
+        </div>
+      )}
 
       {card.linksTo.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">

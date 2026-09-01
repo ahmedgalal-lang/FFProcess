@@ -14,6 +14,8 @@
  */
 
 /** Column colours, handed out in order as phases are created. */
+import type { StepGap } from "@/lib/domain/step-readiness";
+
 export const PHASE_COLORS = [
   "#2563eb", // blue
   "#7c3aed", // violet
@@ -48,6 +50,12 @@ export type ActivityCard = {
   /** Codes of processes this step hands off to, so a card shows its links. */
   linksTo: string[];
   isMilestone: boolean;
+  /**
+   * What this activity still needs before it counts as documented. Optional
+   * because not every surface works it out — the Export Report shows the chain,
+   * not what's unfinished about it.
+   */
+  gaps?: StepGap[];
 };
 
 export type PhaseRef = { id: string; name: string; order: number; color: string | null };

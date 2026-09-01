@@ -26,6 +26,7 @@ function card(overrides: Partial<ActivityCard> & { stepId: string; label: string
     phaseOrder: 0,
     linksTo: [],
     isMilestone: false,
+    gaps: [],
     ...overrides,
   };
 }

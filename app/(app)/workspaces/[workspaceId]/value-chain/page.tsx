@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/client";
 import { WorkspacePageHeader } from "../workspace-page-header";
 import type { ActivityCard, PhaseRef } from "@/lib/domain/value-chain";
+import { deriveGapsByStep } from "@/lib/domain/step-readiness";
 import { ValueChainBoard } from "./value-chain-board";
 import { ValueChainSetup } from "./value-chain-setup";
 
@@ -16,7 +17,8 @@ import { ValueChainSetup } from "./value-chain-setup";
 export default async function ValueChainPage(props: PageProps<"/workspaces/[workspaceId]/value-chain">) {
   const { workspaceId } = await props.params;
 
-  const [workspace, phases, processes, roles, steps] = await Promise.all([
+  const [workspace, phases, processes, roles, steps, connections, activities, authorityAssignments] =
+    await Promise.all([
     prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
     prisma.phase.findMany({ where: { workspaceId }, orderBy: [{ order: "asc" }, { name: "asc" }] }),
     prisma.process.findMany({
@@ -38,6 +40,8 @@ export default async function ValueChainPage(props: PageProps<"/workspaces/[work
         phaseId: true,
         phaseOrder: true,
         milestone: true,
+        type: true,
+        raciSkipped: true,
         processId: true,
         process: { select: { code: true } },
         assignedRole: { select: { id: true, name: true } },
@@ -46,7 +50,53 @@ export default async function ValueChainPage(props: PageProps<"/workspaces/[work
       },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
+    // Enough to say what each activity still needs — the same rules the RACI
+    // and Authority matrices validate against, so the board agrees with them.
+    prisma.stepConnection.findMany({
+      where: { toStep: { process: { workspaceId, archivedAt: null } } },
+      select: { toStepId: true },
+    }),
+    prisma.activity.findMany({
+      where: { process: { workspaceId, archivedAt: null } },
+      include: { raciAssignments: true },
+      orderBy: { order: "asc" },
+    }),
+    prisma.authorityAssignment.findMany({ where: { process: { workspaceId, archivedAt: null } } }),
   ]);
+
+  // What each activity still needs — derived through the very builders and
+  // validators the RACI and Authority pages use, so a card's chip and those
+  // pages' flags can never disagree.
+  const gapsByStepId = deriveGapsByStep({
+    steps: steps.map((step) => ({
+      id: step.id,
+      type: step.type,
+      label: step.label,
+      raciSkipped: step.raciSkipped,
+    })),
+    activities: activities.map((activity) => ({
+      id: activity.id,
+      name: activity.name,
+      relatedStepId: activity.relatedStepId,
+      order: activity.order,
+      assignments: activity.raciAssignments.map((a) => ({ roleId: a.roleId, code: a.code })),
+    })),
+    authorityAssignments: authorityAssignments.map((a) => ({
+      activityId: a.activityId,
+      stepId: a.stepId,
+      skipped: a.skipped,
+      slaDays: a.slaDays,
+      threshold: a.threshold === null ? null : Number(a.threshold),
+      direction: a.direction,
+      approverRoleId: a.approverRoleId,
+      approverPersonId: a.approverPersonId,
+      coApprovalAboveThreshold:
+        a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
+      coApproverRoleId: a.coApproverRoleId,
+      escalationRoleId: a.escalationRoleId,
+    })),
+    incomingStepIds: new Set(connections.map((c) => c.toStepId)),
+  });
 
   const cards: ActivityCard[] = steps.map((step) => ({
     stepId: step.id,
@@ -65,6 +115,7 @@ export default async function ValueChainPage(props: PageProps<"/workspaces/[work
     phaseOrder: step.phaseOrder,
     linksTo: step.links.map((link) => link.targetProcess.code),
     isMilestone: step.milestone,
+    gaps: gapsByStepId.get(step.id) ?? [],
   }));
 
   const phaseRefs: PhaseRef[] = phases.map((phase) => ({
