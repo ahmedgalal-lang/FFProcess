@@ -3,17 +3,26 @@
 import Link from "next/link";
 import { OrgChartCanvas } from "../../(app)/workspaces/[workspaceId]/org/chart/org-chart-canvas";
 import { StaticProcessMapDiagram } from "../../(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram";
+import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
 import type { RaciCode, StepType } from "@/lib/domain/raci-table";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
 const DEFAULT_ACCENT_SECONDARY = "#4338ca";
+// Same defaults, same functions, as the workspace layout that paints the
+// sidebar pages — a client's report banner and its app banner come out
+// identical rather than two independent guesses at "the brand colour".
+const DEFAULT_ACCENT = "#334155"; // slate-700 — a workspace with no logo/accent set yet
+const DEFAULT_ACCENT_TERTIARY = "#4338ca";
 
 export type ExportProcessData = {
   id: string;
   code: string;
   name: string;
   description: string | null;
+  /** The main process this one is filed under, for the title banner's breadcrumb. */
+  parentCode: string | null;
+  parentName: string | null;
   processPurpose: string | null;
   inScope: string[];
   outOfScope: string[];
@@ -85,6 +94,8 @@ export function ExportPreview({
   companyName,
   industry,
   description,
+  accentColor,
+  accentColorTertiary,
   accentSecondary,
   people,
   processes,
@@ -95,6 +106,8 @@ export function ExportPreview({
   companyName: string;
   industry: string | null;
   description: string | null;
+  accentColor: string | null;
+  accentColorTertiary: string | null;
   accentSecondary: string | null;
   people: PersonT[];
   processes: ExportProcessData[];
@@ -103,10 +116,24 @@ export function ExportPreview({
 }) {
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
 
+  // The four main-title banners (cover, value chain, each process title) paint
+  // themselves in this — the workspace's own Primary accent, resolved exactly
+  // the way the app layout resolves it, so the ink colour stays readable
+  // whether the brand colour is navy or pale yellow.
+  const accentPrimary = accentColor ?? DEFAULT_ACCENT;
+  const accentTertiary = accentColorTertiary ?? DEFAULT_ACCENT_TERTIARY;
+
   return (
     <div
       className="min-h-screen bg-white"
-      style={{ "--accent-secondary": accentSecondary ?? DEFAULT_ACCENT_SECONDARY } as React.CSSProperties}
+      style={
+        {
+          "--accent": accentPrimary,
+          "--accent-secondary": accentSecondary ?? DEFAULT_ACCENT_SECONDARY,
+          "--accent-banner-to": mixHex(accentPrimary, accentTertiary, 0.3),
+          "--accent-ink": readableInkOn(accentPrimary),
+        } as React.CSSProperties
+      }
     >
       <style>{`
         @media print {
@@ -167,16 +194,18 @@ export function ExportPreview({
       )}
 
       <main className="mx-auto w-full max-w-5xl px-6 py-8">
-        <section className="print-page min-h-[70vh]">
-          <div className="text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
-            Company Report
+        <section className="print-page">
+          <BrandBanner>
+            <h1 className="text-3xl font-bold">{companyName}</h1>
+            {industry && <p className="mt-1 text-sm opacity-85">{industry}</p>}
+          </BrandBanner>
+          <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
+            Business Process Documentation &amp; Procedure Standard
           </div>
-          <h1 className="mt-1 text-3xl font-bold text-slate-900">{companyName}</h1>
-          {industry && <p className="mt-2 text-sm font-semibold text-slate-500">{industry}</p>}
           {description && (
-            <p className="mt-4 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-slate-700">{description}</p>
+            <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-slate-700">{description}</p>
           )}
-          <p className="mt-8 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-slate-500">
             Generated on {new Date().toLocaleDateString()} · Covers {processes.length} process
             {processes.length === 1 ? "" : "es"}
           </p>
@@ -194,10 +223,32 @@ export function ExportPreview({
           <ValueChainPage columns={valueChain} companyName={companyName} />
         )}
 
+        {processes.length > 0 && <ProcessIndexPage processes={processes} />}
+
         {processes.map((process) => (
           <ProcessReportSection key={process.id} workspaceId={workspaceId} process={process} />
         ))}
       </main>
+    </div>
+  );
+}
+
+/**
+ * The main-title treatment: painted in the workspace's own Primary accent,
+ * with an ink colour chosen for contrast against it rather than assumed white
+ * — the same banner the sidebar pages use, so a report and the app it came
+ * from read as one brand rather than two different guesses at it. Reserved
+ * for the four titles that open a real section of the document: the cover,
+ * the Value Chain page, and each process's own title.
+ */
+function BrandBanner({ eyebrow, children }: { eyebrow?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-xl px-6 py-5 text-[var(--accent-ink)]"
+      style={{ backgroundImage: "linear-gradient(120deg, var(--accent), var(--accent-banner-to))" }}
+    >
+      {eyebrow && <div className="mb-1 flex items-center gap-2 text-xs opacity-80">{eyebrow}</div>}
+      {children}
     </div>
   );
 }
@@ -207,6 +258,15 @@ function SectionHeading({ num, title }: { num: string; title: string }) {
     <h3 className="mt-8 mb-2 flex items-baseline gap-2 border-b border-slate-200 pb-2 text-lg font-bold text-slate-900">
       <span className="text-[var(--accent-secondary)]">{num}</span> {title}
     </h3>
+  );
+}
+
+/** A numbered heading one size down from SectionHeading, for a section folded in as a closing subsection rather than a heading of its own. */
+function MinorSectionHeading({ num, title }: { num: string; title: string }) {
+  return (
+    <h4 className="mt-6 mb-1.5 flex items-baseline gap-2 border-b border-slate-100 pb-1.5 text-sm font-bold text-slate-800">
+      <span className="text-[var(--accent-secondary)]">{num}</span> {title}
+    </h4>
   );
 }
 
@@ -231,25 +291,42 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
   );
   const hasScope = process.inScope.length > 0 || process.outOfScope.length > 0;
 
+  const hasExecutiveSummary =
+    process.processPurpose ||
+    process.triggerLabel ||
+    process.outputLabel ||
+    process.involvedRoles.length > 0 ||
+    process.externalEntities.length > 0;
+  const hasProcessMap = process.steps.length > 0 || hasScope;
+  const hasRaciAuthority = process.combinedRows.length > 0 || process.controlPoints.length > 0 || process.kpis.length > 0;
+
   return (
     <section className="print-page">
-      <div className="border-b-2 border-slate-300 pb-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
-          Business Process Documentation &amp; Procedure Standard
-        </div>
-        <h2 className="mt-1 text-2xl font-bold text-slate-900">{process.name}</h2>
-        {process.description && <p className="mt-1 text-sm text-slate-500">{process.description}</p>}
-        <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs sm:grid-cols-3">
-          <MetaField label="Document ID" value={`${process.code}-${new Date().getFullYear()}`} />
-          <MetaField label="Version" value="1.0" />
-          <MetaField label="Effective Date" value={new Date().toISOString().slice(0, 10)} />
-          <MetaField label="Review Cycle" value="Annual" />
-          <MetaField label="Process Owner" value={process.processOwnerName ?? "—"} />
-          <MetaField label="Process Code" value={process.code} mono />
-        </dl>
-      </div>
+      <BrandBanner
+        eyebrow={
+          <>
+            <span className="rounded bg-black/15 px-1.5 py-0.5 font-mono text-[10px] font-bold">{process.code}</span>
+            {process.parentName && (
+              <span>
+                under {process.parentCode} · {process.parentName}
+              </span>
+            )}
+          </>
+        }
+      >
+        <h2 className="text-2xl font-bold">{process.name}</h2>
+        {process.description && <p className="mt-1 text-sm opacity-85">{process.description}</p>}
+      </BrandBanner>
+      <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-1.5 border-b-2 border-slate-100 pb-3 text-xs sm:grid-cols-3">
+        <MetaField label="Document ID" value={`${process.code}-${new Date().getFullYear()}`} />
+        <MetaField label="Version" value="1.0" />
+        <MetaField label="Effective Date" value={new Date().toISOString().slice(0, 10)} />
+        <MetaField label="Review Cycle" value="Annual" />
+        <MetaField label="Process Owner" value={process.processOwnerName ?? "—"} />
+        <MetaField label="Process Code" value={process.code} mono />
+      </dl>
 
-      {(process.processPurpose || process.triggerLabel || process.outputLabel) && (
+      {hasExecutiveSummary && (
         <>
           <SectionHeading num="1.0" title="Executive Summary" />
           {process.processPurpose && (
@@ -264,12 +341,6 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
               {process.outputLabel && <ScopeBox label="Process Output" value={process.outputLabel} />}
             </div>
           )}
-        </>
-      )}
-
-      {(process.involvedRoles.length > 0 || process.externalEntities.length > 0) && (
-        <>
-          <SectionHeading num="2.0" title="Involved Parties & Ecosystem" />
           {process.involvedRoles.length > 0 && (
             <>
               <SubHeading>Internal Roles</SubHeading>
@@ -295,165 +366,182 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
         </>
       )}
 
-      {process.combinedRows.length > 0 && (
+      {hasProcessMap && (
         <>
-          <SectionHeading num="3.0" title="RACI & Authority Matrix" />
-          <p className="text-sm text-slate-500">
-            Each task&rsquo;s responsibility assignment and its approval limits, combined into one table.
-          </p>
-          <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Process Step</th>
-                  {process.matrixRoles.map((r) => (
-                    <th key={r.id} className="px-3 py-2 text-center">
-                      {r.name}
-                    </th>
-                  ))}
-                  <th className="px-3 py-2 text-center">SLA</th>
-                  <th className="px-3 py-2 text-center">Amount</th>
-                  <th className="px-3 py-2 text-center">Direction</th>
-                  <th className="px-3 py-2 text-center">Approval</th>
-                  <th className="px-3 py-2 text-center">Co-approval</th>
-                  <th className="px-3 py-2 text-center">Escalation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {process.combinedRows.map((row) => (
-                  <tr key={row.rowId} className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-medium text-slate-900">{row.label}</td>
-                    {process.matrixRoles.map((r) => {
-                      const code = row.raci[r.id] as RaciCode | undefined;
-                      return (
-                        <td key={r.id} className="px-3 py-2 text-center font-mono text-xs font-bold text-slate-600">
-                          {code ? CODE_LETTER[code] : ""}
-                        </td>
-                      );
-                    })}
-                    <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
-                      {row.slaDays === null ? "—" : `${row.slaDays} day${row.slaDays === 1 ? "" : "s"}`}
-                    </td>
-                    <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
-                      {row.threshold === null ? "—" : `$${row.threshold.toLocaleString()}`}
-                    </td>
-                    <td className="px-3 py-2 text-center text-xs text-slate-600">{row.directionLabel}</td>
-                    <td className="px-3 py-2 text-center text-xs text-slate-600">{row.approverLabel ?? "—"}</td>
-                    <td className="px-3 py-2 text-center text-xs text-slate-600">
-                      {row.coApprovalAboveThreshold === null ? (
-                        "—"
-                      ) : (
-                        <span className="flex flex-col leading-tight">
-                          <span>{row.coApproverLabel ?? "not set"}</span>
-                          <span className="font-mono text-[10px] text-slate-500">
-                            above ${row.coApprovalAboveThreshold.toLocaleString()}
-                          </span>
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-center text-xs text-slate-600">{row.escalationLabel ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {hasScope && (
-        <>
-          <SectionHeading num="4.0" title="Scope" />
-          <div className="grid grid-cols-2 gap-4">
-            {process.inScope.length > 0 && <BulletBox label="In-Scope" items={process.inScope} />}
-            {process.outOfScope.length > 0 && <BulletBox label="Out-of-Scope" items={process.outOfScope} />}
-          </div>
-        </>
-      )}
-
-      {process.steps.length > 0 && (
-        <>
-          <SectionHeading num="5.0" title="Process Workflow & Narrative" />
-          <StaticProcessMapDiagram workspaceId={workspaceId} steps={process.steps} connections={process.connections} />
-          {documentedSteps.map((step) => {
-            const row = process.combinedRows.find((r) => r.rowId === step.id);
-            return (
-              <div key={step.id} className="mt-3 rounded-xl border border-slate-200 p-4">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-semibold text-slate-900">{step.label}</span>
-                  <span className="text-xs text-slate-500">
-                    Step Owner: {row ? stepOwnerLabel(row) : (step.assignedRole?.name ?? "—")}
-                  </span>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-4">
-                  {step.detailedAction.length > 0 && (
-                    <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                        Detailed Action
-                      </div>
-                      <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-sm text-slate-700">
-                        {step.detailedAction.map((action, i) => (
-                          <li key={i}>{action}</li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-                  {step.exceptionHandling && (
-                    <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                        Exception Handling
-                      </div>
-                      <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{step.exceptionHandling}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </>
-      )}
-
-      {(process.controlPoints.length > 0 || process.kpis.length > 0) && (
-        <>
-          <SectionHeading num="6.0" title="Governance, Controls & Metrics" />
-          {process.controlPoints.length > 0 && (
+          <SectionHeading num="2.0" title="Process Map & Narrative" />
+          {hasScope && (
             <>
-              <SubHeading>Key Control Points</SubHeading>
-              <ul className="space-y-1.5 text-sm">
-                {process.controlPoints.map((cp) => (
-                  <li
-                    key={cp.rowId}
-                    className={cp.flagged ? "rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800" : "text-slate-700"}
-                  >
-                    {cp.flagged && <strong>⚠ </strong>}
-                    {cp.statement}
-                  </li>
-                ))}
-              </ul>
+              <SubHeading>Scope</SubHeading>
+              <div className="grid grid-cols-2 gap-4">
+                {process.inScope.length > 0 && <BulletBox label="In-Scope" items={process.inScope} />}
+                {process.outOfScope.length > 0 && <BulletBox label="Out-of-Scope" items={process.outOfScope} />}
+              </div>
             </>
           )}
-          {process.kpis.length > 0 && (
+          {process.steps.length > 0 && (
             <>
-              <SubHeading>Operational KPIs &amp; SLAs</SubHeading>
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              {hasScope && <SubHeading>Workflow</SubHeading>}
+              <StaticProcessMapDiagram
+                workspaceId={workspaceId}
+                steps={process.steps}
+                connections={process.connections}
+              />
+              {documentedSteps.map((step) => {
+                const row = process.combinedRows.find((r) => r.rowId === step.id);
+                return (
+                  <div key={step.id} className="mt-3 rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="font-semibold text-slate-900">{step.label}</span>
+                      <span className="text-xs text-slate-500">
+                        Step Owner: {row ? stepOwnerLabel(row) : (step.assignedRole?.name ?? "—")}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-4">
+                      {step.detailedAction.length > 0 && (
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Detailed Action
+                          </div>
+                          <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-sm text-slate-700">
+                            {step.detailedAction.map((action, i) => (
+                              <li key={i}>{action}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                      {step.exceptionHandling && (
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Exception Handling
+                          </div>
+                          <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{step.exceptionHandling}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </>
+      )}
+
+      {hasRaciAuthority && (
+        <>
+          <SectionHeading num="3.0" title="RACI & Authority Matrix" />
+          {process.combinedRows.length > 0 && (
+            <>
+              <p className="text-sm text-slate-500">
+                Each task&rsquo;s responsibility assignment and its approval limits, combined into one table.
+              </p>
+              <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
-                      <th className="px-3 py-2">Metric</th>
-                      <th className="px-3 py-2">Target</th>
-                      <th className="px-3 py-2">Frequency</th>
+                      <th className="px-3 py-2">Process Step</th>
+                      {process.matrixRoles.map((r) => (
+                        <th key={r.id} className="px-3 py-2 text-center">
+                          {r.name}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-center">SLA</th>
+                      <th className="px-3 py-2 text-center">Amount</th>
+                      <th className="px-3 py-2 text-center">Direction</th>
+                      <th className="px-3 py-2 text-center">Approval</th>
+                      <th className="px-3 py-2 text-center">Co-approval</th>
+                      <th className="px-3 py-2 text-center">Escalation</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {process.kpis.map((kpi, i) => (
-                      <tr key={i} className="border-t border-slate-100">
-                        <td className="px-3 py-2 text-slate-800">{kpi.metric}</td>
-                        <td className="px-3 py-2 text-slate-800">{kpi.target}</td>
-                        <td className="px-3 py-2 text-slate-800">{kpi.frequency}</td>
+                    {process.combinedRows.map((row) => (
+                      <tr key={row.rowId} className="border-t border-slate-100">
+                        <td className="px-3 py-2 font-medium text-slate-900">{row.label}</td>
+                        {process.matrixRoles.map((r) => {
+                          const code = row.raci[r.id] as RaciCode | undefined;
+                          return (
+                            <td
+                              key={r.id}
+                              className="px-3 py-2 text-center font-mono text-xs font-bold text-slate-600"
+                            >
+                              {code ? CODE_LETTER[code] : ""}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
+                          {row.slaDays === null ? "—" : `${row.slaDays} day${row.slaDays === 1 ? "" : "s"}`}
+                        </td>
+                        <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
+                          {row.threshold === null ? "—" : `$${row.threshold.toLocaleString()}`}
+                        </td>
+                        <td className="px-3 py-2 text-center text-xs text-slate-600">{row.directionLabel}</td>
+                        <td className="px-3 py-2 text-center text-xs text-slate-600">{row.approverLabel ?? "—"}</td>
+                        <td className="px-3 py-2 text-center text-xs text-slate-600">
+                          {row.coApprovalAboveThreshold === null ? (
+                            "—"
+                          ) : (
+                            <span className="flex flex-col leading-tight">
+                              <span>{row.coApproverLabel ?? "not set"}</span>
+                              <span className="font-mono text-[10px] text-slate-500">
+                                above ${row.coApprovalAboveThreshold.toLocaleString()}
+                              </span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center text-xs text-slate-600">{row.escalationLabel ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            </>
+          )}
+
+          {(process.controlPoints.length > 0 || process.kpis.length > 0) && (
+            <>
+              <MinorSectionHeading num="3.1" title="Governance, Controls & Metrics" />
+              {process.controlPoints.length > 0 && (
+                <>
+                  <SubHeading>Key Control Points</SubHeading>
+                  <ul className="space-y-1.5 text-sm">
+                    {process.controlPoints.map((cp) => (
+                      <li
+                        key={cp.rowId}
+                        className={
+                          cp.flagged ? "rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800" : "text-slate-700"
+                        }
+                      >
+                        {cp.flagged && <strong>⚠ </strong>}
+                        {cp.statement}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {process.kpis.length > 0 && (
+                <>
+                  <SubHeading>Operational KPIs &amp; SLAs</SubHeading>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Metric</th>
+                          <th className="px-3 py-2">Target</th>
+                          <th className="px-3 py-2">Frequency</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {process.kpis.map((kpi, i) => (
+                          <tr key={i} className="border-t border-slate-100">
+                            <td className="px-3 py-2 text-slate-800">{kpi.metric}</td>
+                            <td className="px-3 py-2 text-slate-800">{kpi.target}</td>
+                            <td className="px-3 py-2 text-slate-800">{kpi.frequency}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </>
           )}
         </>
@@ -479,17 +567,16 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
 
   return (
     <section className="print-page">
-      <div className="border-b-2 border-slate-300 pb-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
-          Business Process Documentation &amp; Procedure Standard
-        </div>
-        <h2 className="mt-1 text-2xl font-bold text-slate-900">{companyName} Value Chain</h2>
-        <p className="mt-1 text-sm text-slate-500">
+      <BrandBanner
+        eyebrow={<span>Business Process Documentation &amp; Procedure Standard</span>}
+      >
+        <h2 className="text-2xl font-bold">{companyName} Value Chain</h2>
+        <p className="mt-1 text-sm opacity-85">
           {activityCount} {activityCount === 1 ? "activity" : "activities"} · {columns.length}{" "}
           {columns.length === 1 ? "phase" : "phases"} · {departmentCount}{" "}
           {departmentCount === 1 ? "department" : "departments"}
         </p>
-      </div>
+      </BrandBanner>
 
       <SectionHeading num="0.1" title="The chain, end to end" />
 
@@ -521,6 +608,40 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
       <p className="mt-6 text-xs text-slate-500">
         Each activity is documented in full in the process sections that follow.
       </p>
+    </section>
+  );
+}
+
+/**
+ * Every process in the pack, by code and name, in the order they print — the
+ * table of contents. Sits after the Value Chain page, before the first
+ * process document, so a reader knows what's ahead before reaching it.
+ */
+function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
+  return (
+    <section className="print-page">
+      <h2 className="text-xl font-semibold text-slate-900">Processes in This Report</h2>
+      <p className="mt-1 mb-4 text-sm text-slate-500">
+        {processes.length} process{processes.length === 1 ? "" : "es"}, in the order they follow.
+      </p>
+      <ol className="flex flex-col">
+        {processes.map((process, i) => (
+          <li
+            key={process.id}
+            className="flex items-baseline gap-3 border-b border-slate-100 py-2.5 text-sm last:border-b-0"
+          >
+            <span className="w-5 flex-none font-mono text-xs text-slate-400">{i + 1}</span>
+            <span className="flex-none rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-bold text-slate-700">
+              {process.code}
+            </span>
+            <span className="font-semibold text-slate-900">{process.name}</span>
+            <span className="flex-1 border-b border-dotted border-slate-300" />
+            <span className="flex-none text-xs text-slate-500">
+              {process.parentName ? `under ${process.parentCode}` : "top-level"}
+            </span>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

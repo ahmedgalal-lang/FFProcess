@@ -44,6 +44,7 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
     prisma.role.findMany({ where: { workspaceId } }),
     prisma.process.findMany({
       where: { id: { in: processIds }, workspaceId, archivedAt: null },
+      include: { parentProcess: { select: { code: true, name: true } } },
       orderBy: { code: "asc" },
     }),
     prisma.phase.findMany({ where: { workspaceId }, orderBy: [{ order: "asc" }, { name: "asc" }] }),
@@ -162,6 +163,8 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
         code: process.code,
         name: process.name,
         description: process.description,
+        parentCode: process.parentProcess?.code ?? null,
+        parentName: process.parentProcess?.name ?? null,
         processPurpose: process.processPurpose,
         inScope: process.inScope,
         outOfScope: process.outOfScope,
@@ -232,6 +235,8 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
       companyName={workspace.name}
       industry={workspace.industry}
       description={workspace.description}
+      accentColor={workspace.accentColor}
+      accentColorTertiary={workspace.accentColorTertiary}
       accentSecondary={workspace.accentColorSecondary}
       valueChain={valueChain}
       unphasedActivityCount={chain.unphasedCount}
