@@ -418,7 +418,7 @@ const updateProcessKpisSchema = z.object({
   kpis: z.array(kpiSchema).max(50),
 });
 
-/** Saves this process's operational KPIs/SLAs — edited on the Process Map page, displayed read-only in the Export Report. */
+/** Saves this process's operational KPIs/SLAs — edited on the Governance page, displayed read-only in the Export Report. */
 export async function updateProcessKpis(
   input: z.infer<typeof updateProcessKpisSchema>
 ): Promise<ActionResult<{ id: string }>> {

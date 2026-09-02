@@ -24,6 +24,11 @@ export default async function globalSetup() {
     await client.query(`DELETE FROM phases`);
     await client.query(`DELETE FROM roles WHERE name <> ALL($1)`, [SEEDED_ROLES]);
     await client.query(`DELETE FROM users WHERE email LIKE 'invite-test-%'`);
+    // The seed's own process upserts use update: {} — a reseed never resets a
+    // field on a row that already exists, so a KPI a spec saved on a seeded
+    // process (there's no UI path to remove one) would otherwise still be
+    // there on the next run.
+    await client.query(`UPDATE processes SET kpis = '[]'::jsonb WHERE code = ANY($1)`, [SEEDED_PROCESS_CODES]);
   } finally {
     await client.end();
   }

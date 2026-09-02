@@ -247,6 +247,8 @@ export function ExportPreview({
         {processes.map((process) => (
           <ProcessReportSection key={process.id} workspaceId={workspaceId} process={process} />
         ))}
+
+        <ClosingPage />
       </main>
     </div>
   );
@@ -270,6 +272,34 @@ function BrandBanner({ eyebrow, children }: { eyebrow?: React.ReactNode; childre
       {children}
     </div>
   );
+}
+
+/**
+ * The last page: a branded bar closing the document out, so a reader reaches
+ * a deliberate end rather than the last process's tables simply stopping.
+ * Centred and text-only — it carries no data, so nothing here can go stale.
+ */
+function ClosingPage() {
+  return (
+    <section className="print-page mt-10 break-inside-avoid">
+      <div
+        className="rounded-xl px-6 py-10 text-center text-[var(--accent-ink)]"
+        style={{ backgroundImage: "linear-gradient(120deg, var(--accent), var(--accent-banner-to))" }}
+      >
+        <p className="text-xl font-bold">Thank you</p>
+        <p className="mx-auto mt-2 max-w-xl text-sm opacity-90">
+          Please refer back to the process team for any inputs or comments needed.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/** Splits a list into fixed-size groups, so a wide grid can be laid out as rows that page-break between each other. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
+  return rows;
 }
 
 function SectionHeading({ num, title }: { num: string; title: string }) {
@@ -631,30 +661,45 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
 
       <SectionHeading num="0.1" title="The chain, end to end" />
 
-      <div className="grid grid-cols-2 gap-x-5 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
-        {columns.map((column) => (
-          <div key={column.title} className="break-inside-avoid">
-            <h3
-              className="border-b-2 pb-1 text-[10px] font-bold uppercase tracking-wide"
-              style={{ borderColor: column.color ?? "#cbd5e1", color: column.color ?? "#475569" }}
-            >
-              {column.title}
-            </h3>
-            <ul className="mt-2 flex flex-col gap-2">
-              {column.activities.map((activity) => (
-                <li key={activity.stepId} className="text-xs leading-tight">
-                  <span className="font-semibold text-slate-900">{activity.label}</span>
-                  <span className="mt-0.5 block text-[11px] text-slate-500">
-                    {activity.ownerName ?? "No owner yet"}
-                    {activity.supportNames.length > 0 && ` · support ${activity.supportNames.join(", ")}`}
-                    {activity.linksTo.length > 0 && ` → ${activity.linksTo.join(", ")}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
+      {/* One grid per row of four phases rather than a single grid holding
+          them all. A CSS grid doesn't fragment across printed pages in
+          Chrome — the whole thing jumps to the next page when it doesn't
+          fit, which on a real chain left most of a page blank under this
+          heading. A row is small enough to place, and rows break between
+          each other. Nothing here is break-inside-avoid above the level of
+          a single activity: a long phase may continue on the next page,
+          but no entry is ever cut in half. */}
+      {/* Three per row, fixed rather than responsive: an A4 landscape page is
+          narrower than the lg breakpoint, so a responsive fourth column
+          existed on screen and never in the PDF — and a row that wraps
+          differently in print is exactly how a phase ended up stranded on a
+          line of its own. */}
+      {chunk(columns, 3).map((row, rowIndex) => (
+        <div key={rowIndex} className="mb-5 grid grid-cols-3 gap-x-5 gap-y-5">
+          {row.map((column) => (
+            <div key={column.title}>
+              <h3
+                className="border-b-2 pb-1 text-[10px] font-bold uppercase tracking-wide"
+                style={{ borderColor: column.color ?? "#cbd5e1", color: column.color ?? "#475569" }}
+              >
+                {column.title}
+              </h3>
+              <ul className="mt-2 flex flex-col gap-2">
+                {column.activities.map((activity) => (
+                  <li key={activity.stepId} className="break-inside-avoid text-xs leading-tight">
+                    <span className="font-semibold text-slate-900">{activity.label}</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-500">
+                      {activity.ownerName ?? "No owner yet"}
+                      {activity.supportNames.length > 0 && ` · support ${activity.supportNames.join(", ")}`}
+                      {activity.linksTo.length > 0 && ` → ${activity.linksTo.join(", ")}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ))}
 
       <p className="mt-6 text-xs text-slate-500">
         Each activity is documented in full in the process sections that follow.

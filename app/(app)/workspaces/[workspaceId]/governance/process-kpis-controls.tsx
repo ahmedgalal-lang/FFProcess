@@ -25,28 +25,64 @@ export function ProcessKpisControls({
   const [editing, setEditing] = useState(false);
   const [kpisInput, setKpisInput] = useState<Kpi[]>(kpis);
   const [error, setError] = useState<string | null>(null);
+  // The one row Save is refusing to accept, so its inputs can be highlighted
+  // — otherwise a "fill in the missing field" error with no indication of
+  // *which* row (there can be several) leaves someone hunting for it.
+  const [invalidRow, setInvalidRow] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
   function save() {
     setError(null);
-    startTransition(async () => {
-      const result = await updateProcessKpis({
-        workspaceId,
-        processId,
-        kpis: kpisInput.filter((k) => k.metric.trim() && k.target.trim() && k.frequency.trim()),
-      });
-      if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Invalid input") : result.error);
+    setInvalidRow(null);
+
+    // A row with nothing in it at all (added, then left alone) is dropped
+    // silently — that's just an abandoned "+ Add metric" click, not data
+    // someone typed. A row with *some* fields filled is different: it used
+    // to be dropped exactly the same way, with no error, which is how a
+    // real metric someone entered could vanish on Save with no explanation.
+    // That row now blocks the save instead, naming the field that's missing.
+    const complete: Kpi[] = [];
+    for (let i = 0; i < kpisInput.length; i++) {
+      const metric = kpisInput[i]!.metric.trim();
+      const target = kpisInput[i]!.target.trim();
+      const frequency = kpisInput[i]!.frequency.trim();
+      const filledCount = [metric, target, frequency].filter(Boolean).length;
+      if (filledCount === 0) continue;
+      if (filledCount < 3) {
+        const missing = !metric ? "a metric" : !target ? "a target" : "a frequency";
+        setError(`Row ${i + 1} is missing ${missing} — fill it in, or remove the row, then save again.`);
+        setInvalidRow(i);
         return;
       }
-      setEditing(false);
-      router.refresh();
+      complete.push({ metric, target, frequency });
+    }
+
+    startTransition(async () => {
+      try {
+        const result = await updateProcessKpis({ workspaceId, processId, kpis: complete });
+        if (!result.ok) {
+          setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Invalid input") : result.error);
+          return;
+        }
+        setEditing(false);
+        router.refresh();
+      } catch {
+        // A rejected call — the browser holding an old bundle after a deploy
+        // is the usual cause — used to leave the form sitting there with no
+        // error and nothing saved, which reads exactly like "it just doesn't
+        // save". Say so, and keep what was typed on screen to retry.
+        setError("Couldn't reach the server — reload the page and try saving again.");
+      }
     });
   }
 
   function update(i: number, patch: Partial<Kpi>) {
     setKpisInput((items) => items.map((item, idx) => (idx === i ? { ...item, ...patch } : item)));
+    if (invalidRow === i) {
+      setInvalidRow(null);
+      setError(null);
+    }
   }
 
   return (
@@ -108,49 +144,66 @@ export function ProcessKpisControls({
                 </tr>
               </thead>
               <tbody>
-                {kpisInput.map((item, i) => (
-                  <tr key={i} className="border-t border-slate-100">
-                    <td className="px-2 py-1.5">
-                      <input
-                        value={item.metric}
-                        aria-label={`Metric ${i + 1} for ${processName}`}
-                        onChange={(e) => update(i, { metric: e.target.value })}
-                        className="w-full rounded border border-slate-300 px-1.5 py-1"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        value={item.target}
-                        aria-label={`Target ${i + 1} for ${processName}`}
-                        onChange={(e) => update(i, { target: e.target.value })}
-                        className="w-full rounded border border-slate-300 px-1.5 py-1"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        value={item.frequency}
-                        aria-label={`Frequency ${i + 1} for ${processName}`}
-                        onChange={(e) => update(i, { frequency: e.target.value })}
-                        className="w-full rounded border border-slate-300 px-1.5 py-1"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setKpisInput((items) => items.filter((_, idx) => idx !== i))}
-                        className="text-xs text-slate-400 hover:text-red-600"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {kpisInput.map((item, i) => {
+                  const rowInvalid = invalidRow === i;
+                  const inputClass = `w-full rounded border px-1.5 py-1 ${
+                    rowInvalid ? "border-red-400 bg-red-50" : "border-slate-300"
+                  }`;
+                  return (
+                    <tr key={i} className="border-t border-slate-100">
+                      <td className="px-2 py-1.5">
+                        <input
+                          value={item.metric}
+                          aria-label={`Metric ${i + 1} for ${processName}`}
+                          aria-invalid={rowInvalid}
+                          onChange={(e) => update(i, { metric: e.target.value })}
+                          className={inputClass}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          value={item.target}
+                          aria-label={`Target ${i + 1} for ${processName}`}
+                          aria-invalid={rowInvalid}
+                          onChange={(e) => update(i, { target: e.target.value })}
+                          className={inputClass}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          value={item.frequency}
+                          aria-label={`Frequency ${i + 1} for ${processName}`}
+                          aria-invalid={rowInvalid}
+                          onChange={(e) => update(i, { frequency: e.target.value })}
+                          className={inputClass}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setKpisInput((items) => items.filter((_, idx) => idx !== i));
+                            setInvalidRow(null);
+                            setError(null);
+                          }}
+                          className="text-xs text-slate-400 hover:text-red-600"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             <div className="border-t border-slate-100 px-3 py-2">
               <button
                 type="button"
-                onClick={() => setKpisInput((items) => [...items, { metric: "", target: "", frequency: "" }])}
+                onClick={() => {
+                  setKpisInput((items) => [...items, { metric: "", target: "", frequency: "" }]);
+                  setInvalidRow(null);
+                  setError(null);
+                }}
                 className="text-xs font-semibold text-slate-500 hover:text-slate-900"
               >
                 + Add metric

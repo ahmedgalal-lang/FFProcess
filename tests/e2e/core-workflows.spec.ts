@@ -297,6 +297,34 @@ test.describe("Core workflows", () => {
     await expect(page.getByLabel("Edit KPIs for Purchase-to-Pay")).toBeVisible();
   });
 
+  test("A KPI row missing a field blocks Save with an error, instead of vanishing silently", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/governance");
+    await page.getByLabel("Edit KPIs for Vendor Onboarding").click();
+    await page.getByRole("button", { name: "+ Add metric" }).click();
+
+    await page.getByLabel("Metric 1 for Vendor Onboarding").fill("Vendor approval time");
+    await page.getByLabel("Target 1 for Vendor Onboarding").fill("3 days");
+    // Frequency left blank — the exact slip that used to save silently as
+    // if nothing had ever been typed.
+
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Row 1 is missing a frequency")).toBeVisible();
+    // Still in edit mode, with what was typed intact — not lost.
+    await expect(page.getByLabel("Metric 1 for Vendor Onboarding")).toHaveValue("Vendor approval time");
+
+    await page.getByLabel("Frequency 1 for Vendor Onboarding").fill("Quarterly");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    const row = page.locator("tr", { hasText: "Vendor approval time" });
+    await expect(row).toContainText("3 days");
+    await expect(row).toContainText("Quarterly");
+
+    // Persists on reload — a real save, not just local state.
+    await page.reload();
+    const reloadedRow = page.locator("tr", { hasText: "Vendor approval time" });
+    await expect(reloadedRow).toContainText("Quarterly");
+  });
+
   test("Steps List can reorder steps, and offers where a new step should land", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
