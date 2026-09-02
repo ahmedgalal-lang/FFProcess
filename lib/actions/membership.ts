@@ -89,6 +89,70 @@ export async function inviteMember(
   return ok({ id: member.id, acceptUrl, emailSent: sent });
 }
 
+const createMemberSchema = z.object({
+  workspaceId: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(200),
+  accessLevel: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
+});
+
+/**
+ * Creates an account outright — name, email, a password the admin sets, and an
+ * access level — and adds it to this workspace as an active member.
+ *
+ * The invitation flow above is still the better path when the person can
+ * receive the email: they choose their own password and nobody else ever
+ * knows it. This exists for when that isn't practical (no mail delivery to
+ * their address, someone being set up in the room), and it deliberately
+ * refuses to touch an account that already exists — an admin being able to
+ * overwrite an existing user's password would be a way to take over their
+ * account, not a convenience. Adding an existing user to a workspace is what
+ * the invitation is for.
+ */
+export async function createMemberWithPassword(
+  input: z.infer<typeof createMemberSchema>
+): Promise<ActionResult<{ id: string; userId: string }>> {
+  const parsed = createMemberSchema.safeParse(input);
+  if (!parsed.success) {
+    return validationError(
+      "Check the name, email, and a password of at least 8 characters.",
+      parsed.error.issues
+    );
+  }
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "ADMIN");
+  if (!access.ok) return access;
+
+  const email = parsed.data.email.toLowerCase();
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) {
+    return validationError(
+      `${email} already has an account — invite them to this workspace instead, so their own password stays theirs.`
+    );
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+
+  const member = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: { email, name: parsed.data.name, passwordHash },
+    });
+    return tx.member.create({
+      data: {
+        workspaceId: parsed.data.workspaceId,
+        userId: user.id,
+        invitedEmail: email,
+        accessLevel: parsed.data.accessLevel,
+        status: "ACTIVE",
+      },
+    });
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/members`);
+  return ok({ id: member.id, userId: member.userId! });
+}
+
 const changeAccessSchema = z.object({
   workspaceId: z.string().min(1),
   memberId: z.string().min(1),

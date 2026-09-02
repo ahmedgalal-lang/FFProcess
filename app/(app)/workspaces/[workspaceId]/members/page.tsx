@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import { WorkspacePageHeader } from "../workspace-page-header";
-import { InviteForm, MemberRowActions } from "./members-client";
+import { CreateMemberForm, InviteForm, MemberRowActions } from "./members-client";
 
 export default async function MembersPage(props: PageProps<"/workspaces/[workspaceId]/members">) {
   const { workspaceId } = await props.params;
@@ -54,8 +54,9 @@ export default async function MembersPage(props: PageProps<"/workspaces/[workspa
         </table>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 flex flex-col gap-3">
         <InviteForm workspaceId={workspaceId} />
+        <CreateMemberForm workspaceId={workspaceId} />
       </div>
     </main>
   );

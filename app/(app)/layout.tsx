@@ -25,7 +25,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             Firm Settings
           </Link>
         )}
-        <span className="text-xs text-slate-500">{session.user.email}</span>
+        <Link href="/account" className="text-xs text-slate-500 hover:text-slate-900">
+          {session.user.email}
+        </Link>
         <form
           action={async () => {
             "use server";
