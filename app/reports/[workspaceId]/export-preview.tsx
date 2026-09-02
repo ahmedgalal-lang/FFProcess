@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { OrgChartCanvas } from "../../(app)/workspaces/[workspaceId]/org/chart/org-chart-canvas";
 import { StaticProcessMapDiagram } from "../../(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram";
+import { StaticMilestoneRails } from "../../(app)/workspaces/[workspaceId]/helicopter/static-milestone-rails";
 import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
 import type { RaciCode, StepType } from "@/lib/domain/raci-table";
+import type { RailProcess } from "@/lib/domain/milestone-rails";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
@@ -101,6 +103,7 @@ export function ExportPreview({
   processes,
   valueChain,
   unphasedActivityCount,
+  railProcesses,
 }: {
   workspaceId: string;
   companyName: string;
@@ -113,6 +116,7 @@ export function ExportPreview({
   processes: ExportProcessData[];
   valueChain: ValueChainColumn[];
   unphasedActivityCount: number;
+  railProcesses: RailProcess[];
 }) {
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
 
@@ -218,6 +222,10 @@ export function ExportPreview({
             <p className="mt-1 mb-4 text-sm text-slate-500">Reporting lines across {companyName}.</p>
             <OrgChartCanvas people={people} />
           </section>
+        )}
+
+        {railProcesses.length > 0 && (
+          <HelicopterViewPage processes={railProcesses} companyName={companyName} />
         )}
 
         {valueChain.length > 0 && (
@@ -547,6 +555,25 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
           )}
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * How the processes in this pack connect, before either the chain page or the
+ * per-process detail: which one resumes from a step of another, and which
+ * step hands off to another process — the same rails the workspace's own
+ * Helicopter View draws, scoped to just what's in this pack so a rail never
+ * points at a process the reader can't turn to.
+ */
+function HelicopterViewPage({ processes, companyName }: { processes: RailProcess[]; companyName: string }) {
+  return (
+    <section className="print-page">
+      <h2 className="text-xl font-semibold text-slate-900">Helicopter View</h2>
+      <p className="mt-1 mb-4 text-sm text-slate-500">
+        How {companyName}&rsquo;s processes in this report connect, at a glance.
+      </p>
+      <StaticMilestoneRails processes={processes} />
     </section>
   );
 }

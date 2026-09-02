@@ -12,6 +12,7 @@ import {
   deriveRoleDuties,
 } from "@/lib/domain/process-report";
 import { valueChainSummary, type ActivityCard, type PhaseRef } from "@/lib/domain/value-chain";
+import type { RailProcess } from "@/lib/domain/milestone-rails";
 import { ExportPreview, type ExportProcessData } from "./export-preview";
 
 /**
@@ -35,7 +36,7 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) nextNotFound();
 
-  const [people, roles, processes, phases, chainSteps] = await Promise.all([
+  const [people, roles, processes, phases, chainSteps, railSourceProcesses] = await Promise.all([
     prisma.person.findMany({
       where: { workspaceId, archivedAt: null },
       include: { personRoles: { include: { role: true } } },
@@ -68,6 +69,36 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
       },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
+    // The Helicopter View, scoped to the pack: a rail for a process not in
+    // this report would point the reader at a document that isn't here, so
+    // both the processes and every branch/link they carry are pre-filtered to
+    // processIds rather than filtered out after the fact.
+    prisma.process.findMany({
+      where: { id: { in: processIds }, workspaceId, archivedAt: null },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        branchFromStepId: true,
+        _count: { select: { steps: true } },
+        steps: {
+          select: {
+            id: true,
+            label: true,
+            type: true,
+            milestone: true,
+            links: { where: { targetProcessId: { in: processIds } }, select: { targetProcessId: true } },
+            branchedProcesses: {
+              where: { id: { in: processIds } },
+              select: { code: true },
+              orderBy: { code: "asc" },
+            },
+          },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        },
+      },
+      orderBy: { code: "asc" },
+    }),
   ]);
 
   const chainCards: ActivityCard[] = chainSteps.map((step) => ({
@@ -91,6 +122,36 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
     name: phase.name,
     order: phase.order,
     color: phase.color,
+  }));
+
+  // Which process owns each step, its label, and its 1-based position in that
+  // process's own order — resolved once so a branch origin outside the pack
+  // (its source process wasn't exported) safely falls out below rather than
+  // pointing a rail at a process this report doesn't include.
+  const stepIndex = new Map<string, { processId: string }>();
+  for (const process of railSourceProcesses) {
+    for (const step of process.steps) stepIndex.set(step.id, { processId: process.id });
+  }
+  const railCodeById = new Map(railSourceProcesses.map((p) => [p.id, p.code]));
+
+  const railProcesses: RailProcess[] = railSourceProcesses.map((process) => ({
+    id: process.id,
+    code: process.code,
+    name: process.name,
+    stepCount: process._count.steps,
+    branchFrom:
+      process.branchFromStepId && stepIndex.has(process.branchFromStepId)
+        ? { processId: stepIndex.get(process.branchFromStepId)!.processId, stepId: process.branchFromStepId }
+        : null,
+    steps: process.steps.map((step, i) => ({
+      id: step.id,
+      label: step.label,
+      type: step.type,
+      number: i + 1,
+      milestone: step.milestone,
+      linksTo: step.links.flatMap((link) => railCodeById.get(link.targetProcessId) ?? []),
+      branchedBy: step.branchedProcesses.map((p) => p.code),
+    })),
   }));
 
   const chain = valueChainSummary(chainCards, phaseRefs);
@@ -240,6 +301,7 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
       accentSecondary={workspace.accentColorSecondary}
       valueChain={valueChain}
       unphasedActivityCount={chain.unphasedCount}
+      railProcesses={railProcesses}
       people={people.map((p) => ({
         id: p.id,
         name: p.name,

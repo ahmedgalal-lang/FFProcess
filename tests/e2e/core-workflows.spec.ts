@@ -202,6 +202,32 @@ test.describe("Core workflows", () => {
     await expect(page.locator("button:has-text('Print / Save as PDF')")).toBeVisible();
   });
 
+  test("Export Report's Helicopter View shows the pack's rails before the process index", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/export");
+    await page.click('button:has-text("Preview report")');
+    await page.waitForURL("**/reports/**");
+
+    await expect(page.getByRole("heading", { name: "Helicopter View" })).toBeVisible();
+
+    // Sits before the process index — and, since this seed has no Value Chain
+    // phases, immediately before it too.
+    const headings = await page.locator("main h2").allInnerTexts();
+    const heliIndex = headings.findIndex((h) => h.includes("Helicopter View"));
+    const processIndexIndex = headings.findIndex((h) => h.includes("Processes in This Report"));
+    expect(heliIndex).toBeGreaterThanOrEqual(0);
+    expect(processIndexIndex).toBeGreaterThan(heliIndex);
+
+    // A real rail per process, and the seeded step link off Purchase-to-Pay's
+    // "Send PO to Vendor" renders as a junction bead carrying both processes
+    // it hands off to — scoped to this section, since the step's own label
+    // and process code both appear again further down in the RACI matrix.
+    const helicopterSection = page.locator("section").filter({ has: page.getByRole("heading", { name: "Helicopter View" }) });
+    await expect(helicopterSection.getByText("PUR101").first()).toBeVisible();
+    await expect(helicopterSection.getByText("Send PO to Vendor")).toBeVisible();
+    await expect(helicopterSection.getByText("🔗 PUR102")).toBeVisible();
+    await expect(helicopterSection.getByText("🔗 SAL101")).toBeVisible();
+  });
+
   test("Process Map is where the report's per-step and process-level documentation is written", async ({ page }) => {
     const mapUrl = "/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/map";
     await page.goto(mapUrl);
