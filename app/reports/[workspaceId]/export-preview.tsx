@@ -130,6 +130,7 @@ export function ExportPreview({
         {
           "--accent": accentPrimary,
           "--accent-secondary": accentSecondary ?? DEFAULT_ACCENT_SECONDARY,
+          "--accent-tertiary": accentTertiary,
           "--accent-banner-to": mixHex(accentPrimary, accentTertiary, 0.3),
           "--accent-ink": readableInkOn(accentPrimary),
         } as React.CSSProperties
@@ -612,14 +613,29 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
   );
 }
 
+// Cycled across the numbered badges below so the index page draws on all
+// three of the workspace's brand colors rather than just the one accent the
+// rest of the report leans on.
+const INDEX_BADGE_COLORS = ["var(--accent)", "var(--accent-secondary)", "var(--accent-tertiary)"];
+
 /**
  * Every process in the pack, by code and name, in the order they print — the
  * table of contents. Sits after the Value Chain page, before the first
- * process document, so a reader knows what's ahead before reaching it.
+ * process document, so a reader knows what's ahead before reaching it. The
+ * two-tone rule above the heading is this page's own separator — the section
+ * headings below it get a plain border-bottom, but nothing marked where the
+ * Value Chain page ended and this one began.
  */
 function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
   return (
     <section className="print-page">
+      <div
+        className="mb-6 h-[3px] rounded-full"
+        style={{
+          backgroundImage:
+            "linear-gradient(90deg, var(--accent) 0%, var(--accent) 60%, var(--accent-tertiary) 60%, var(--accent-tertiary) 100%)",
+        }}
+      />
       <h2 className="text-xl font-semibold text-slate-900">Processes in This Report</h2>
       <p className="mt-1 mb-4 text-sm text-slate-500">
         {processes.length} process{processes.length === 1 ? "" : "es"}, in the order they follow.
@@ -628,9 +644,14 @@ function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
         {processes.map((process, i) => (
           <li
             key={process.id}
-            className="flex items-baseline gap-3 border-b border-slate-100 py-2.5 text-sm last:border-b-0"
+            className="flex items-center gap-3 border-b border-slate-100 py-2.5 text-sm last:border-b-0"
           >
-            <span className="w-5 flex-none font-mono text-xs text-slate-400">{i + 1}</span>
+            <span
+              className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full text-[11px] font-bold text-white"
+              style={{ backgroundColor: INDEX_BADGE_COLORS[i % INDEX_BADGE_COLORS.length] }}
+            >
+              {i + 1}
+            </span>
             <span className="flex-none rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-bold text-slate-700">
               {process.code}
             </span>
