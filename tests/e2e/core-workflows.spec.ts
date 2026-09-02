@@ -68,6 +68,48 @@ test.describe("Core workflows", () => {
     await expect(steps).toHaveCount(9);
   });
 
+  test("A step's cross-process link can be added and removed after the step already exists", async ({ page }) => {
+    // Links used to be settable only when a step was first created — editing
+    // an existing one had no way to add a hand-off short of deleting and
+    // recreating it. "Receive Goods" is seeded with no link at all.
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
+    await page.waitForURL("**/map");
+    await page.click('button:has-text("Steps List")');
+
+    const row = page.locator("main .rounded-xl.border.border-slate-200.bg-white.p-3\\.5").filter({
+      hasText: "Receive Goods",
+    });
+    await expect(row.getByText(/🔗/)).toHaveCount(0);
+
+    // Editing replaces the row with a form (a different container, not just a
+    // state change within it), so it's queried by its own distinct styling
+    // rather than through the pre-edit `row` locator — and scoped away from
+    // the Add Step form's own "Link to other process(es)" checkboxes further
+    // down the page, which share the same labels.
+    const editForm = page.locator("div.border-indigo-200.bg-indigo-50\\/40");
+
+    await row.getByRole("button", { name: "Edit Receive Goods" }).click();
+    await editForm.getByLabel(/PUR102/).check();
+    await editForm.getByRole("button", { name: "Save" }).click();
+    await expect(row.getByText("🔗 PUR102")).toBeVisible();
+
+    // Reflects on reload too — it's a real saved link, not just local state.
+    // Reload resets the Process Map view back to its Diagram default, so
+    // Steps List has to be re-selected before the row locator means anything.
+    await page.reload();
+    await page.click('button:has-text("Steps List")');
+    const reloadedRow = page.locator("main .rounded-xl.border.border-slate-200.bg-white.p-3\\.5").filter({
+      hasText: "Receive Goods",
+    });
+    await expect(reloadedRow.getByText("🔗 PUR102")).toBeVisible();
+
+    await reloadedRow.getByRole("button", { name: "Edit Receive Goods" }).click();
+    await editForm.getByLabel(/PUR102/).uncheck();
+    await editForm.getByRole("button", { name: "Save" }).click();
+    await expect(reloadedRow.getByText(/🔗/)).toHaveCount(0);
+  });
+
   test("Steps List says what each step still needs, agreeing with the matrices", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();

@@ -156,6 +156,120 @@ describe("process Server Actions", () => {
     expect(updated.ok).toBe(true);
   });
 
+  it("adds, replaces, and clears a step's cross-process links after it already exists", async () => {
+    // Links used to be settable only at creation — this is the gap the fix
+    // closes: a step built before its hand-off was decided.
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process F1" });
+    const targetB = await createProcess({ workspaceId: fixture.workspace.id, name: "Process F2" });
+    const targetC = await createProcess({ workspaceId: fixture.workspace.id, name: "Process F3" });
+    if (!process.ok || !targetB.ok || !targetC.ok) throw new Error("setup failed");
+
+    const step = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      step: { type: "TASK", label: "Pricing approval", linkedProcessIds: [] },
+    });
+    if (!step.ok) throw new Error("setup failed");
+
+    // Adding two links to a step that had none.
+    const addedLinks = await updateProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      stepId: step.data.id,
+      type: "TASK",
+      label: "Pricing approval",
+      linkedProcessIds: [targetB.data.id, targetC.data.id],
+    });
+    expect(addedLinks.ok).toBe(true);
+    let links = await prisma.processStepLink.findMany({ where: { stepId: step.data.id } });
+    expect(links.map((l) => l.targetProcessId).sort()).toEqual([targetB.data.id, targetC.data.id].sort());
+
+    // Dropping one link and keeping the other — the removed one actually
+    // disappears rather than lingering alongside the new set.
+    const replacedLinks = await updateProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      stepId: step.data.id,
+      type: "TASK",
+      label: "Pricing approval",
+      linkedProcessIds: [targetC.data.id],
+    });
+    expect(replacedLinks.ok).toBe(true);
+    links = await prisma.processStepLink.findMany({ where: { stepId: step.data.id } });
+    expect(links.map((l) => l.targetProcessId)).toEqual([targetC.data.id]);
+
+    // An edit that never mentions linkedProcessIds at all leaves the existing
+    // links alone — a caller that doesn't send the field shouldn't wipe them.
+    const untouched = await updateProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      stepId: step.data.id,
+      type: "TASK",
+      label: "Pricing approval, renamed",
+    });
+    expect(untouched.ok).toBe(true);
+    links = await prisma.processStepLink.findMany({ where: { stepId: step.data.id } });
+    expect(links.map((l) => l.targetProcessId)).toEqual([targetC.data.id]);
+
+    // An explicit empty array clears every link.
+    const cleared = await updateProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      stepId: step.data.id,
+      type: "TASK",
+      label: "Pricing approval, renamed",
+      linkedProcessIds: [],
+    });
+    expect(cleared.ok).toBe(true);
+    links = await prisma.processStepLink.findMany({ where: { stepId: step.data.id } });
+    expect(links).toHaveLength(0);
+  });
+
+  it("rejects a step-link edit naming a process outside the workspace, and never links a step to its own process", async () => {
+    const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process F4" });
+    if (!process.ok) throw new Error("setup failed");
+    const step = await addProcessStep({
+      workspaceId: fixture.workspace.id,
+      processId: process.data.id,
+      step: { type: "TASK", label: "Some step", linkedProcessIds: [] },
+    });
+    if (!step.ok) throw new Error("setup failed");
+
+    const otherFixture = await createFixtureWorkspace();
+    try {
+      const outsiderProcess = await prisma.process.create({
+        data: { workspaceId: otherFixture.workspace.id, code: "OUT100", name: "Outsider process" },
+      });
+
+      const result = await updateProcessStep({
+        workspaceId: fixture.workspace.id,
+        processId: process.data.id,
+        stepId: step.data.id,
+        type: "TASK",
+        label: "Some step",
+        linkedProcessIds: [outsiderProcess.id],
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+
+      // Self-links are filtered out rather than rejected — a step linking to
+      // the process it's already on isn't a validation error, just a no-op.
+      const selfLink = await updateProcessStep({
+        workspaceId: fixture.workspace.id,
+        processId: process.data.id,
+        stepId: step.data.id,
+        type: "TASK",
+        label: "Some step",
+        linkedProcessIds: [process.data.id],
+      });
+      expect(selfLink.ok).toBe(true);
+      const links = await prisma.processStepLink.findMany({ where: { stepId: step.data.id } });
+      expect(links).toHaveLength(0);
+    } finally {
+      await otherFixture.cleanup();
+    }
+  });
+
   it("deletes a step along with its connections, without erroring", async () => {
     const process = await createProcess({ workspaceId: fixture.workspace.id, name: "Process G" });
     if (!process.ok) throw new Error("setup failed");

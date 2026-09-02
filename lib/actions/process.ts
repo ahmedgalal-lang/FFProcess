@@ -654,13 +654,21 @@ const updateStepSchema = z.object({
   swimlaneRoleId: z.string().min(1).optional().or(z.literal("")),
   detailedAction: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
   exceptionHandling: z.string().trim().max(2000).optional().or(z.literal("")),
+  // Undefined leaves existing links untouched; a step created before this
+  // field existed, or edited by a caller that doesn't send it, shouldn't
+  // silently lose whatever it was already linked to.
+  linkedProcessIds: z.array(z.string().min(1)).optional(),
 });
 
 /**
- * Edits an existing step's name, type, assigned/swimlane role, and its
+ * Edits an existing step's name, type, assigned/swimlane role, its
  * Export Report documentation (Detailed Action, one entry per line, and
- * Exception Handling) — the report reads these fields directly rather than
- * offering its own editing UI, so this is their only home.
+ * Exception Handling), and which other processes it hands off to — the
+ * report reads the documentation fields directly rather than offering its
+ * own editing UI, so this is their only home. Cross-process links used to be
+ * settable only when a step was first created; a step built before its
+ * hand-off was decided had no way to add one short of deleting and
+ * recreating it.
  */
 export async function updateProcessStep(
   input: z.infer<typeof updateStepSchema>
@@ -677,6 +685,19 @@ export async function updateProcessStep(
   const step = await prisma.processStep.findUnique({ where: { id: parsed.data.stepId } });
   if (!step || step.processId !== parsed.data.processId) return notFound();
 
+  // A step can't meaningfully link to its own process, and every target has
+  // to actually be in this workspace — the client only ever offers choices
+  // from there, but the action doesn't take that on faith.
+  const targetProcessIds = parsed.data.linkedProcessIds
+    ?.filter((id) => id !== parsed.data.processId)
+    .filter((id, i, all) => all.indexOf(id) === i);
+  if (targetProcessIds && targetProcessIds.length > 0) {
+    const validTargets = await prisma.process.count({
+      where: { id: { in: targetProcessIds }, workspaceId: parsed.data.workspaceId },
+    });
+    if (validTargets !== targetProcessIds.length) return notFound();
+  }
+
   const updated = await prisma.processStep.update({
     where: { id: parsed.data.stepId },
     data: {
@@ -691,12 +712,28 @@ export async function updateProcessStep(
     },
   });
 
+  if (targetProcessIds !== undefined) {
+    await prisma.$transaction([
+      prisma.processStepLink.deleteMany({
+        where: { stepId: parsed.data.stepId, targetProcessId: { notIn: targetProcessIds } },
+      }),
+      ...targetProcessIds.map((targetProcessId) =>
+        prisma.processStepLink.upsert({
+          where: { stepId_targetProcessId: { stepId: parsed.data.stepId, targetProcessId } },
+          create: { stepId: parsed.data.stepId, targetProcessId },
+          update: {},
+        })
+      ),
+    ]);
+  }
+
   // A role change moves the step to a different lane, and can add or remove a
   // lane for every other step too, so the whole map's vertical placement is
   // recomputed rather than just this step's.
   await realignSwimlanes(parsed.data.processId);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/${parsed.data.processId}/map`);
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/helicopter`);
   return ok({ id: updated.id });
 }
 

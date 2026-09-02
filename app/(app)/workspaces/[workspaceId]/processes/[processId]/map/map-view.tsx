@@ -24,6 +24,7 @@ type StepT = {
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
+type ProcessOption = { id: string; code: string; name: string };
 
 export function MapView({
   workspaceId,
@@ -33,6 +34,7 @@ export function MapView({
   connections,
   roles,
   branchFrom,
+  otherProcesses,
 }: {
   workspaceId: string;
   processId: string;
@@ -41,6 +43,7 @@ export function MapView({
   connections: ConnectionT[];
   roles: RoleRef[];
   branchFrom?: BranchFromT | null;
+  otherProcesses: ProcessOption[];
 }) {
   const [mode, setMode] = useState<"diagram" | "list">("diagram");
   const [arrangeError, setArrangeError] = useState<string | null>(null);
@@ -135,6 +138,7 @@ export function MapView({
                 incomingConnection={incomingConnection}
                 roles={roles}
                 stepOptions={stepOptions}
+                otherProcesses={otherProcesses}
               />
             );
           })}

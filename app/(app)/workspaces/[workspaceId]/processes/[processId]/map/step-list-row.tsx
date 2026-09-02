@@ -43,6 +43,7 @@ type StepT = {
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
 type StepOption = { id: string; label: string; type: StepType };
+type ProcessOption = { id: string; code: string; name: string };
 
 export function StepListRow({
   workspaceId,
@@ -55,6 +56,7 @@ export function StepListRow({
   incomingConnection,
   roles,
   stepOptions,
+  otherProcesses,
 }: {
   workspaceId: string;
   processId: string;
@@ -66,6 +68,7 @@ export function StepListRow({
   incomingConnection: ConnectionT | undefined;
   roles: RoleRef[];
   stepOptions: StepOption[];
+  otherProcesses: ProcessOption[];
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -80,6 +83,7 @@ export function StepListRow({
   const [connectionLabel, setConnectionLabel] = useState(incomingConnection?.label ?? "");
   const [detailedAction, setDetailedAction] = useState(step.detailedAction.join("\n"));
   const [exceptionHandling, setExceptionHandling] = useState(step.exceptionHandling ?? "");
+  const [linkedProcessIds, setLinkedProcessIds] = useState<string[]>(step.links.map((l) => l.targetProcessId));
 
   function toggleMilestone() {
     setError(null);
@@ -118,6 +122,7 @@ export function StepListRow({
     setConnectionLabel(incomingConnection?.label ?? "");
     setDetailedAction(step.detailedAction.join("\n"));
     setExceptionHandling(step.exceptionHandling ?? "");
+    setLinkedProcessIds(step.links.map((l) => l.targetProcessId));
     setError(null);
     setEditing(true);
   }
@@ -138,6 +143,7 @@ export function StepListRow({
           .map((line) => line.trim())
           .filter(Boolean),
         exceptionHandling,
+        linkedProcessIds,
       });
       if (!result.ok) {
         setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Invalid step") : result.error);
@@ -272,6 +278,27 @@ export function StepListRow({
             />
           </Field>
         </div>
+        {otherProcesses.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-slate-600">Link to other process(es)</span>
+            <div className="flex flex-wrap gap-3">
+              {otherProcesses.map((p) => (
+                <label key={p.id} className="flex items-center gap-1.5 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={linkedProcessIds.includes(p.id)}
+                    onChange={(e) =>
+                      setLinkedProcessIds((prev) =>
+                        e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id)
+                      )
+                    }
+                  />
+                  {p.code} — {p.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <button
             type="button"

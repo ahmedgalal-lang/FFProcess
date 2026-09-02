@@ -160,6 +160,7 @@ export default async function ProcessMapPage(
         connections={connections}
         roles={roles.map((r) => ({ id: r.id, name: r.name }))}
         branchFrom={branchFrom}
+        otherProcesses={otherProcesses.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
       />
 
       <div className="mt-5 flex flex-col gap-3">
