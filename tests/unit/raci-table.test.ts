@@ -131,4 +131,18 @@ describe("computeVisibleRoleIds", () => {
   it("falls back to every Role for a brand-new matrix with no rows at all", () => {
     expect(computeVisibleRoleIds(allRoleIds, [], [])).toEqual(allRoleIds);
   });
+
+  it("shows a Role mentioned as a step's owner or supporting department, even with zero RACI assignments yet", () => {
+    // The shape a Value-Chain-built process is in before anyone has clicked a
+    // RACI cell: real rows, real step owners, no assignments.
+    const rows = [row({}), row({})];
+    expect(computeVisibleRoleIds(allRoleIds, rows, [], ["ceo", "hr"])).toEqual(["ceo", "hr"]);
+  });
+
+  it("does not fall back to every Role just because nothing has a RACI assignment yet, if something is mentioned", () => {
+    const rows = [row({})];
+    const visible = computeVisibleRoleIds(allRoleIds, rows, [], ["clerk"]);
+    expect(visible).toEqual(["clerk"]);
+    expect(visible).not.toContain("manager");
+  });
 });

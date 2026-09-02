@@ -25,11 +25,31 @@ export default async function RaciMatrixPage(
     prisma.raciMatrixStatus.findUnique({ where: { processId } }),
     prisma.processStep.findMany({
       where: { processId },
-      select: { id: true, type: true, label: true, raciSkipped: true },
+      select: {
+        id: true,
+        type: true,
+        label: true,
+        raciSkipped: true,
+        assignedRoleId: true,
+        swimlaneRoleId: true,
+        supportingRoles: { select: { id: true } },
+      },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
     getProcessStepperCounts(processId),
   ]);
+
+  // Owner/supporting Roles a step already names — set on the Value Chain
+  // board or the Process Map, independent of any RACI cell being clicked yet.
+  const mentionedRoleIds = Array.from(
+    new Set(
+      steps.flatMap((s) =>
+        [s.assignedRoleId, s.swimlaneRoleId, ...s.supportingRoles.map((r) => r.id)].filter(
+          (id): id is string => id !== null
+        )
+      )
+    )
+  );
 
   const rows = buildRaciTableRows(
     steps,
@@ -55,7 +75,8 @@ export default async function RaciMatrixPage(
   const visibleRoleIds = computeVisibleRoleIds(
     roles.map((r) => r.id),
     rows,
-    process.raciVisibleRoleIds
+    process.raciVisibleRoleIds,
+    mentionedRoleIds
   );
   const visibleRoles = roles.filter((r) => visibleRoleIds.includes(r.id));
 

@@ -5,7 +5,7 @@ import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { RaciPdfDocument } from "@/lib/export/pdf/raci-pdf";
 import { buildRaciWorkbook } from "@/lib/export/xlsx";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
-import { buildRaciTableRows } from "@/lib/domain/raci-table";
+import { buildRaciTableRows, computeVisibleRoleIds } from "@/lib/domain/raci-table";
 import { auth } from "@/lib/auth/config";
 
 export async function GET(
@@ -34,7 +34,15 @@ export async function GET(
     }),
     prisma.processStep.findMany({
       where: { processId },
-      select: { id: true, type: true, label: true, raciSkipped: true },
+      select: {
+        id: true,
+        type: true,
+        label: true,
+        raciSkipped: true,
+        assignedRoleId: true,
+        swimlaneRoleId: true,
+        supportingRoles: { select: { id: true } },
+      },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
     prisma.raciMatrixStatus.findUnique({ where: { processId } }),
@@ -51,6 +59,25 @@ export async function GET(
       assignments: a.raciAssignments.map((ra) => ({ roleId: ra.roleId, code: ra.code })),
     }))
   ).filter((r) => !r.skipped);
+
+  // Same visible-Role set the interactive matrix shows, so the exported file
+  // matches what's on screen instead of listing every workspace Role.
+  const mentionedRoleIds = Array.from(
+    new Set(
+      steps.flatMap((s) =>
+        [s.assignedRoleId, s.swimlaneRoleId, ...s.supportingRoles.map((r) => r.id)].filter(
+          (id): id is string => id !== null
+        )
+      )
+    )
+  );
+  const visibleRoleIds = computeVisibleRoleIds(
+    roles.map((r) => r.id),
+    rows,
+    process.raciVisibleRoleIds,
+    mentionedRoleIds
+  );
+  const visibleRoles = roles.filter((r) => visibleRoleIds.includes(r.id));
 
   const activitiesForExport = rows.map((r) => ({
     id: r.id,
@@ -74,7 +101,7 @@ export async function GET(
       workspaceName: workspace?.name ?? "",
       processCode: process.code,
       processName: process.name,
-      roles,
+      roles: visibleRoles,
       activities: activitiesForExport,
       status,
     });
@@ -91,7 +118,7 @@ export async function GET(
       workspaceName: workspace?.name ?? "",
       processCode: process.code,
       processName: process.name,
-      roles,
+      roles: visibleRoles,
       activities: activitiesForExport,
       status,
       issueCount,
