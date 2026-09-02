@@ -180,7 +180,7 @@ export function StaticProcessMapDiagram({
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white"
+      className="relative w-full break-inside-avoid overflow-hidden rounded-xl border border-slate-200 bg-white"
       style={{ height: diagramHeight }}
     >
       <ReactFlowProvider>

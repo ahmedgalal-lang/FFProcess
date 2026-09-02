@@ -19,7 +19,7 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
           ? `${layout.milestoneCount} milestone${layout.milestoneCount === 1 ? "" : "s"} marked · steps another process depends on are always shown`
           : "No milestones marked yet."}
       </p>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="break-inside-avoid overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <div className="relative bg-white px-6 py-5" style={{ width: layout.width + 48, minHeight: layout.height + 40 }}>
           {layout.drops.map((drop) => (
             <div

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { OrgChartCanvas } from "../../(app)/workspaces/[workspaceId]/org/chart/org-chart-canvas";
+import { StaticOrgChart } from "../../(app)/workspaces/[workspaceId]/org/chart/static-org-chart";
 import { StaticProcessMapDiagram } from "../../(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram";
 import { StaticMilestoneRails } from "../../(app)/workspaces/[workspaceId]/helicopter/static-milestone-rails";
 import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
@@ -146,6 +146,16 @@ export function ExportPreview({
           .print-page { break-after: page; }
           .print-page:last-child { break-after: auto; }
           body { background: #fff !important; }
+
+          /* A heading is never left alone at the bottom of a page with its
+             own content starting on the next one — push the whole heading
+             over instead of breaking right after it. */
+          h1, h2, h3, h4 { break-after: avoid; break-inside: avoid; }
+
+          /* Table rows read as one thing and shouldn't be sliced by a page
+             boundary — a row half on one page and half on the next is
+             unreadable either side of the cut. */
+          tr { break-inside: avoid; }
         }
         @page { size: A4 landscape; margin: 14mm; }
       `}</style>
@@ -220,7 +230,7 @@ export function ExportPreview({
           <section className="print-page">
             <h2 className="text-xl font-semibold text-slate-900">Org Structure</h2>
             <p className="mt-1 mb-4 text-sm text-slate-500">Reporting lines across {companyName}.</p>
-            <OrgChartCanvas people={people} />
+            <StaticOrgChart people={people} />
           </section>
         )}
 
@@ -309,31 +319,43 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
   const hasProcessMap = process.steps.length > 0 || hasScope;
   const hasRaciAuthority = process.combinedRows.length > 0 || process.controlPoints.length > 0 || process.kpis.length > 0;
 
+  // A process with nothing beyond its title card — an umbrella program, or
+  // one not built out yet — still gets its own fresh page for the banner
+  // (from whatever printed before it), but doesn't force a fresh page after
+  // itself too: there's nothing more to say, so the next process's content
+  // flows right below instead of leaving most of a page blank.
+  const hasBody = hasExecutiveSummary || hasProcessMap || hasRaciAuthority;
+
   return (
-    <section className="print-page">
-      <BrandBanner
-        eyebrow={
-          <>
-            <span className="rounded bg-black/15 px-1.5 py-0.5 font-mono text-[10px] font-bold">{process.code}</span>
-            {process.parentName && (
-              <span>
-                under {process.parentCode} · {process.parentName}
-              </span>
-            )}
-          </>
-        }
-      >
-        <h2 className="text-2xl font-bold">{process.name}</h2>
-        {process.description && <p className="mt-1 text-sm opacity-85">{process.description}</p>}
-      </BrandBanner>
-      <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-1.5 border-b-2 border-slate-100 pb-3 text-xs sm:grid-cols-3">
-        <MetaField label="Document ID" value={`${process.code}-${new Date().getFullYear()}`} />
-        <MetaField label="Version" value="1.0" />
-        <MetaField label="Effective Date" value={new Date().toISOString().slice(0, 10)} />
-        <MetaField label="Review Cycle" value="Annual" />
-        <MetaField label="Process Owner" value={process.processOwnerName ?? "—"} />
-        <MetaField label="Process Code" value={process.code} mono />
-      </dl>
+    <section className={hasBody ? "print-page" : undefined}>
+      {/* Banner and its document metadata are one title block — kept
+          together so a page break can't land between them and strand the
+          banner alone at the bottom of a page. */}
+      <div className="break-inside-avoid">
+        <BrandBanner
+          eyebrow={
+            <>
+              <span className="rounded bg-black/15 px-1.5 py-0.5 font-mono text-[10px] font-bold">{process.code}</span>
+              {process.parentName && (
+                <span>
+                  under {process.parentCode} · {process.parentName}
+                </span>
+              )}
+            </>
+          }
+        >
+          <h2 className="text-2xl font-bold">{process.name}</h2>
+          {process.description && <p className="mt-1 text-sm opacity-85">{process.description}</p>}
+        </BrandBanner>
+        <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-1.5 border-b-2 border-slate-100 pb-3 text-xs sm:grid-cols-3">
+          <MetaField label="Document ID" value={`${process.code}-${new Date().getFullYear()}`} />
+          <MetaField label="Version" value="1.0" />
+          <MetaField label="Effective Date" value={new Date().toISOString().slice(0, 10)} />
+          <MetaField label="Review Cycle" value="Annual" />
+          <MetaField label="Process Owner" value={process.processOwnerName ?? "—"} />
+          <MetaField label="Process Code" value={process.code} mono />
+        </dl>
+      </div>
 
       {hasExecutiveSummary && (
         <>
@@ -398,7 +420,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
               {documentedSteps.map((step) => {
                 const row = process.combinedRows.find((r) => r.rowId === step.id);
                 return (
-                  <div key={step.id} className="mt-3 rounded-xl border border-slate-200 p-4">
+                  <div key={step.id} className="mt-3 break-inside-avoid rounded-xl border border-slate-200 p-4">
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="font-semibold text-slate-900">{step.label}</span>
                       <span className="text-xs text-slate-500">
