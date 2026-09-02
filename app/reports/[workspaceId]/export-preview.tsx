@@ -129,7 +129,7 @@ export function ExportPreview({
 
   return (
     <div
-      className="min-h-screen bg-white"
+      className="report-root min-h-screen"
       style={
         {
           "--accent": accentPrimary,
@@ -141,11 +141,61 @@ export function ExportPreview({
       }
     >
       <style>{`
+        /* The preview is laid out on the real page: an A4 landscape sheet
+           (297mm) with the printer's own 14mm margin as padding, leaving
+           exactly the 269mm the PDF gets. Previewing at some other width is
+           what let the two disagree — a responsive column that existed on
+           screen and never on paper, text wrapping at a different point.
+           At this width they can't. */
+        @media screen {
+          /* Grey behind the sheet, so the page reads as a page. Set on the
+             report's own root as well as body — a white wrapper stretched to
+             the viewport would otherwise paint straight over it. */
+          body { background: #e9edf2 !important; }
+          .report-root { background: #e9edf2; }
+          /* The preview-only notices sit above the sheet and share its width,
+             so nothing on screen is wider than the page it describes. */
+          .report-notice { width: 297mm; max-width: 100%; margin: 16px auto 0; }
+          .report-paper {
+            width: 297mm;
+            max-width: 100%;
+            margin: 20px auto 64px;
+            padding: 14mm;
+            background: #fff;
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.14);
+          }
+          /* Where the PDF is forced onto a new page, the preview says so
+             rather than leaving the reader to find out at print time. */
+          .print-page:not(:last-child)::after {
+            content: "Page break";
+            display: block;
+            margin: 22px -14mm 26px;
+            padding-top: 6px;
+            border-top: 1px dashed #94a3b8;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            text-align: center;
+          }
+        }
+
         @media print {
           .no-print { display: none !important; }
           .print-page { break-after: page; }
           .print-page:last-child { break-after: auto; }
           body { background: #fff !important; }
+          .report-root { background: #fff; }
+          /* On paper the sheet *is* the page — the printer supplies the
+             width and margin, so the preview's paper styling comes off. */
+          .report-paper {
+            width: auto;
+            max-width: none;
+            margin: 0;
+            padding: 0;
+            box-shadow: none;
+          }
 
           /* A heading is never left alone at the bottom of a page with its
              own content starting on the next one — push the whole heading
@@ -178,7 +228,7 @@ export function ExportPreview({
       </div>
 
       {unphasedActivityCount > 0 && (
-        <div className="no-print mx-auto mt-4 w-full max-w-5xl rounded-xl border border-slate-300 bg-slate-50 px-4 py-3">
+        <div className="no-print report-notice rounded-xl border border-slate-300 bg-slate-50 px-4 py-3">
           <div className="text-sm font-semibold text-slate-800">
             {unphasedActivityCount} {unphasedActivityCount === 1 ? "activity is" : "activities are"} not in a phase
             yet
@@ -191,7 +241,7 @@ export function ExportPreview({
       )}
 
       {allGaps.length > 0 && (
-        <div className="no-print mx-auto mt-4 w-full max-w-5xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+        <div className="no-print report-notice rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
           <div className="text-sm font-semibold text-amber-900">
             ⚠ Some sections are missing content and are left out of this report
           </div>
@@ -208,7 +258,7 @@ export function ExportPreview({
         </div>
       )}
 
-      <main className="mx-auto w-full max-w-5xl px-6 py-8">
+      <main className="report-paper">
         <section className="print-page">
           <BrandBanner>
             <h1 className="text-3xl font-bold">{companyName}</h1>
