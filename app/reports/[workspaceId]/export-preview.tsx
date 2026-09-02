@@ -569,6 +569,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
 function HelicopterViewPage({ processes, companyName }: { processes: RailProcess[]; companyName: string }) {
   return (
     <section className="print-page">
+      <TwoToneRule />
       <h2 className="text-xl font-semibold text-slate-900">Helicopter View</h2>
       <p className="mt-1 mb-4 text-sm text-slate-500">
         How {companyName}&rsquo;s processes in this report connect, at a glance.
@@ -646,6 +647,25 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
 const INDEX_BADGE_COLORS = ["var(--accent)", "var(--accent-secondary)", "var(--accent-tertiary)"];
 
 /**
+ * A two-tone accent bar marking a section break on screen, not just on paper
+ * — a "print-page" alone only forces a page break under @media print, so
+ * without this a section boundary is invisible while previewing in the
+ * browser. Shared by every top-level page that isn't already a full
+ * BrandBanner, so they all mark their own start the same way.
+ */
+function TwoToneRule() {
+  return (
+    <div
+      className="mb-6 h-[3px] rounded-full"
+      style={{
+        backgroundImage:
+          "linear-gradient(90deg, var(--accent) 0%, var(--accent) 60%, var(--accent-tertiary) 60%, var(--accent-tertiary) 100%)",
+      }}
+    />
+  );
+}
+
+/**
  * Every process in the pack, by code and name, in the order they print — the
  * table of contents. Sits after the Value Chain page, before the first
  * process document, so a reader knows what's ahead before reaching it. The
@@ -656,13 +676,7 @@ const INDEX_BADGE_COLORS = ["var(--accent)", "var(--accent-secondary)", "var(--a
 function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
   return (
     <section className="print-page">
-      <div
-        className="mb-6 h-[3px] rounded-full"
-        style={{
-          backgroundImage:
-            "linear-gradient(90deg, var(--accent) 0%, var(--accent) 60%, var(--accent-tertiary) 60%, var(--accent-tertiary) 100%)",
-        }}
-      />
+      <TwoToneRule />
       <h2 className="text-xl font-semibold text-slate-900">Processes in This Report</h2>
       <p className="mt-1 mb-4 text-sm text-slate-500">
         {processes.length} process{processes.length === 1 ? "" : "es"}, in the order they follow.
