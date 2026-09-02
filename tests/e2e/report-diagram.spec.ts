@@ -6,6 +6,8 @@ const PROCESS_ID = "report-wide-diagram-1";
 const STEP_COUNT = 17;
 let roleName = "";
 
+const UNASSIGNED_PROCESS_ID = "report-unassigned-lane-1";
+
 /**
  * A wide, single-lane process — the shape that exposed the bug: the report's
  * static diagram is locked to a fixed height with panning and zooming turned
@@ -59,6 +61,55 @@ test.afterAll(async () => {
   }
 });
 
+/**
+ * A process built with no step owners at all — the shape a value-chain
+ * activity has before anyone assigns a department, and the one the earlier
+ * static diagram lost entirely: its own laneOrder only ever added a lane for
+ * a step that had a role, so an all-roleless process got zero lane nodes and
+ * every step fell back to its stale stored positionY, rendering the whole
+ * diagram as one flat line with no swimlane band at all.
+ */
+test.beforeAll(async () => {
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  try {
+    await client.query(`DELETE FROM processes WHERE id = $1`, [UNASSIGNED_PROCESS_ID]);
+    await client.query(
+      `INSERT INTO processes (id, "workspaceId", code, name, "createdAt", "updatedAt")
+       VALUES ($1, 'workspace-acme', 'NOLANE1', 'Unassigned Steps Process', now(), now())`,
+      [UNASSIGNED_PROCESS_ID]
+    );
+    const labels = ["Start", "Do the thing", "Finish"];
+    for (let i = 0; i < labels.length; i++) {
+      const type = i === 0 ? "START" : i === labels.length - 1 ? "END" : "TASK";
+      await client.query(
+        `INSERT INTO process_steps (id, "processId", type, label, "positionX", "positionY", "order", "createdAt")
+         VALUES ($1, $2, $3, $4, $5, 105, $6, now())`,
+        [`${UNASSIGNED_PROCESS_ID}-s${i}`, UNASSIGNED_PROCESS_ID, type, labels[i], 190 + i * 170, i]
+      );
+    }
+    for (let i = 0; i < labels.length - 1; i++) {
+      await client.query(
+        `INSERT INTO step_connections (id, "processId", "fromStepId", "toStepId")
+         VALUES ($1, $2, $3, $4)`,
+        [`${UNASSIGNED_PROCESS_ID}-c${i}`, UNASSIGNED_PROCESS_ID, `${UNASSIGNED_PROCESS_ID}-s${i}`, `${UNASSIGNED_PROCESS_ID}-s${i + 1}`]
+      );
+    }
+  } finally {
+    await client.end();
+  }
+});
+
+test.afterAll(async () => {
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  try {
+    await client.query(`DELETE FROM processes WHERE id = $1`, [UNASSIGNED_PROCESS_ID]);
+  } finally {
+    await client.end();
+  }
+});
+
 test("Export Report's static diagram fits a wide process instead of clipping it", async ({ page }) => {
   await page.goto("/login");
   await page.click('button[type="submit"]');
@@ -100,4 +151,35 @@ test("Export Report's static diagram fits a wide process instead of clipping it"
   // role name as its own subtitle.
   const lane = diagram.locator('.react-flow__node[data-id^="lane-"]').filter({ hasText: roleName });
   await expect(lane).toHaveCount(1);
+});
+
+test("Export Report's static diagram draws an Unassigned lane for steps with no owner", async ({ page }) => {
+  await page.goto("/login");
+  await page.click('button[type="submit"]');
+  await page.waitForURL("**/workspaces");
+
+  await page.goto("/workspaces/workspace-acme/export");
+  const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
+  const count = await checkboxes.count();
+  for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
+  await page.getByLabel(/NOLANE1/).check();
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+
+  const diagram = page
+    .locator("main .rounded-xl.border.border-slate-200.bg-white")
+    .filter({ has: page.locator(".react-flow") })
+    .last();
+  await expect(diagram).toBeVisible();
+
+  // The failure mode: zero lane nodes at all, because the old code only ever
+  // built a lane for a step that had a role. It has to be exactly the
+  // "lane-unassigned" id — the interactive Process Map's own name for it —
+  // proving this draws through the same assignSwimlanes answer.
+  const lane = diagram.locator('.react-flow__node[data-id="lane-unassigned"]');
+  await expect(lane).toHaveCount(1);
+  await expect(lane).toContainText("Unassigned");
+
+  const stepNodes = diagram.locator(".react-flow__node").filter({ hasText: /Start|Do the thing|Finish/ });
+  await expect(stepNodes).toHaveCount(3);
 });

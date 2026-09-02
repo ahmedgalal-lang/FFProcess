@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { ReactFlow, ReactFlowProvider, Background, MarkerType, type Node, type Edge } from "@xyflow/react";
+import { assignSwimlanes, LANE_HEIGHT, LANE_TOP_OFFSET } from "@/lib/domain/process-layout";
 import { TaskNode, DecisionNode, TerminalNode, LaneNode, type StepLinkData } from "./map-nodes";
 
 const NODE_TYPES = { task: TaskNode, decision: DecisionNode, terminal: TerminalNode, lane: LaneNode };
@@ -55,14 +56,27 @@ export function StaticProcessMapDiagram({
   steps: StepT[];
   connections: ConnectionT[];
 }) {
-  const laneOrder = useMemo(() => {
-    const order: string[] = [];
-    for (const s of steps) {
-      const roleId = s.swimlaneRole?.id ?? s.assignedRole?.id;
-      if (roleId && !order.includes(roleId)) order.push(roleId);
-    }
-    return order;
-  }, [steps]);
+  // Same answer the interactive Process Map gives — lanes and node placement
+  // both come from assignSwimlanes rather than a hand-rolled version of it, so
+  // a step with no role (or one reassigned after the step was created) still
+  // gets a correct lane instead of silently falling out of the diagram: the
+  // earlier version only ever built a lane for a step that had a role, so a
+  // process with any roleless steps lost its "Unassigned" lane entirely and
+  // those steps rendered at their stale stored positionY — which, when every
+  // step on a process shares that fate, collapses the whole diagram onto one
+  // line instead of drawing it in swimlanes like every other process.
+  const layout = useMemo(
+    () =>
+      assignSwimlanes(
+        steps.map((s) => ({
+          id: s.id,
+          assignedRoleId: s.assignedRole?.id ?? null,
+          swimlaneRoleId: s.swimlaneRole?.id ?? null,
+        }))
+      ),
+    [steps]
+  );
+  const laneOrder = layout.laneOrder;
 
   const laneLabel = useMemo(() => {
     const map = new Map<string, string>();
@@ -79,14 +93,31 @@ export function StaticProcessMapDiagram({
     const laneNodes: Node[] = laneOrder.map((roleId, i) => ({
       id: `lane-${roleId}`,
       type: "lane",
-      position: { x: 0, y: i * 130 + 40 },
+      position: { x: 0, y: i * LANE_HEIGHT + LANE_TOP_OFFSET },
       data: { label: laneLabel.get(roleId) ?? "" },
-      style: { width: canvasWidth, height: 130 },
+      style: { width: canvasWidth, height: LANE_HEIGHT },
       draggable: false,
       selectable: false,
       focusable: false,
       zIndex: 0,
     }));
+
+    // A step with no role at all still gets a lane of its own, exactly like
+    // the interactive Process Map — otherwise it has nowhere correct to sit
+    // and falls back to its stale stored position instead.
+    if (layout.hasUnassignedLane) {
+      laneNodes.push({
+        id: "lane-unassigned",
+        type: "lane",
+        position: { x: 0, y: laneOrder.length * LANE_HEIGHT + LANE_TOP_OFFSET },
+        data: { label: "Unassigned" },
+        style: { width: canvasWidth, height: LANE_HEIGHT },
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        zIndex: 0,
+      });
+    }
 
     const stepNodes: Node[] = steps.map((s) => {
       const kind = nodeKindFor(s.type);
@@ -100,7 +131,7 @@ export function StaticProcessMapDiagram({
       return {
         id: s.id,
         type: kind,
-        position: { x: s.positionX - half.x, y: s.positionY - half.y },
+        position: { x: s.positionX - half.x, y: (layout.yOf.get(s.id) ?? s.positionY) - half.y },
         data: { label: s.label, roleName: s.assignedRole?.name, links, workspaceId },
         draggable: false,
         selectable: false,
@@ -109,7 +140,7 @@ export function StaticProcessMapDiagram({
     });
 
     return [...laneNodes, ...stepNodes];
-  }, [laneOrder, laneLabel, steps, canvasWidth, workspaceId]);
+  }, [laneOrder, layout, laneLabel, steps, canvasWidth, workspaceId]);
 
   const stepById = useMemo(() => new Map(steps.map((s) => [s.id, s])), [steps]);
 
@@ -142,8 +173,10 @@ export function StaticProcessMapDiagram({
 
   // Tall enough to give a many-lane process real room, but capped — this is a
   // printed page, not an infinite canvas — clamped between a one-lane minimum
-  // and roughly half an A4-landscape page.
-  const diagramHeight = Math.max(320, Math.min(640, laneOrder.length * 130 + 80));
+  // and roughly half an A4-landscape page. laneCount includes the Unassigned
+  // lane when there is one, so it doesn't get squeezed out of the height
+  // this box reserves for it.
+  const diagramHeight = Math.max(320, Math.min(640, layout.laneCount * LANE_HEIGHT + 80));
 
   return (
     <div
