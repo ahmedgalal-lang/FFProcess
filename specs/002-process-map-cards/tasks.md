@@ -33,9 +33,9 @@ already-running Next.js app. Nothing to initialize.
 `stepId`-keyed SLA/threshold/approver lookup — plus the sizing constants every story's
 cards read from. US1 does not depend on this phase and may be built first or in parallel.
 
-- [ ] T001 [P] Add a `buildStepAuthoritySummary(steps, activities, authorityAssignments)` helper to `lib/domain/authority-table.ts` (or a small new co-located file) that calls the existing `buildAuthorityTableRows` and returns a `Map<stepId, { slaDays, threshold, direction }>` keyed by each row's own `stepId` field (never `rowId` — see research.md's rowId-ambiguity finding). Ties broken by existing `order` field when more than one row maps to the same step.
-- [ ] T002 [P] Unit test `buildStepAuthoritySummary` in `lib/domain/authority-table.test.ts` (or new test file): a step with an activity gets its SLA/threshold; a step with no related activity falls back correctly; two rows mapping to the same step resolve by `order`.
-- [ ] T003 Update size/spacing constants in `lib/domain/process-layout.ts` (`LANE_HEIGHT`, `LANE_TOP_OFFSET`, `LANE_NODE_Y_OFFSET`, `STEP_X_SPACING`) to the approved mockup's Option B values (lane height ≈214px; step spacing widened to fit ≈214×112px task cards) — read by every rendering surface, so this is a single shared source of truth, not per-surface duplication (Constitution Principle VI).
+- [X] T001 [P] Add a `buildStepAuthoritySummary(steps, activities, authorityAssignments)` helper to `lib/domain/authority-table.ts` (or a small new co-located file) that calls the existing `buildAuthorityTableRows` and returns a `Map<stepId, { slaDays, threshold, direction }>` keyed by each row's own `stepId` field (never `rowId` — see research.md's rowId-ambiguity finding). Ties broken by existing `order` field when more than one row maps to the same step.
+- [X] T002 [P] Unit test `buildStepAuthoritySummary` in `lib/domain/authority-table.test.ts` (or new test file): a step with an activity gets its SLA/threshold; a step with no related activity falls back correctly; two rows mapping to the same step resolve by `order`.
+- [X] T003 Update size/spacing constants in `lib/domain/process-layout.ts` (`LANE_HEIGHT`, `LANE_TOP_OFFSET`, `LANE_NODE_Y_OFFSET`, `STEP_X_SPACING`) to the approved mockup's Option B values (lane height ≈214px; step spacing widened to fit ≈214×112px task cards) — read by every rendering surface, so this is a single shared source of truth, not per-surface duplication (Constitution Principle VI).
 
 **Checkpoint**: `buildStepAuthoritySummary` and the new layout constants exist and are unit-tested. US1 can proceed independently of this phase; US2/US3 need it.
 
@@ -49,16 +49,16 @@ cards read from. US1 does not depend on this phase and may be built first or in 
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Resize `TaskNode` in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/map-nodes.tsx` to the ≈214×112px card (white surface, border, radius, shadow) per the mockup — role line included, no chip row yet (that's US2).
-- [ ] T005 [US1] Resize `TerminalNode` in the same file to the emerald pill treatment (color only for now — bold label; full "visually distinct from task/decision" requirement completes with T007 in US3, but terminal's own shape/color lands here).
-- [ ] T006 [US1] Resize `LaneNode` in the same file to the new `LANE_HEIGHT`, with alternating lane tint (`:nth-child` or index-based) so lanes stay distinguishable at the taller height (FR-009).
-- [ ] T007 [US1] Remove the fixed `h-[520px]` canvas height in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/process-map-canvas.tsx`; compute height from `layout.laneCount * LANE_HEIGHT` (same pattern `StaticProcessMapDiagram` already uses for its own height, minus that component's print-page cap — the live canvas has no page-fit constraint) (FR-008).
-- [ ] T008 [US1] Update `minZoom`/`fitViewOptions` on the live canvas if the new card/lane sizes change what "fit" needs (verify against a 9-step/3-lane process and a 1-step/1-lane process).
+- [X] T004 [US1] Resize `TaskNode` in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/map-nodes.tsx` to the ≈214×112px card (white surface, border, radius, shadow) per the mockup — role line included, no chip row yet (that's US2).
+- [X] T005 [US1] Resize `TerminalNode` in the same file to the emerald pill treatment (color only for now — bold label; full "visually distinct from task/decision" requirement completes with T007 in US3, but terminal's own shape/color lands here).
+- [X] T006 [US1] Resize `LaneNode` in the same file to the new `LANE_HEIGHT`, with alternating lane tint (`:nth-child` or index-based) so lanes stay distinguishable at the taller height (FR-009).
+- [X] T007 [US1] Remove the fixed `h-[520px]` canvas height in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/process-map-canvas.tsx`; compute height from `layout.laneCount * LANE_HEIGHT` (same pattern `StaticProcessMapDiagram` already uses for its own height, minus that component's print-page cap — the live canvas has no page-fit constraint) (FR-008).
+- [X] T008 [US1] Update `minZoom`/`fitViewOptions` on the live canvas if the new card/lane sizes change what "fit" needs (verify against a 9-step/3-lane process and a 1-step/1-lane process).
 
 ### Tests for User Story 1
 
-- [ ] T009 [P] [US1] Extend `tests/e2e/core-workflows.spec.ts` (the existing Process Map test, or a new case) to assert the canvas height on a multi-lane seeded process (e.g. Purchase-to-Pay) is not clamped to 520px and scales with lane count.
-- [ ] T010 [P] [US1] Re-run `tests/e2e/accessibility.spec.ts`'s existing "Process Map (Diagram view)" axe-core check against the resized nodes — must keep passing (Constitution Principle IV).
+- [X] T009 [P] [US1] Extend `tests/e2e/core-workflows.spec.ts` (the existing Process Map test, or a new case) to assert the canvas height on a multi-lane seeded process (e.g. Purchase-to-Pay) is not clamped to 520px and scales with lane count.
+- [X] T010 [P] [US1] Re-run `tests/e2e/accessibility.spec.ts`'s existing "Process Map (Diagram view)" axe-core check against the resized nodes — must keep passing (Constitution Principle IV).
 
 **Checkpoint**: Live Process Map cards are legibly sized and the canvas fits its lanes. Independently shippable.
 
@@ -74,15 +74,15 @@ cards read from. US1 does not depend on this phase and may be built first or in 
 
 ### Implementation for User Story 2
 
-- [ ] T011 [US2] In `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/page.tsx`, call `buildStepAuthoritySummary` using the `activities`/`authorityAssignments` already fetched on that page (no new Prisma query) and pass the resulting per-step summary down through `MapView`.
-- [ ] T012 [US2] Thread the new per-step summary prop through `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/map-view.tsx` into `ProcessMapCanvas`.
-- [ ] T013 [US2] Extend `StepNodeData` in `map-nodes.tsx` with the step's order number, SLA, and hand-off target; extend `process-map-canvas.tsx`'s node-building code to populate it per step (order already available from array index/`order` field; hand-off already available from `s.links`).
-- [ ] T014 [US2] Add the step-number badge and meta-chip row (SLA chip / hand-off chip / neutral "not set" chip) to `TaskNode` in `map-nodes.tsx`, replacing the current absolutely-positioned `StepChips` link-only treatment with the in-card chip row from the mockup (the existing cross-process link still navigates the same way — same href, new placement).
+- [X] T011 [US2] In `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/page.tsx`, call `buildStepAuthoritySummary` using the `activities`/`authorityAssignments` already fetched on that page (no new Prisma query) and pass the resulting per-step summary down through `MapView`.
+- [X] T012 [US2] Thread the new per-step summary prop through `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/map-view.tsx` into `ProcessMapCanvas`.
+- [X] T013 [US2] Extend `StepNodeData` in `map-nodes.tsx` with the step's order number, SLA, and hand-off target; extend `process-map-canvas.tsx`'s node-building code to populate it per step (order already available from array index/`order` field; hand-off already available from `s.links`).
+- [X] T014 [US2] Add the step-number badge and meta-chip row (SLA chip / hand-off chip / neutral "not set" chip) to `TaskNode` in `map-nodes.tsx`, replacing the current absolutely-positioned `StepChips` link-only treatment with the in-card chip row from the mockup (the existing cross-process link still navigates the same way — same href, new placement).
 
 ### Tests for User Story 2
 
-- [ ] T015 [P] [US2] Extend `tests/e2e/core-workflows.spec.ts` (Purchase-to-Pay is already seeded with an SLA'd step and a step linking to PUR102/SAL101): assert the SLA chip and hand-off chip render with the right text on the right steps, and a step with neither shows the "not set" chip.
-- [ ] T016 [P] [US2] Re-run the Process Map accessibility check — chip text must not be color-only (verify chip labels are real text, not icon-only).
+- [X] T015 [P] [US2] Extend `tests/e2e/core-workflows.spec.ts` (Purchase-to-Pay is already seeded with an SLA'd step and a step linking to PUR102/SAL101): assert the SLA chip and hand-off chip render with the right text on the right steps, and a step with neither shows the "not set" chip.
+- [X] T016 [P] [US2] Re-run the Process Map accessibility check — chip text must not be color-only (verify chip labels are real text, not icon-only).
 
 **Checkpoint**: Live Process Map cards show SLA and hand-off. Independently testable and shippable on top of US1.
 
@@ -98,13 +98,13 @@ cards read from. US1 does not depend on this phase and may be built first or in 
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Redesign `DecisionNode` in `map-nodes.tsx`: replace the small rotated diamond with the amber-tinted rounded-rectangle gate card (label, role, and a "gate" line built from the step's threshold + direction, sourced from the same per-step summary threaded in US2).
-- [ ] T018 [US3] Update edge-routing handle positions in `process-map-canvas.tsx` / `map-nodes.tsx`'s `Handles` component if the decision card's new rectangular shape changes where connectors should anchor (today's handles assume the diamond's rotated geometry).
+- [X] T017 [US3] Redesign `DecisionNode` in `map-nodes.tsx`: replace the small rotated diamond with the amber-tinted rounded-rectangle gate card (label, role, and a "gate" line built from the step's threshold + direction, sourced from the same per-step summary threaded in US2).
+- [X] T018 [US3] Update edge-routing handle positions in `process-map-canvas.tsx` / `map-nodes.tsx`'s `Handles` component if the decision card's new rectangular shape changes where connectors should anchor (today's handles assume the diamond's rotated geometry).
 
 ### Tests for User Story 3
 
-- [ ] T019 [P] [US3] Extend `tests/e2e/core-workflows.spec.ts`: assert "Approve PO?" renders as a decision card (not a task/terminal) and shows "$10,000" (or the seeded threshold) on the card.
-- [ ] T020 [P] [US3] Re-run the Process Map accessibility check against the amber decision card (contrast, and confirm decision-ness is conveyed by shape/label too, not the amber tint alone).
+- [X] T019 [P] [US3] Extend `tests/e2e/core-workflows.spec.ts`: assert "Approve PO?" renders as a decision card (not a task/terminal) and shows "$10,000" (or the seeded threshold) on the card.
+- [X] T020 [P] [US3] Re-run the Process Map accessibility check against the amber decision card (contrast, and confirm decision-ness is conveyed by shape/label too, not the amber tint alone).
 
 **Checkpoint**: All three step types (task, decision, terminal) are visually distinct and carry their documented detail. US1–US3 together are the full live-canvas redesign.
 

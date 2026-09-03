@@ -19,6 +19,39 @@ test.describe("Core workflows", () => {
     await expect(page.locator("h1")).toHaveText("Acme Industrial");
   });
 
+  test("Process Map's documented cards show step number, SLA, hand-off, and decision threshold", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
+    await page.waitForURL("**/map");
+    await page.waitForSelector(".react-flow__node");
+
+    // The canvas is no longer clamped to a fixed 520px — it grows to fit all
+    // 4 lanes (AP Clerk, Finance Manager, Procurement Lead, Unassigned) at
+    // the new, taller lane height, rather than shrinking everything to fit.
+    const canvasBox = await page.locator(".react-flow").first().boundingBox();
+    expect(canvasBox!.height).toBeGreaterThan(700);
+
+    // Start is step 1; Create Purchase Order is the next step in sequence.
+    const createPO = page.locator(".react-flow__node").filter({ hasText: "Create Purchase Order" });
+    await expect(createPO.getByText("2", { exact: true })).toBeVisible(); // step-number badge
+    await expect(createPO.getByText("SLA 2d")).toBeVisible();
+
+    const sendPO = page.locator(".react-flow__node").filter({ hasText: "Send PO to Vendor" });
+    await expect(sendPO.getByText("→ PUR102")).toBeVisible();
+    await expect(sendPO.getByText("→ SAL101")).toBeVisible();
+
+    // Receive Goods has neither an SLA nor a hand-off — the card says so
+    // plainly instead of leaving the meta row looking unfinished.
+    const receiveGoods = page.locator(".react-flow__node").filter({ hasText: "Receive Goods" });
+    await expect(receiveGoods.getByText("no SLA set")).toBeVisible();
+
+    // The decision reads as a gate, not a task: its approval threshold and
+    // direction are on the card, which used to only fit a short label.
+    const decision = page.locator(".react-flow__node").filter({ hasText: "Approve PO?" });
+    await expect(decision.getByText(/At or above \$100,000/)).toBeVisible();
+    await expect(decision.getByText(/Yes \/ No/)).toBeVisible();
+  });
+
   test("Process Map shows the seeded Purchase-to-Pay steps and cross-process links", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes");
     await page.locator("tr", { hasText: "PUR101" }).first().locator("text=Open").click();
@@ -34,8 +67,8 @@ test.describe("Core workflows", () => {
     await expect(laneNodes).toHaveCount(4);
     const stepNodes = page.locator(".react-flow__node").filter({ hasNotText: laneText });
     await expect(stepNodes).toHaveCount(9);
-    await expect(page.locator("text=🔗 PUR102")).toBeVisible();
-    await expect(page.locator("text=🔗 SAL101")).toBeVisible();
+    await expect(page.locator("text=→ PUR102")).toBeVisible();
+    await expect(page.locator("text=→ SAL101")).toBeVisible();
 
     // Every step sits inside its own role's lane. This used to be wrong: lanes
     // were drawn from the roles but nodes were placed from a coordinate frozen

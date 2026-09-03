@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { DIRECTION_LABELS, formatMoney, type AuthorityDirection } from "@/lib/domain/authority-table";
 
 // One handle per side, doing double duty as both a source and a target — the
 // canvas picks which id to wire an edge to based on the geometric relationship
@@ -29,29 +30,43 @@ export type StepBranchData = { id: string; code: string; name: string };
 export type StepNodeData = {
   label: string;
   roleName?: string;
+  /** 1-based position in the process's own Steps List — the card's number badge. */
+  stepNumber?: number;
+  /** Turnaround target in days, when one is set on this step's Authority data. */
+  slaDays?: number | null;
+  /** Approval threshold + comparison, when this step (usually a decision) has one. */
+  threshold?: number | null;
+  direction?: AuthorityDirection;
   links: StepLinkData[];
   branches?: StepBranchData[];
   workspaceId: string;
 };
 
 /**
- * Chips under a step: indigo 🔗 for the step's own links out to a process,
- * amber ↳ for processes that branch off this step. Two directions, two
- * colours, so they stay tellable apart at a glance.
+ * The meta row on a task card: an SLA chip when one is set, a hand-off chip
+ * per process this step links out to, a branch chip per process that picks
+ * up from this step — or, when none of those apply, a plain "no SLA set"
+ * chip, so the row never reads as an accidentally empty gap.
  */
-function StepChips({ data }: { data: StepNodeData }) {
+function MetaChips({ data }: { data: StepNodeData }) {
   const branches = data.branches ?? [];
-  if (data.links.length === 0 && branches.length === 0) return null;
+  const hasAny = data.slaDays != null || data.links.length > 0 || branches.length > 0;
+
   return (
-    <div className="absolute -bottom-6 flex flex-col items-center gap-0.5">
+    <div className="mt-auto flex flex-wrap gap-1 pt-1.5">
+      {data.slaDays != null && (
+        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-emerald-700">
+          SLA {data.slaDays}d
+        </span>
+      )}
       {data.links.map((link) => (
         <Link
           key={link.id}
           href={`/workspaces/${data.workspaceId}/processes/${link.targetProcessId}/map`}
-          className="whitespace-nowrap rounded-full border border-dashed border-indigo-300 bg-white px-1.5 py-px text-[9px] font-semibold text-indigo-700 hover:bg-indigo-50"
+          className="rounded-full bg-indigo-50 px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-indigo-700 hover:bg-indigo-100"
           onClick={(e) => e.stopPropagation()}
         >
-          🔗 {link.code}
+          → {link.code}
         </Link>
       ))}
       {branches.map((branch) => (
@@ -59,54 +74,72 @@ function StepChips({ data }: { data: StepNodeData }) {
           key={branch.id}
           href={`/workspaces/${data.workspaceId}/processes/${branch.id}/map`}
           title={`${branch.name} branches from this step`}
-          className="whitespace-nowrap rounded-full border border-dashed border-amber-300 bg-amber-50 px-1.5 py-px text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
+          className="rounded-full border border-dashed border-amber-300 bg-amber-50 px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-amber-700 hover:bg-amber-100"
           onClick={(e) => e.stopPropagation()}
         >
           ↳ {branch.code}
         </Link>
       ))}
+      {!hasAny && (
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-slate-500">
+          no SLA set
+        </span>
+      )}
     </div>
   );
 }
 
 export function TaskNode({ data }: NodeProps & { data: StepNodeData }) {
   return (
-    <div className="relative flex h-14 w-[132px] flex-col items-center justify-center rounded-lg border-[1.5px] border-slate-300 bg-white px-2 text-center shadow-sm">
+    <div className="relative flex min-h-28 w-[214px] flex-col rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-md">
       <Handles />
-      <div className="text-[12px] font-semibold leading-tight text-slate-900">{data.label}</div>
+      <div className="flex items-start gap-2">
+        {data.stepNumber != null && (
+          <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-md bg-indigo-600 font-mono text-[11px] font-bold text-white">
+            {data.stepNumber}
+          </span>
+        )}
+        <span className="text-[14.5px] font-semibold leading-tight text-slate-900">{data.label}</span>
+      </div>
       {data.roleName && (
-        <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{data.roleName}</div>
+        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">{data.roleName}</div>
       )}
-      <StepChips data={data} />
+      <MetaChips data={data} />
     </div>
   );
 }
 
+/** A step's approval gate, in plain words — "At or above $10,000 · Yes / No". */
+function gateLine(threshold: number | null | undefined, direction: AuthorityDirection | undefined): string | null {
+  if (threshold == null) return null;
+  const label = DIRECTION_LABELS[direction ?? "GREATER_THAN"].label;
+  return `${label} ${formatMoney(threshold)} · Yes / No`;
+}
+
 export function DecisionNode({ data }: NodeProps & { data: StepNodeData }) {
+  const gate = gateLine(data.threshold, data.direction);
   return (
-    <div className="relative flex h-24 w-24 items-center justify-center">
+    <div className="relative flex min-h-[92px] w-[176px] flex-col justify-center gap-1 rounded-xl border-[1.5px] border-amber-400 bg-amber-50 px-3.5 py-3 shadow-sm">
       <Handles />
-      <div className="flex h-[68px] w-[68px] rotate-45 items-center justify-center rounded-md border-[1.5px] border-indigo-300 bg-indigo-50">
-        <div className="-rotate-45 px-1 text-center text-[10px] font-semibold leading-tight text-indigo-700">
-          {data.label}
-        </div>
-      </div>
-      <StepChips data={data} />
+      <div className="text-[14px] font-semibold leading-tight text-amber-900">{data.label}</div>
+      {data.roleName && (
+        <div className="text-[10px] font-bold uppercase tracking-wide text-amber-800">{data.roleName}</div>
+      )}
+      {gate && <div className="font-mono text-[9.5px] font-bold text-amber-700">{gate}</div>}
     </div>
   );
 }
 
 export function TerminalNode({ data }: NodeProps & { data: StepNodeData }) {
   return (
-    <div className="relative flex h-9 w-[92px] items-center justify-center rounded-full border-[1.5px] border-slate-300 bg-slate-100 text-center text-[12px] font-semibold text-slate-700">
+    <div className="relative flex h-[54px] w-[126px] items-center justify-center rounded-full border-[1.5px] border-emerald-400 bg-emerald-50 text-center text-[14.5px] font-bold text-emerald-700">
       <Handles />
       {data.label}
-      <StepChips data={data} />
     </div>
   );
 }
 
-export type LaneNodeData = { label: string };
+export type LaneNodeData = { label: string; tinted?: boolean };
 
 export type BranchEntryData = {
   label: string;
@@ -131,7 +164,7 @@ export function BranchEntryNode({ data }: NodeProps & { data: BranchEntryData })
     >
       <Handle id="right" type="source" position={Position.Right} className="!bg-amber-300" />
       <div className="text-[11.5px] font-semibold leading-tight text-amber-700">{data.label}</div>
-      <div className="mt-0.5 text-[8.5px] font-semibold uppercase tracking-wide text-amber-700/85">
+      <div className="mt-0.5 text-[8.5px] font-semibold uppercase tracking-wide text-amber-800">
         {data.sourceCode} · step {data.stepNumber}
       </div>
     </Link>
@@ -149,8 +182,12 @@ export function BranchGutterNode({ data }: NodeProps & { data: { label: string }
 
 export function LaneNode({ data }: NodeProps & { data: LaneNodeData }) {
   return (
-    <div className="flex h-[130px] items-start border-b border-dashed border-slate-200 bg-slate-50/60 pl-3 pt-2">
-      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{data.label}</span>
+    <div
+      className={`flex h-full items-start border-b border-dashed border-slate-200 pl-4 pt-2.5 ${
+        data.tinted ? "bg-slate-50/70" : "bg-white"
+      }`}
+    >
+      <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">{data.label}</span>
     </div>
   );
 }

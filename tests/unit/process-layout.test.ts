@@ -8,35 +8,37 @@ import {
   LANE_HEIGHT,
   LANE_TOP_OFFSET,
   LANE_NODE_Y_OFFSET,
+  FIRST_STEP_X,
+  STEP_X_SPACING,
 } from "@/lib/domain/process-layout";
 
 describe("laneY", () => {
   const laneOrder = ["role-ap-clerk", "role-finance-manager", "role-procurement-lead"];
 
   it("places the first lane role at the top band", () => {
-    expect(laneY("role-ap-clerk", laneOrder)).toBe(40 + 65);
+    expect(laneY("role-ap-clerk", laneOrder)).toBe(LANE_TOP_OFFSET + LANE_NODE_Y_OFFSET);
   });
 
   it("places the third lane role in the third band", () => {
-    expect(laneY("role-procurement-lead", laneOrder)).toBe(2 * 130 + 40 + 65);
+    expect(laneY("role-procurement-lead", laneOrder)).toBe(2 * LANE_HEIGHT + LANE_TOP_OFFSET + LANE_NODE_Y_OFFSET);
   });
 
   it("assigns a new, unranked role the next lane after the known ones", () => {
-    expect(laneY("role-controller", laneOrder)).toBe(3 * 130 + 40 + 65);
+    expect(laneY("role-controller", laneOrder)).toBe(3 * LANE_HEIGHT + LANE_TOP_OFFSET + LANE_NODE_Y_OFFSET);
   });
 
   it("treats a null role the same as an unranked role", () => {
-    expect(laneY(null, laneOrder)).toBe(3 * 130 + 40 + 65);
+    expect(laneY(null, laneOrder)).toBe(3 * LANE_HEIGHT + LANE_TOP_OFFSET + LANE_NODE_Y_OFFSET);
   });
 });
 
 describe("nextStepX", () => {
   it("starts at the default first-step position when the map is empty", () => {
-    expect(nextStepX([])).toBe(190);
+    expect(nextStepX([])).toBe(FIRST_STEP_X);
   });
 
   it("places the next step to the right of the rightmost existing step", () => {
-    expect(nextStepX([190, 320, 975])).toBe(975 + 170);
+    expect(nextStepX([190, 320, 975])).toBe(975 + STEP_X_SPACING);
   });
 });
 

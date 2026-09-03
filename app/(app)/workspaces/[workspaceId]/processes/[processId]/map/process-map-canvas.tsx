@@ -28,7 +28,9 @@ import {
   LANE_HEIGHT,
   LANE_NODE_Y_OFFSET,
   LANE_TOP_OFFSET,
+  NODE_HALF_SIZE,
 } from "@/lib/domain/process-layout";
+import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import {
   TaskNode,
   DecisionNode,
@@ -48,14 +50,10 @@ const NODE_TYPES = {
   branchGutter: BranchGutterNode,
 };
 
-/** Matches FIRST_STEP_X (190) in lib/domain/process-layout, so the gutter never covers a step. */
-const BRANCH_GUTTER_WIDTH = 186;
+/** Matches FIRST_STEP_X in lib/domain/process-layout, so the gutter never covers a step. */
+const BRANCH_GUTTER_WIDTH = 200;
 
-const HALF_SIZE: Record<string, { x: number; y: number }> = {
-  task: { x: 66, y: 28 },
-  decision: { x: 48, y: 48 },
-  terminal: { x: 46, y: 19 },
-};
+const HALF_SIZE = NODE_HALF_SIZE;
 
 type StepT = {
   id: string;
@@ -67,6 +65,9 @@ type StepT = {
   swimlaneRole: { id: string; name: string } | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
   branches?: { id: string; code: string; name: string }[];
+  slaDays?: number | null;
+  threshold?: number | null;
+  direction?: AuthorityDirection;
 };
 
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
@@ -80,7 +81,7 @@ export type BranchFromT = {
   sourceProcessCode: string;
 };
 
-function nodeKindFor(type: StepT["type"]): keyof typeof NODE_TYPES {
+function nodeKindFor(type: StepT["type"]): keyof typeof HALF_SIZE {
   if (type === "DECISION") return "decision";
   if (type === "START" || type === "END") return "terminal";
   return "task";
@@ -154,13 +155,17 @@ export function ProcessMapCanvas({
   }, [steps]);
 
   const canvasWidth = Math.max(...steps.map((s) => s.positionX), 400) + 260;
+  // Grows with the lane count instead of a fixed height — a process with
+  // more lanes (or bigger cards) gets the room it needs rather than being
+  // squeezed to fit a box sized for however many lanes a different process has.
+  const canvasHeight = Math.max(layout.laneCount, 1) * LANE_HEIGHT + LANE_TOP_OFFSET;
 
   const initialNodes: Node[] = useMemo(() => {
     const laneNodes: Node[] = laneOrder.map((roleId, i) => ({
       id: `lane-${roleId}`,
       type: "lane",
       position: { x: 0, y: i * LANE_HEIGHT + LANE_TOP_OFFSET },
-      data: { label: laneLabel.get(roleId) ?? "" },
+      data: { label: laneLabel.get(roleId) ?? "", tinted: i % 2 === 1 },
       style: { width: canvasWidth, height: LANE_HEIGHT },
       draggable: false,
       selectable: false,
@@ -175,7 +180,7 @@ export function ProcessMapCanvas({
         id: "lane-unassigned",
         type: "lane",
         position: { x: 0, y: laneOrder.length * LANE_HEIGHT + LANE_TOP_OFFSET },
-        data: { label: "Unassigned" },
+        data: { label: "Unassigned", tinted: laneOrder.length % 2 === 1 },
         style: { width: canvasWidth, height: LANE_HEIGHT },
         draggable: false,
         selectable: false,
@@ -184,7 +189,7 @@ export function ProcessMapCanvas({
       });
     }
 
-    const stepNodes: Node[] = steps.map((s) => {
+    const stepNodes: Node[] = steps.map((s, i) => {
       const kind = nodeKindFor(s.type);
       const half = HALF_SIZE[kind];
       const links: StepLinkData[] = s.links.map((l) => ({
@@ -197,7 +202,17 @@ export function ProcessMapCanvas({
         id: s.id,
         type: kind,
         position: { x: s.positionX - half.x, y: (layout.yOf.get(s.id) ?? s.positionY) - half.y },
-        data: { label: s.label, roleName: s.assignedRole?.name, links, branches: s.branches ?? [], workspaceId },
+        data: {
+          label: s.label,
+          roleName: s.assignedRole?.name,
+          stepNumber: i + 1,
+          slaDays: s.slaDays,
+          threshold: s.threshold,
+          direction: s.direction,
+          links,
+          branches: s.branches ?? [],
+          workspaceId,
+        },
         ariaLabel: describeStep(s),
         zIndex: 1,
       };
@@ -205,7 +220,6 @@ export function ProcessMapCanvas({
 
     if (!branchFrom) return [...laneNodes, ...stepNodes];
 
-    const canvasHeight = Math.max(layout.laneCount, 1) * LANE_HEIGHT + LANE_TOP_OFFSET;
     const branchNodes: Node[] = [
       {
         id: "branch-gutter",
@@ -236,7 +250,7 @@ export function ProcessMapCanvas({
     ];
 
     return [...laneNodes, ...branchNodes, ...stepNodes];
-  }, [laneOrder, layout, laneLabel, steps, canvasWidth, workspaceId, branchFrom]);
+  }, [laneOrder, layout, laneLabel, steps, canvasWidth, canvasHeight, workspaceId, branchFrom]);
 
   const stepById = useMemo(() => new Map(steps.map((s) => [s.id, s])), [steps]);
 
@@ -364,7 +378,10 @@ export function ProcessMapCanvas({
   );
 
   return (
-    <div className="relative h-[520px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div
+      className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white"
+      style={{ height: canvasHeight }}
+    >
       {saving && (
         <span className="absolute right-3 top-3 z-10 rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-white">
           Saving…
@@ -392,8 +409,8 @@ export function ProcessMapCanvas({
           deleteKeyCode={["Backspace", "Delete"]}
           nodeTypes={NODE_TYPES}
           fitView
-          fitViewOptions={{ padding: 0.15 }}
-          minZoom={0.4}
+          fitViewOptions={{ padding: 0.1, minZoom: 0.1 }}
+          minZoom={0.1}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
         >

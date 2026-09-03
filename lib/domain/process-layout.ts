@@ -5,11 +5,23 @@
  * business rule, so it's tested lightly rather than test-first.
  */
 
-export const LANE_HEIGHT = 130;
+export const LANE_HEIGHT = 214;
 export const LANE_TOP_OFFSET = 40;
-export const LANE_NODE_Y_OFFSET = 65;
-export const STEP_X_SPACING = 170;
-export const FIRST_STEP_X = 190;
+export const LANE_NODE_Y_OFFSET = LANE_HEIGHT / 2;
+export const STEP_X_SPACING = 262;
+export const FIRST_STEP_X = 210;
+
+/**
+ * Half-width/half-height per node kind, in the same units as position/lane
+ * math above — the single source of a step card's drawn size, shared by the
+ * live canvas, the static print/PDF diagram, and the PPTX export so a task,
+ * decision, or terminal step is the same size everywhere it's drawn.
+ */
+export const NODE_HALF_SIZE: Record<"task" | "decision" | "terminal", { x: number; y: number }> = {
+  task: { x: 107, y: 56 },
+  decision: { x: 88, y: 46 },
+  terminal: { x: 63, y: 27 },
+};
 
 /** Y-coordinate for a step's swimlane, given the workspace-wide lane order for this process. */
 export function laneY(roleId: string | null, laneOrder: string[]): number {

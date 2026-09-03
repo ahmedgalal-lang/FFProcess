@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 import { deriveGapsByStep } from "@/lib/domain/step-readiness";
+import { buildStepAuthoritySummary } from "@/lib/domain/step-authority-summary";
 import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
 import { AddStepForm, BulkAddStepsForm } from "./step-form";
 import { MapView } from "./map-view";
@@ -53,6 +54,29 @@ export default async function ProcessMapPage(
 
   const externalEntities = process.externalEntities as unknown as { name: string; description: string }[];
 
+  const activityData = activities.map((activity) => ({
+    id: activity.id,
+    name: activity.name,
+    relatedStepId: activity.relatedStepId,
+    order: activity.order,
+    assignments: activity.raciAssignments.map((a) => ({ roleId: a.roleId, code: a.code })),
+  }));
+
+  const authorityData = authorityAssignments.map((a) => ({
+    activityId: a.activityId,
+    stepId: a.stepId,
+    skipped: a.skipped,
+    slaDays: a.slaDays,
+    threshold: a.threshold === null ? null : Number(a.threshold),
+    direction: a.direction,
+    approverRoleId: a.approverRoleId,
+    approverPersonId: a.approverPersonId,
+    coApprovalAboveThreshold:
+      a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
+    coApproverRoleId: a.coApproverRoleId,
+    escalationRoleId: a.escalationRoleId,
+  }));
+
   // What each step still needs — derived through the very builders and
   // validators the RACI and Authority pages use, so the chip in the list and
   // the flag on those pages can never disagree.
@@ -63,29 +87,19 @@ export default async function ProcessMapPage(
       label: step.label,
       raciSkipped: step.raciSkipped,
     })),
-    activities: activities.map((activity) => ({
-      id: activity.id,
-      name: activity.name,
-      relatedStepId: activity.relatedStepId,
-      order: activity.order,
-      assignments: activity.raciAssignments.map((a) => ({ roleId: a.roleId, code: a.code })),
-    })),
-    authorityAssignments: authorityAssignments.map((a) => ({
-      activityId: a.activityId,
-      stepId: a.stepId,
-      skipped: a.skipped,
-      slaDays: a.slaDays,
-      threshold: a.threshold === null ? null : Number(a.threshold),
-      direction: a.direction,
-      approverRoleId: a.approverRoleId,
-      approverPersonId: a.approverPersonId,
-      coApprovalAboveThreshold:
-        a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-      coApproverRoleId: a.coApproverRoleId,
-      escalationRoleId: a.escalationRoleId,
-    })),
+    activities: activityData,
+    authorityAssignments: authorityData,
     incomingStepIds: new Set(connections.map((c) => c.toStepId)),
   });
+
+  // The SLA and approval threshold each step's card shows on the diagram —
+  // the same Authority data the matrix page displays, read here by step
+  // rather than by row (see lib/domain/step-authority-summary.ts).
+  const authorityByStepId = buildStepAuthoritySummary(
+    process.steps.map((step) => ({ id: step.id, type: step.type, label: step.label })),
+    activityData,
+    authorityData
+  );
 
   // The step this process picks up from, if any. Its number comes from the
   // source process's own step order, so it matches what that map shows.
@@ -156,6 +170,9 @@ export default async function ProcessMapPage(
           ...s,
           branches: s.branchedProcesses,
           gaps: gapsByStepId.get(s.id) ?? [],
+          slaDays: authorityByStepId.get(s.id)?.slaDays ?? null,
+          threshold: authorityByStepId.get(s.id)?.threshold ?? null,
+          direction: authorityByStepId.get(s.id)?.direction,
         }))}
         connections={connections}
         roles={roles.map((r) => ({ id: r.id, name: r.name }))}

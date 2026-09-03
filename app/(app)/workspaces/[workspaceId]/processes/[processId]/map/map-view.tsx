@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { arrangeProcessStepsByFlow } from "@/lib/actions/process";
 import type { StepGap } from "@/lib/domain/step-readiness";
+import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import { ProcessMapCanvas, type BranchFromT } from "./process-map-canvas";
 import { StepListRow } from "./step-list-row";
 
@@ -22,6 +23,9 @@ type StepT = {
   detailedAction: string[];
   exceptionHandling: string | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
+  slaDays?: number | null;
+  threshold?: number | null;
+  direction?: AuthorityDirection;
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
 type ProcessOption = { id: string; code: string; name: string };
