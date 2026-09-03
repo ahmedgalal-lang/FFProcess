@@ -35,6 +35,22 @@ test.describe("Export", () => {
     expect(xlsxBody.subarray(0, 2).toString("latin1")).toBe("PK"); // xlsx is a zip container
   });
 
+  test("Export Report's Download PPTX returns a well-formed slide deck", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/export");
+    await page.click('button:has-text("Preview report")');
+    await page.waitForURL("**/reports/**");
+
+    const pptxHref = await page.locator('a:has-text("Download PPTX")').getAttribute("href");
+    expect(pptxHref).toContain("/api/export/report/");
+    const pptxResponse = await page.request.get(pptxHref!);
+    expect(pptxResponse.status()).toBe(200);
+    expect(pptxResponse.headers()["content-type"]).toBe(
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    );
+    const pptxBody = await pptxResponse.body();
+    expect(pptxBody.subarray(0, 2).toString("latin1")).toBe("PK"); // pptx is a zip container
+  });
+
   test("Authority PDF and Excel downloads return well-formed files", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
     await page.waitForSelector("text=Escalation");

@@ -119,6 +119,7 @@ export function ExportPreview({
   railProcesses: RailProcess[];
 }) {
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
+  const pptxHref = `/api/export/report/${workspaceId}?${processes.map((p) => `ids=${p.id}`).join("&")}`;
 
   // The four main-title banners (cover, value chain, each process title) paint
   // themselves in this — the workspace's own Primary accent, resolved exactly
@@ -218,6 +219,12 @@ export function ExportPreview({
           ← Back to picker
         </Link>
         <div className="flex-1" />
+        <a
+          href={pptxHref}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Download PPTX
+        </a>
         <button
           type="button"
           onClick={() => window.print()}
