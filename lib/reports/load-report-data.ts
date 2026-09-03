@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/client";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { buildAuthorityTableRows, DIRECTION_LABELS, requiresApproval } from "@/lib/domain/authority-table";
+import { buildStepAuthoritySummary } from "@/lib/domain/step-authority-summary";
 import {
   buildCombinedMatrixRows,
   deriveControlPoints,
@@ -191,15 +192,24 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
         }))
       );
 
-      const authorityRows = buildAuthorityTableRows(
-        steps,
-        activities.map((a) => ({ id: a.id, name: a.name, relatedStepId: a.relatedStepId, order: a.order })),
-        authorityAssignments.map((a) => ({
-          ...a,
-          threshold: a.threshold === null ? null : Number(a.threshold),
-          coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-        }))
-      );
+      const authorityActivities = activities.map((a) => ({
+        id: a.id,
+        name: a.name,
+        relatedStepId: a.relatedStepId,
+        order: a.order,
+      }));
+      const authorityAssignmentData = authorityAssignments.map((a) => ({
+        ...a,
+        threshold: a.threshold === null ? null : Number(a.threshold),
+        coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
+      }));
+
+      const authorityRows = buildAuthorityTableRows(steps, authorityActivities, authorityAssignmentData);
+
+      // Same per-step SLA/threshold lookup the live Process Map card uses —
+      // keyed by stepId rather than the row's own id, which is ambiguous
+      // between an Activity id and a Step id (see step-authority-summary.ts).
+      const authorityByStepId = buildStepAuthoritySummary(steps, authorityActivities, authorityAssignmentData);
 
       const combinedRows = buildCombinedMatrixRows(raciRows, authorityRows);
       const controlPoints = deriveControlPoints(combinedRows, roleNameById);
@@ -238,6 +248,9 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
             targetProcessId: l.targetProcessId,
             targetProcess: { code: l.targetProcess.code, name: l.targetProcess.name },
           })),
+          slaDays: authorityByStepId.get(s.id)?.slaDays ?? null,
+          threshold: authorityByStepId.get(s.id)?.threshold ?? null,
+          direction: authorityByStepId.get(s.id)?.direction,
         })),
         connections: connections.map((c) => ({ id: c.id, fromStepId: c.fromStepId, toStepId: c.toStepId, label: c.label })),
         matrixRoles: matrixRoleIds.map((id) => ({ id, name: roleNameById.get(id) ?? "Unknown" })),

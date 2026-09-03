@@ -120,15 +120,15 @@ cards read from. US1 does not depend on this phase and may be built first or in 
 
 ### Implementation for User Story 4
 
-- [ ] T021 [P] [US4] In `lib/reports/load-report-data.ts`, add the same `buildStepAuthoritySummary` call (or extend `ExportProcessData.steps` with the per-step SLA/threshold directly) so the static/PPTX surfaces get the same `stepId`-correct data US2/US3 use — not the ambiguous `rowId` lookup the report's narrative-card code currently uses (see research.md).
-- [ ] T022 [US4] Redesign the static diagram's node markup in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram.tsx` to mirror the new card/lane/decision treatment (same card shapes, same chip content, same auto-height-within-print-constraints behavior it already has).
-- [ ] T023 [US4] Redesign `drawProcessDiagram` in `lib/export/pptx/report-pptx.ts`: bigger task-card rectangles with step number/role/SLA/hand-off text, the decision card as a rounded rectangle (not a diamond) with its gate line, terminal as a pill — reusing the same `fitMapper` scaling already in that file.
+- [X] T021 [P] [US4] In `lib/reports/load-report-data.ts`, add the same `buildStepAuthoritySummary` call (or extend `ExportProcessData.steps` with the per-step SLA/threshold directly) so the static/PPTX surfaces get the same `stepId`-correct data US2/US3 use — not the ambiguous `rowId` lookup the report's narrative-card code currently uses (see research.md).
+- [X] T022 [US4] Redesign the static diagram's node markup in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram.tsx` to mirror the new card/lane/decision treatment (same card shapes, same chip content, same auto-height-within-print-constraints behavior it already has).
+- [X] T023 [US4] Redesign `drawProcessDiagram` in `lib/export/pptx/report-pptx.ts`: bigger task-card rectangles with step number/role/SLA/hand-off text, the decision card as a rounded rectangle (not a diamond) with its gate line, terminal as a pill — reusing the same `fitMapper` scaling already in that file.
 
 ### Tests for User Story 4
 
-- [ ] T024 [P] [US4] Extend `tests/e2e/report-diagram.spec.ts` for the static diagram's new card sizing (the existing "fits a wide process" and "Unassigned lane" tests should keep passing against the resized nodes; add an assertion for SLA/hand-off content if reachable from the DOM).
-- [ ] T025 [P] [US4] Extend `tests/e2e/report-print.spec.ts` if the new card sizes change print pagination for a diagram-heavy process — re-verify against a real generated PDF (per the project's established Playwright `page.pdf()` + visual-inspection technique) rather than assuming.
-- [ ] T026 [P] [US4] Extend the PPTX structural check in `tests/e2e/export.spec.ts` (or verify manually via the `python-pptx` technique used when the PPTX export first shipped) to confirm the process-map slide's shape count/content reflects the new card treatment.
+- [X] T024 [P] [US4] Extend `tests/e2e/report-diagram.spec.ts` for the static diagram's new card sizing (the existing "fits a wide process" and "Unassigned lane" tests should keep passing against the resized nodes; add an assertion for SLA/hand-off content if reachable from the DOM).
+- [X] T025 [P] [US4] Extend `tests/e2e/report-print.spec.ts` if the new card sizes change print pagination for a diagram-heavy process — re-verify against a real generated PDF (per the project's established Playwright `page.pdf()` + visual-inspection technique) rather than assuming.
+- [X] T026 [P] [US4] Extend the PPTX structural check in `tests/e2e/export.spec.ts` (or verify manually via the `python-pptx` technique used when the PPTX export first shipped) to confirm the process-map slide's shape count/content reflects the new card treatment.
 
 **Checkpoint**: All three surfaces agree. Feature complete.
 
@@ -136,10 +136,10 @@ cards read from. US1 does not depend on this phase and may be built first or in 
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T027 [P] Run `pnpm run lint` and `pnpm run build` clean across all changed files.
-- [ ] T028 [P] Run `pnpm exec vitest run` (full suite) and `pnpm exec playwright test` (full suite) — all existing + new tests green.
-- [ ] T029 Walk `quickstart.md` end to end against the seeded dev database as a final manual check.
-- [ ] T030 Update any stale in-code comments referencing the old fixed `520px` canvas height or the old diamond decision shape, so the codebase's own comments don't describe a design that no longer exists.
+- [X] T027 [P] Run `pnpm run lint` and `pnpm run build` clean across all changed files.
+- [X] T028 [P] Run `pnpm exec vitest run` (full suite) and `pnpm exec playwright test` (full suite) — all existing + new tests green.
+- [X] T029 Walk `quickstart.md` end to end against the seeded dev database as a final manual check.
+- [X] T030 Update any stale in-code comments referencing the old fixed `520px` canvas height or the old diamond decision shape, so the codebase's own comments don't describe a design that no longer exists.
 
 ---
 

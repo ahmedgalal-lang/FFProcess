@@ -7,6 +7,7 @@ import { StaticMilestoneRails } from "../../(app)/workspaces/[workspaceId]/helic
 import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
 import type { RaciCode, StepType } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
+import type { AuthorityDirection } from "@/lib/domain/authority-table";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
@@ -41,6 +42,9 @@ export type ExportProcessData = {
     assignedRole: { id: string; name: string } | null;
     swimlaneRole: { id: string; name: string } | null;
     links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
+    slaDays: number | null;
+    threshold: number | null;
+    direction?: AuthorityDirection;
   }[];
   connections: { id: string; fromStepId: string; toStepId: string; label: string | null }[];
   matrixRoles: { id: string; name: string }[];

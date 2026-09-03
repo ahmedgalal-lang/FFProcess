@@ -1,7 +1,8 @@
 import PptxGenJS from "pptxgenjs";
-import { assignSwimlanes, LANE_HEIGHT, LANE_TOP_OFFSET, type LaneStep } from "@/lib/domain/process-layout";
+import { assignSwimlanes, LANE_HEIGHT, LANE_TOP_OFFSET, NODE_HALF_SIZE, type LaneStep } from "@/lib/domain/process-layout";
 import { layoutOrgChart, CHART_NODE_SPACING, CHART_LEVEL_HEIGHT, type ChartPerson } from "@/lib/domain/org-chart";
 import { readableInkOn } from "@/lib/domain/color-contrast";
+import { DIRECTION_LABELS, formatMoney } from "@/lib/domain/authority-table";
 import type { RaciCode } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ReportData } from "@/lib/reports/load-report-data";
@@ -495,11 +496,7 @@ function addExecutiveSummarySlide(pptx: PptxGenJS, process: ExportProcessData) {
 type StepForDiagram = ExportProcessData["steps"][number];
 type ConnectionForDiagram = ExportProcessData["connections"][number];
 
-const NODE_HALF: Record<string, { x: number; y: number }> = {
-  task: { x: 66, y: 28 },
-  decision: { x: 48, y: 48 },
-  terminal: { x: 46, y: 19 },
-};
+const NODE_HALF = NODE_HALF_SIZE;
 
 function nodeKindFor(type: StepForDiagram["type"]): keyof typeof NODE_HALF {
   if (type === "DECISION") return "decision";
@@ -617,38 +614,92 @@ function drawProcessDiagram(
     });
   }
 
-  for (const s of steps) {
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i]!;
     const kind = nodeKindFor(s.type);
     const half = NODE_HALF[kind]!;
     const w = half.x * 2 * map.scale;
     const h = half.y * 2 * map.scale;
     const cx = map.x(s.positionX);
     const cy = map.y(layout.yOf.get(s.id) ?? s.positionY);
-    const shapeType = kind === "decision" ? "diamond" : kind === "terminal" ? "roundRect" : "rect";
-    const fill = kind === "decision" ? "fef3c7" : kind === "terminal" ? "e0e7ff" : "ffffff";
-    const border = kind === "decision" ? "d97706" : kind === "terminal" ? "4338ca" : "94a3b8";
-    slide.addShape(shapeType, {
-      x: cx - w / 2,
-      y: cy - h / 2,
-      w,
-      h,
-      fill: { color: fill },
-      line: { color: border, width: 1 },
-      rectRadius: shapeType === "roundRect" ? 0.08 : undefined,
+    const left = cx - w / 2;
+    const top = cy - h / 2;
+
+    if (kind === "terminal") {
+      slide.addShape("roundRect", {
+        x: left, y: top, w, h,
+        fill: { color: "e4f4ee" },
+        line: { color: "10b981", width: 1.25 },
+        rectRadius: 0.5,
+      });
+      slide.addText(s.label, {
+        x: left, y: top, w, h,
+        fontFace: FONT, fontSize: 8, bold: true, color: "047857",
+        align: "center", valign: "middle", shrinkText: true,
+      });
+      continue;
+    }
+
+    if (kind === "decision") {
+      slide.addShape("roundRect", {
+        x: left, y: top, w, h,
+        fill: { color: "fef3c7" },
+        line: { color: "d97706", width: 1.25 },
+        rectRadius: 0.08,
+      });
+      const gate = s.threshold == null ? null : `${DIRECTION_LABELS[s.direction ?? "GREATER_THAN"].label} ${formatMoney(s.threshold)} · Yes / No`;
+      const runs: { text: string; options?: PptxGenJS.TextPropsOptions }[] = [
+        { text: `${s.label}\n`, options: { bold: true, fontSize: 7.5, color: "92400e", breakLine: true } },
+      ];
+      if (s.assignedRole?.name) runs.push({ text: `${s.assignedRole.name}\n`, options: { fontSize: 6, bold: true, color: "b45309", breakLine: true } });
+      if (gate) runs.push({ text: gate, options: { fontSize: 6, bold: true, color: "b45309", fontFace: "Courier New" } });
+      slide.addText(runs, {
+        x: left + 0.04, y: top, w: w - 0.08, h,
+        valign: "middle", align: "center", shrinkText: true,
+      });
+      continue;
+    }
+
+    // Task card: white surface, a step-number badge, its role, and the same
+    // SLA / hand-off / "no SLA set" meta line the live canvas and static
+    // diagram show — same information as the other two surfaces, just drawn
+    // as one small text line here instead of separate pill shapes.
+    slide.addShape("rect", {
+      x: left, y: top, w, h,
+      fill: { color: "ffffff" },
+      line: { color: "cbd5e1", width: 1 },
+      rectRadius: 0.06,
     });
-    slide.addText(s.label, {
-      x: cx - w / 2 + 0.03,
-      y: cy - h / 2,
-      w: w - 0.06,
-      h,
-      fontFace: FONT,
-      fontSize: 7,
-      color: INK_DARK,
-      align: "center",
-      valign: "middle",
-      shrinkText: true,
+    const badgeSize = Math.min(0.18, h * 0.28);
+    slide.addShape("rect", {
+      x: left + 0.04, y: top + 0.04, w: badgeSize, h: badgeSize,
+      fill: { color: "4338ca" },
+      rectRadius: 0.03,
+    });
+    slide.addText(String(i + 1), {
+      x: left + 0.04, y: top + 0.04, w: badgeSize, h: badgeSize,
+      fontFace: "Courier New", fontSize: 6, bold: true, color: "ffffff",
+      align: "center", valign: "middle",
+    });
+
+    const meta = metaLine(s);
+    const bodyRuns: { text: string; options?: PptxGenJS.TextPropsOptions }[] = [
+      { text: `${s.label}\n`, options: { bold: true, fontSize: 7, color: INK_DARK, breakLine: true } },
+    ];
+    if (s.assignedRole?.name) bodyRuns.push({ text: `${s.assignedRole.name}\n`, options: { fontSize: 5.5, bold: true, color: INK_MUTED, breakLine: true } });
+    bodyRuns.push({ text: meta.text, options: { fontSize: 5.5, bold: true, color: meta.color } });
+    slide.addText(bodyRuns, {
+      x: left + badgeSize + 0.08, y: top + 0.03, w: w - badgeSize - 0.12, h: h - 0.06,
+      valign: "top", shrinkText: true,
     });
   }
+}
+
+/** The same SLA / hand-off / "no SLA set" read the live canvas and static diagram give a task card. */
+function metaLine(step: StepForDiagram): { text: string; color: string } {
+  if (step.slaDays != null) return { text: `SLA ${step.slaDays}d`, color: "047857" };
+  if (step.links.length > 0) return { text: step.links.map((l) => `→ ${l.targetProcess.code}`).join("  "), color: "4338ca" };
+  return { text: "no SLA set", color: INK_MUTED };
 }
 
 function addRaciAuthoritySlide(pptx: PptxGenJS, process: ExportProcessData) {

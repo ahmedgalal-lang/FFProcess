@@ -2,16 +2,13 @@
 
 import { useMemo } from "react";
 import { ReactFlow, ReactFlowProvider, Background, MarkerType, type Node, type Edge } from "@xyflow/react";
-import { assignSwimlanes, LANE_HEIGHT, LANE_TOP_OFFSET } from "@/lib/domain/process-layout";
+import { assignSwimlanes, LANE_HEIGHT, LANE_TOP_OFFSET, NODE_HALF_SIZE } from "@/lib/domain/process-layout";
+import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import { TaskNode, DecisionNode, TerminalNode, LaneNode, type StepLinkData } from "./map-nodes";
 
 const NODE_TYPES = { task: TaskNode, decision: DecisionNode, terminal: TerminalNode, lane: LaneNode };
 
-const HALF_SIZE: Record<string, { x: number; y: number }> = {
-  task: { x: 66, y: 28 },
-  decision: { x: 48, y: 48 },
-  terminal: { x: 46, y: 19 },
-};
+const HALF_SIZE = NODE_HALF_SIZE;
 
 type StepT = {
   id: string;
@@ -22,11 +19,14 @@ type StepT = {
   assignedRole: { id: string; name: string } | null;
   swimlaneRole: { id: string; name: string } | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
+  slaDays?: number | null;
+  threshold?: number | null;
+  direction?: AuthorityDirection;
 };
 
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
 
-function nodeKindFor(type: StepT["type"]): keyof typeof NODE_TYPES {
+function nodeKindFor(type: StepT["type"]): keyof typeof HALF_SIZE {
   if (type === "DECISION") return "decision";
   if (type === "START" || type === "END") return "terminal";
   return "task";
@@ -94,7 +94,7 @@ export function StaticProcessMapDiagram({
       id: `lane-${roleId}`,
       type: "lane",
       position: { x: 0, y: i * LANE_HEIGHT + LANE_TOP_OFFSET },
-      data: { label: laneLabel.get(roleId) ?? "" },
+      data: { label: laneLabel.get(roleId) ?? "", tinted: i % 2 === 1 },
       style: { width: canvasWidth, height: LANE_HEIGHT },
       draggable: false,
       selectable: false,
@@ -110,7 +110,7 @@ export function StaticProcessMapDiagram({
         id: "lane-unassigned",
         type: "lane",
         position: { x: 0, y: laneOrder.length * LANE_HEIGHT + LANE_TOP_OFFSET },
-        data: { label: "Unassigned" },
+        data: { label: "Unassigned", tinted: laneOrder.length % 2 === 1 },
         style: { width: canvasWidth, height: LANE_HEIGHT },
         draggable: false,
         selectable: false,
@@ -119,7 +119,7 @@ export function StaticProcessMapDiagram({
       });
     }
 
-    const stepNodes: Node[] = steps.map((s) => {
+    const stepNodes: Node[] = steps.map((s, i) => {
       const kind = nodeKindFor(s.type);
       const half = HALF_SIZE[kind];
       const links: StepLinkData[] = s.links.map((l) => ({
@@ -132,7 +132,16 @@ export function StaticProcessMapDiagram({
         id: s.id,
         type: kind,
         position: { x: s.positionX - half.x, y: (layout.yOf.get(s.id) ?? s.positionY) - half.y },
-        data: { label: s.label, roleName: s.assignedRole?.name, links, workspaceId },
+        data: {
+          label: s.label,
+          roleName: s.assignedRole?.name,
+          stepNumber: i + 1,
+          slaDays: s.slaDays,
+          threshold: s.threshold,
+          direction: s.direction,
+          links,
+          workspaceId,
+        },
         draggable: false,
         selectable: false,
         zIndex: 1,

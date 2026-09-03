@@ -183,3 +183,35 @@ test("Export Report's static diagram draws an Unassigned lane for steps with no 
   const stepNodes = diagram.locator(".react-flow__node").filter({ hasText: /Start|Do the thing|Finish/ });
   await expect(stepNodes).toHaveCount(3);
 });
+
+test("Export Report's static diagram shows the same documented-card content as the live canvas", async ({ page }) => {
+  await page.goto("/login");
+  await page.click('button[type="submit"]');
+  await page.waitForURL("**/workspaces");
+
+  await page.goto("/workspaces/workspace-acme/export");
+  const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
+  const count = await checkboxes.count();
+  for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
+  await page.getByLabel(/PUR101/).check();
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+
+  const diagram = page
+    .locator("main .rounded-xl.border.border-slate-200.bg-white")
+    .filter({ has: page.locator(".react-flow") })
+    .last();
+  await expect(diagram).toBeVisible();
+
+  const createPO = diagram.locator(".react-flow__node").filter({ hasText: "Create Purchase Order" });
+  await expect(createPO.getByText("SLA 2d")).toBeVisible();
+
+  const sendPO = diagram.locator(".react-flow__node").filter({ hasText: "Send PO to Vendor" });
+  await expect(sendPO.getByText("→ PUR102")).toBeVisible();
+
+  const receiveGoods = diagram.locator(".react-flow__node").filter({ hasText: "Receive Goods" });
+  await expect(receiveGoods.getByText("no SLA set")).toBeVisible();
+
+  const decision = diagram.locator(".react-flow__node").filter({ hasText: "Approve PO?" });
+  await expect(decision.getByText(/At or above \$100,000/)).toBeVisible();
+});
