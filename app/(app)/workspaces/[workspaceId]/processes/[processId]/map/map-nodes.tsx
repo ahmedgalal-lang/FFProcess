@@ -181,10 +181,17 @@ export function BranchGutterNode({ data }: NodeProps & { data: { label: string }
 }
 
 export function LaneNode({ data }: NodeProps & { data: LaneNodeData }) {
+  // Both variants are translucent, never a solid fill — React Flow paints its
+  // edges layer behind the nodes layer regardless of each node's own zIndex,
+  // so a fully opaque lane (the old bg-white here) silently erased every
+  // connector segment that passed under it, leaving only the portions inside
+  // the one tinted lane visible and every step-to-step join into a plain lane
+  // invisible. bg-white/70 keeps the same zebra contrast against the page's
+  // own white background while letting edges show through everywhere.
   return (
     <div
       className={`flex h-full items-start border-b border-dashed border-slate-200 pl-4 pt-2.5 ${
-        data.tinted ? "bg-slate-50/70" : "bg-white"
+        data.tinted ? "bg-slate-50/70" : "bg-white/70"
       }`}
     >
       <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">{data.label}</span>
