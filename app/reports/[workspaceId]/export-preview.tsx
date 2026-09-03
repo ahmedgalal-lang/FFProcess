@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Source_Serif_4 } from "next/font/google";
 import { StaticOrgChart } from "../../(app)/workspaces/[workspaceId]/org/chart/static-org-chart";
 import { StaticProcessMapDiagram } from "../../(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram";
 import { StaticMilestoneRails } from "../../(app)/workspaces/[workspaceId]/helicopter/static-milestone-rails";
@@ -11,12 +12,29 @@ import type { AuthorityDirection } from "@/lib/domain/authority-table";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
+// The cover's one deliberate serif moment — self-hosted via next/font so the
+// PDF/print render never depends on a live network fetch for it.
+const coverSerif = Source_Serif_4({ subsets: ["latin"], weight: ["400", "600"], style: ["normal", "italic"], display: "swap" });
+
 const DEFAULT_ACCENT_SECONDARY = "#4338ca";
 // Same defaults, same functions, as the workspace layout that paints the
 // sidebar pages — a client's report banner and its app banner come out
 // identical rather than two independent guesses at "the brand colour".
 const DEFAULT_ACCENT = "#334155"; // slate-700 — a workspace with no logo/accent set yet
 const DEFAULT_ACCENT_TERTIARY = "#4338ca";
+
+/**
+ * A short, deterministic document code for the cover — built from the
+ * client's own name rather than a random ID, so re-rendering the same
+ * report's cover always shows the same code instead of a new one each time.
+ */
+function deriveDocId(companyName: string): string {
+  const slug = companyName
+    .split(/\s+/)[0]
+    ?.replace(/[^a-z0-9]/gi, "")
+    .toUpperCase();
+  return `${slug || "BPD"}-BPD-${new Date().getFullYear()}`;
+}
 
 export type ExportProcessData = {
   id: string;
@@ -98,6 +116,7 @@ export type ValueChainColumn = {
 export function ExportPreview({
   workspaceId,
   companyName,
+  firmName,
   industry,
   description,
   accentColor,
@@ -111,6 +130,7 @@ export function ExportPreview({
 }: {
   workspaceId: string;
   companyName: string;
+  firmName: string;
   industry: string | null;
   description: string | null;
   accentColor: string | null;
@@ -280,22 +300,13 @@ export function ExportPreview({
       )}
 
       <main className="report-paper">
-        <section className="print-page">
-          <BrandBanner>
-            <h1 className="text-3xl font-bold">{companyName}</h1>
-            {industry && <p className="mt-1 text-sm opacity-85">{industry}</p>}
-          </BrandBanner>
-          <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--accent-secondary)]">
-            Business Process Documentation &amp; Procedure Standard
-          </div>
-          {description && (
-            <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-slate-700">{description}</p>
-          )}
-          <p className="mt-2 text-xs text-slate-500">
-            Generated on {new Date().toLocaleDateString()} · Covers {processes.length} process
-            {processes.length === 1 ? "" : "es"}
-          </p>
-        </section>
+        <CoverPage
+          companyName={companyName}
+          firmName={firmName}
+          industry={industry}
+          description={description}
+          processes={processes}
+        />
 
         {people.length > 0 && (
           <section className="print-page">
@@ -326,12 +337,108 @@ export function ExportPreview({
 }
 
 /**
+ * The report's title page, styled like the cover of a bound procedure
+ * manual rather than a stretched-out version of the per-process banner:
+ * a ruled frame, a letterhead strip identifying the client, a serif title,
+ * and a footer split between the document's own metadata and a preview of
+ * what's inside — the same information a reader would look for on the
+ * cover of any formal deliverable before turning the first page.
+ */
+function CoverPage({
+  companyName,
+  firmName,
+  industry,
+  description,
+  processes,
+}: {
+  companyName: string;
+  firmName: string;
+  industry: string | null;
+  description: string | null;
+  processes: ExportProcessData[];
+}) {
+  const docId = deriveDocId(companyName);
+  const effectiveDate = new Date().toISOString().slice(0, 10);
+  const previewCount = 6;
+  const previewed = processes.slice(0, previewCount);
+
+  return (
+    <section className="print-page relative min-h-[182mm] overflow-hidden border border-slate-300">
+      <div className="pointer-events-none absolute inset-3 border border-slate-200" />
+      <div className="relative flex h-full flex-col p-[6%]">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="h-6 w-6 flex-none rounded-md"
+            style={{ backgroundImage: "linear-gradient(135deg, var(--accent), var(--accent-banner-to))" }}
+          />
+          <span className="text-sm font-semibold text-slate-800">{companyName}</span>
+        </div>
+
+        <div className="mt-auto max-w-[78%]">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-secondary)]">
+            Business Process Documentation &amp; Procedure Standard
+          </div>
+          <h1 className={`${coverSerif.className} mt-3 text-5xl leading-[1.05] font-semibold text-slate-900`}>
+            {companyName}
+          </h1>
+          {(description || industry) && (
+            <p className={`${coverSerif.className} mt-3 max-w-2xl text-[15px] leading-relaxed whitespace-pre-line text-slate-600 italic`}>
+              {description ?? industry}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-[6%] grid grid-cols-2 gap-[6%] border-t border-slate-900/15 pt-[4%]">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1 text-[11.5px]">
+            <dt className="text-slate-500">Document ID</dt>
+            <dd className="font-semibold text-slate-900">{docId}</dd>
+            <dt className="text-slate-500">Version</dt>
+            <dd className="font-semibold text-slate-900">1.0</dd>
+            <dt className="text-slate-500">Effective Date</dt>
+            <dd className="font-semibold text-slate-900">{effectiveDate}</dd>
+            <dt className="text-slate-500">Classification</dt>
+            <dd className="font-semibold text-slate-900">Internal — Confidential</dd>
+            <dt className="text-slate-500">Prepared By</dt>
+            <dd className="font-semibold text-slate-900">{firmName}</dd>
+          </dl>
+
+          {previewed.length > 0 && (
+            <div>
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Contents — {processes.length} process{processes.length === 1 ? "" : "es"}
+              </div>
+              {previewed.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-baseline gap-2 border-b border-dotted border-slate-300 py-0.5 text-[11.5px]"
+                >
+                  <span className="font-mono text-[10px] font-semibold text-[var(--accent-secondary)]">{p.code}</span>
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="flex-none text-[10.5px] text-slate-500">
+                    {p.parentName ? `under ${p.parentCode}` : "top-level"}
+                  </span>
+                </div>
+              ))}
+              {processes.length > previewCount && (
+                <div className="mt-1 text-[10.5px] text-slate-500">
+                  +{processes.length - previewCount} more — see the full index
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
  * The main-title treatment: painted in the workspace's own Primary accent,
  * with an ink colour chosen for contrast against it rather than assumed white
  * — the same banner the sidebar pages use, so a report and the app it came
  * from read as one brand rather than two different guesses at it. Reserved
- * for the four titles that open a real section of the document: the cover,
- * the Value Chain page, and each process's own title.
+ * for the titles that open a real section of the document: the Value Chain
+ * page and each process's own title.
  */
 function BrandBanner({ eyebrow, children }: { eyebrow?: React.ReactNode; children: React.ReactNode }) {
   return (

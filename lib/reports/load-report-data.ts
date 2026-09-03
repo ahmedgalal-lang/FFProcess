@@ -17,6 +17,10 @@ import type { ExportProcessData, ValueChainColumn } from "@/app/reports/[workspa
 export type ReportData = {
   workspaceId: string;
   companyName: string;
+  /// The consulting firm producing this report — printed on the cover as
+  /// "Prepared by", distinct from companyName (the client whose processes
+  /// this documents).
+  firmName: string;
   industry: string | null;
   description: string | null;
   accentColor: string | null;
@@ -37,7 +41,10 @@ export type ReportData = {
  * different reports.
  */
 export async function loadReportData(workspaceId: string, processIds: string[]): Promise<ReportData | null> {
-  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    include: { firm: { select: { name: true } } },
+  });
   if (!workspace) return null;
 
   const [people, roles, processes, phases, chainSteps, railSourceProcesses] = await Promise.all([
@@ -296,6 +303,7 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
   return {
     workspaceId,
     companyName: workspace.name,
+    firmName: workspace.firm.name,
     industry: workspace.industry,
     description: workspace.description,
     accentColor: workspace.accentColor,
