@@ -207,6 +207,16 @@ export function ExportPreview({
              boundary — a row half on one page and half on the next is
              unreadable either side of the cut. */
           tr { break-inside: avoid; }
+
+          /* Chrome's print engine doesn't fragment a flex container reliably
+             — a list of break-inside-avoid cards inside a flex column can
+             jump to the next page as one clump even when several of them
+             would still fit on the page they're on, wasting whatever room
+             was left. Block layout fragments the way break-inside-avoid on
+             each child expects, so print falls back to it here and swaps
+             the flex gap for margins between the same children. */
+          .print-stack { display: block; }
+          .print-stack > * + * { margin-top: 10px; }
         }
         @page { size: A4 landscape; margin: 14mm; }
       `}</style>
@@ -406,15 +416,13 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
   const hasProcessMap = process.steps.length > 0 || hasScope;
   const hasRaciAuthority = process.combinedRows.length > 0 || process.controlPoints.length > 0 || process.kpis.length > 0;
 
-  // A process with nothing beyond its title card — an umbrella program, or
-  // one not built out yet — still gets its own fresh page for the banner
-  // (from whatever printed before it), but doesn't force a fresh page after
-  // itself too: there's nothing more to say, so the next process's content
-  // flows right below instead of leaving most of a page blank.
-  const hasBody = hasExecutiveSummary || hasProcessMap || hasRaciAuthority;
-
   return (
-    <section className={hasBody ? "print-page" : undefined}>
+    // Every process starts on its own fresh page, whether or not it has a
+    // body — an umbrella program with nothing beyond its title card still
+    // gets a page of its own rather than sharing one with the next process's
+    // content: two processes' banners stacked on one page reads as one
+    // process bleeding into another, not as two separate documents.
+    <section className="print-page">
       {/* Banner and its document metadata are one title block — kept
           together so a page break can't land between them and strand the
           banner alone at the bottom of a page. */}
@@ -462,7 +470,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
           {process.involvedRoles.length > 0 && (
             <>
               <SubHeading>Internal Roles</SubHeading>
-              <div className="flex flex-col gap-2.5">
+              <div className="print-stack flex flex-col gap-2.5">
                 {process.involvedRoles.map((role) => (
                   <RoleCard key={role.id} name={role.name} duties={role.duties} />
                 ))}
@@ -741,7 +749,7 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
               >
                 {column.title}
               </h3>
-              <ul className="mt-2 flex flex-col gap-2">
+              <ul className="print-stack mt-2 flex flex-col gap-2">
                 {column.activities.map((activity) => (
                   <li key={activity.stepId} className="break-inside-avoid text-xs leading-tight">
                     <span className="font-semibold text-slate-900">{activity.label}</span>
