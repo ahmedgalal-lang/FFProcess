@@ -486,7 +486,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
               <SubHeading>External Entities</SubHeading>
               <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
                 {process.externalEntities.map((entity, i) => (
-                  <li key={i}>
+                  <li key={i} className="break-inside-avoid">
                     <strong className="text-slate-900">{entity.name}</strong> — {entity.description}
                   </li>
                 ))}
@@ -637,7 +637,9 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                       <li
                         key={cp.rowId}
                         className={
-                          cp.flagged ? "rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800" : "text-slate-700"
+                          cp.flagged
+                            ? "break-inside-avoid rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800"
+                            : "break-inside-avoid text-slate-700"
                         }
                       >
                         {cp.flagged && <strong>⚠ </strong>}
@@ -821,7 +823,7 @@ function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
         {processes.map((process, i) => (
           <li
             key={process.id}
-            className="flex items-center gap-3 border-b border-slate-100 py-2.5 text-sm last:border-b-0"
+            className="flex items-center gap-3 break-inside-avoid border-b border-slate-100 py-2.5 text-sm last:border-b-0"
           >
             <span
               className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full text-[11px] font-bold text-white"
@@ -915,11 +917,13 @@ function ScopeBox({ label, value }: { label: string; value: string }) {
 
 function BulletBox({ label, items }: { label: string; items: string[] }) {
   return (
-    <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+    <div className="break-inside-avoid rounded-lg border border-slate-200 px-3 py-2.5">
       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
       <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-slate-700">
         {items.map((item, i) => (
-          <li key={i}>{item}</li>
+          <li key={i} className="break-inside-avoid">
+            {item}
+          </li>
         ))}
       </ul>
     </div>

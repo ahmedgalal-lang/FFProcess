@@ -170,8 +170,10 @@ export function StaticProcessMapDiagram({
             targetHandle,
             label: c.label ?? undefined,
             type: "smoothstep",
-            style: isLoop ? { stroke: "#d97706", strokeDasharray: "4 3" } : { stroke: "#94a3b8" },
-            markerEnd: { type: MarkerType.ArrowClosed, color: isLoop ? "#d97706" : "#94a3b8" },
+            style: isLoop
+              ? { stroke: "#d97706", strokeWidth: 2, strokeDasharray: "4 3", vectorEffect: "non-scaling-stroke" }
+              : { stroke: "#64748b", strokeWidth: 2, vectorEffect: "non-scaling-stroke" },
+            markerEnd: { type: MarkerType.ArrowClosed, color: isLoop ? "#d97706" : "#64748b" },
             labelStyle: { fontSize: 10, fontWeight: 700 },
             labelBgStyle: { fill: "#fff" },
           },
