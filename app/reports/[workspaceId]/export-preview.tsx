@@ -737,9 +737,13 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
           Chrome — the whole thing jumps to the next page when it doesn't
           fit, which on a real chain left most of a page blank under this
           heading. A row is small enough to place, and rows break between
-          each other. Nothing here is break-inside-avoid above the level of
-          a single activity: a long phase may continue on the next page,
-          but no entry is ever cut in half. */}
+          each other. Each column is its own break-inside-avoid unit too —
+          without it, only the column's last item (not the whole column)
+          would spill onto the next page, stranding one line under a mostly
+          blank heading while everything else already fit above it. A column
+          taller than a full page still has to fragment somewhere; the
+          per-activity break-inside-avoid on each <li> is what keeps that
+          fallback from cutting an entry in half. */}
       {/* Three per row, fixed rather than responsive: an A4 landscape page is
           narrower than the lg breakpoint, so a responsive fourth column
           existed on screen and never in the PDF — and a row that wraps
@@ -748,7 +752,7 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
       {chunk(columns, 3).map((row, rowIndex) => (
         <div key={rowIndex} className="mb-5 grid grid-cols-3 gap-x-5 gap-y-5">
           {row.map((column) => (
-            <div key={column.title}>
+            <div key={column.title} className="break-inside-avoid">
               <h3
                 className="border-b-2 pb-1 text-[10px] font-bold uppercase tracking-wide"
                 style={{ borderColor: column.color ?? "#cbd5e1", color: column.color ?? "#475569" }}
