@@ -48,4 +48,33 @@ test.describe("Export Report print layout", () => {
     const pur101Section = page.locator("main > section").filter({ hasText: "1.0 Executive Summary" });
     await expect(pur101Section).toHaveClass(/print-page/);
   });
+
+  test("Spacing control retunes how much fits on a page, and never prints itself", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/export");
+    await page.click('button:has-text("Preview report")');
+    await page.waitForURL("**/reports/**");
+
+    // Everything in the report is sized in rem against a page fixed in
+    // millimetres, so the root font size is the one knob that changes how much
+    // lands on a page — in the preview and in the PDF the browser makes from it.
+    const rootFontSize = () => page.evaluate(() => document.documentElement.style.fontSize);
+    expect(await rootFontSize()).toBe("");
+
+    await page.getByRole("button", { name: "Tight", exact: true }).click();
+    await expect.poll(rootFontSize).toBe("85%");
+    await expect(page.getByRole("button", { name: "Tight", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByRole("button", { name: "Roomy", exact: true }).click();
+    await expect.poll(rootFontSize).toBe("108%");
+
+    // Back to Default clears the override rather than pinning 100%, so the
+    // document returns to whatever font size the reader's browser is set to.
+    await page.getByRole("button", { name: "Default", exact: true }).click();
+    await expect.poll(rootFontSize).toBe("");
+
+    // The control is preview furniture, not part of the document: it sits in
+    // the no-print toolbar, so it can't land in the printed pack.
+    const toolbar = page.locator(".no-print").filter({ hasText: "Spacing" }).first();
+    await expect(toolbar).toBeVisible();
+  });
 });

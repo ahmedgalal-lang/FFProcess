@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Source_Serif_4 } from "next/font/google";
 import { StaticOrgChart } from "../../(app)/workspaces/[workspaceId]/org/chart/static-org-chart";
@@ -11,6 +12,23 @@ import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
+
+/**
+ * How tightly the report is set. Every spacing and type size in it is in rem
+ * while the sheet itself is a fixed A4 in millimetres, so one root font-size
+ * scales the whole document against a page that doesn't move — which is what
+ * actually changes how much lands on each page, in the preview and in the
+ * printed PDF alike. Anything deliberately fixed (the diagram boxes, the
+ * cover's page-height frame) is in px or mm and stays where it is.
+ */
+const DENSITY_OPTIONS = [
+  { id: "tight", label: "Tight", scale: 0.85 },
+  { id: "compact", label: "Compact", scale: 0.92 },
+  { id: "default", label: "Default", scale: 1 },
+  { id: "roomy", label: "Roomy", scale: 1.08 },
+] as const;
+
+type DensityId = (typeof DENSITY_OPTIONS)[number]["id"];
 
 // The cover's one deliberate serif moment — self-hosted via next/font so the
 // PDF/print render never depends on a live network fetch for it.
@@ -145,6 +163,21 @@ export function ExportPreview({
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
   const pptxHref = `/api/export/report/${workspaceId}?${processes.map((p) => `ids=${p.id}`).join("&")}`;
 
+  const [density, setDensity] = useState<DensityId>("default");
+
+  useEffect(() => {
+    const scale = DENSITY_OPTIONS.find((option) => option.id === density)?.scale ?? 1;
+    const root = document.documentElement;
+    // Cleared rather than set to 100% at Default, so the document goes back to
+    // whatever font size the reader's own browser is set to.
+    root.style.fontSize = scale === 1 ? "" : `${scale * 100}%`;
+    // The report is its own chrome-free route, but a client-side navigation
+    // back to the app would otherwise leave every other page scaled too.
+    return () => {
+      root.style.fontSize = "";
+    };
+  }, [density]);
+
   // The four main-title banners (cover, value chain, each process title) paint
   // themselves in this — the workspace's own Primary accent, resolved exactly
   // the way the app layout resolves it, so the ink colour stays readable
@@ -245,24 +278,47 @@ export function ExportPreview({
         @page { size: A4 landscape; margin: 14mm; }
       `}</style>
 
-      <div className="no-print sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white px-6 py-3">
+      {/* Sized in px throughout, unlike the document below it: this bar is the
+          control for the density setting, and a control that shrinks as you
+          turn it down reads as a glitch rather than as feedback. */}
+      <div className="no-print sticky top-0 z-10 flex items-center gap-[12px] border-b border-slate-200 bg-white px-[24px] py-[12px]">
         <Link
           href={`/workspaces/${workspaceId}/export`}
-          className="text-xs font-semibold text-slate-500 hover:text-slate-900"
+          className="text-[12px] font-semibold text-slate-500 hover:text-slate-900"
         >
           ← Back to picker
         </Link>
         <div className="flex-1" />
+        <div className="flex items-center gap-[8px]">
+          <span className="text-[12px] font-semibold text-slate-500">Spacing</span>
+          <div className="flex overflow-hidden rounded-[8px] border border-slate-300">
+            {DENSITY_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setDensity(option.id)}
+                aria-pressed={density === option.id}
+                className={`border-slate-300 px-[10px] py-[7px] text-[12px] font-semibold not-first:border-l ${
+                  density === option.id
+                    ? "bg-slate-900 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <a
           href={pptxHref}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className="rounded-[8px] border border-slate-300 bg-white px-[16px] py-[8px] text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
         >
           Download PPTX
         </a>
         <button
           type="button"
           onClick={() => window.print()}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          className="rounded-[8px] bg-slate-900 px-[16px] py-[8px] text-[13px] font-semibold text-white hover:bg-slate-800"
         >
           Print / Save as PDF
         </button>
@@ -756,7 +812,13 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
               {process.kpis.length > 0 && (
                 <>
                   <SubHeading>Operational KPIs &amp; SLAs</SubHeading>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                  {/* A KPI table is a handful of rows, so it moves to the next
+                      page whole rather than splitting — the split left one
+                      metric stranded under a repeated header on an otherwise
+                      blank page, and a torn-off box edge at the bottom of the
+                      page it came from. A table taller than a page still has
+                      to fragment; the tr rule keeps that from cutting a row. */}
+                  <div className="break-inside-avoid overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                         <tr>
