@@ -473,13 +473,6 @@ function ClosingPage() {
   );
 }
 
-/** Splits a list into fixed-size groups, so a wide grid can be laid out as rows that page-break between each other. */
-function chunk<T>(items: T[], size: number): T[][] {
-  const rows: T[][] = [];
-  for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
-  return rows;
-}
-
 function SectionHeading({ num, title }: { num: string; title: string }) {
   return (
     <h3 className="mt-8 mb-2 flex items-baseline gap-2 border-b border-slate-200 pb-2 text-lg font-bold text-slate-900">
@@ -626,14 +619,18 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
               {documentedSteps.map((step) => {
                 const row = process.combinedRows.find((r) => r.rowId === step.id);
                 return (
-                  <div key={step.id} className="mt-3 break-inside-avoid rounded-xl border border-slate-200 p-4">
+                  // A rule between entries rather than a card around each one:
+                  // the box's border and its four sides of padding cost real
+                  // vertical space on every step, and a long process pays that
+                  // cost once per step.
+                  <div key={step.id} className="mt-2.5 break-inside-avoid border-t border-slate-200 pt-2">
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="font-semibold text-slate-900">{step.label}</span>
                       <span className="text-xs text-slate-500">
                         Step Owner: {row ? stepOwnerLabel(row) : (step.assignedRole?.name ?? "—")}
                       </span>
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-4">
+                    <div className="mt-1 grid grid-cols-2 gap-4">
                       {step.detailedAction.length > 0 && (
                         <div>
                           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
@@ -839,49 +836,44 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
 
       <SectionHeading num="0.1" title="The chain, end to end" />
 
-      {/* One grid per row of four phases rather than a single grid holding
-          them all. A CSS grid doesn't fragment across printed pages in
-          Chrome — the whole thing jumps to the next page when it doesn't
-          fit, which on a real chain left most of a page blank under this
-          heading. A row is small enough to place, and rows break between
-          each other. Each column is its own break-inside-avoid unit too —
-          without it, only the column's last item (not the whole column)
-          would spill onto the next page, stranding one line under a mostly
-          blank heading while everything else already fit above it. A column
-          taller than a full page still has to fragment somewhere; the
-          per-activity break-inside-avoid on each <li> is what keeps that
-          fallback from cutting an entry in half. */}
-      {/* Three per row, fixed rather than responsive: an A4 landscape page is
-          narrower than the lg breakpoint, so a responsive fourth column
-          existed on screen and never in the PDF — and a row that wraps
-          differently in print is exactly how a phase ended up stranded on a
-          line of its own. */}
-      {chunk(columns, 3).map((row, rowIndex) => (
-        <div key={rowIndex} className="mb-5 grid grid-cols-3 gap-x-5 gap-y-5">
-          {row.map((column) => (
-            <div key={column.title} className="break-inside-avoid">
-              <h3
-                className="border-b-2 pb-1 text-[10px] font-bold uppercase tracking-wide"
-                style={{ borderColor: column.color ?? "#cbd5e1", color: column.color ?? "#475569" }}
-              >
-                {column.title}
-              </h3>
-              <ul className="print-stack mt-2 flex flex-col gap-2">
-                {column.activities.map((activity) => (
-                  <li key={activity.stepId} className="break-inside-avoid text-xs leading-tight">
-                    <span className="font-semibold text-slate-900">{activity.label}</span>
-                    <span className="mt-0.5 block text-[11px] text-slate-500">
-                      {activity.ownerName ?? "No owner yet"}
-                      {activity.supportNames.length > 0 && ` · support ${activity.supportNames.join(", ")}`}
-                      {activity.linksTo.length > 0 && ` → ${activity.linksTo.join(", ")}`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      ))}
+      {/* Newspaper columns rather than a grid of fixed rows. A grid sizes every
+          row to its tallest phase, so a five-activity phase beside a
+          one-activity phase left four activities' worth of blank paper in that
+          row — on a real chain that padding alone pushed the page count past
+          one. Multi-column flow packs each phase directly under the previous
+          one in the same column and moves on to the next column when it runs
+          out of room, which is what keeps the whole chain on a single page.
+          Four columns, fixed rather than responsive: an A4 landscape page is
+          narrower than the lg breakpoint, so a responsive count existed on
+          screen and never in the PDF. break-inside-avoid keeps a phase's title
+          with its own list rather than splitting it across two columns; a
+          phase taller than the page still has to break somewhere, and the
+          per-activity break-inside-avoid is what stops that from cutting an
+          entry in half. */}
+      <div className="columns-4 gap-x-5">
+        {columns.map((column) => (
+          <div key={column.title} className="mb-3 break-inside-avoid">
+            <h3
+              className="border-b-2 pb-1 text-[10px] font-bold uppercase tracking-wide"
+              style={{ borderColor: column.color ?? "#cbd5e1", color: column.color ?? "#475569" }}
+            >
+              {column.title}
+            </h3>
+            <ul className="print-stack mt-1.5 flex flex-col gap-1.5">
+              {column.activities.map((activity) => (
+                <li key={activity.stepId} className="break-inside-avoid text-xs leading-tight">
+                  <span className="font-semibold text-slate-900">{activity.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500">
+                    {activity.ownerName ?? "No owner yet"}
+                    {activity.supportNames.length > 0 && ` · support ${activity.supportNames.join(", ")}`}
+                    {activity.linksTo.length > 0 && ` → ${activity.linksTo.join(", ")}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
 
       <p className="mt-6 text-xs text-slate-500">
         Each activity is documented in full in the process sections that follow.
