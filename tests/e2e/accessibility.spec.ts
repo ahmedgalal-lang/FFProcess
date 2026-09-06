@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { signIn } from "./sign-in";
 
 // Automated a11y scan (tasks.md T058) across the three primary data surfaces:
 // the Process Map canvas, the RACI grid, and the Authority Matrix. Runs axe-core's
@@ -7,9 +8,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 test.describe("Accessibility", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.click('button[type="submit"]'); // seeded Firm Owner credentials are pre-filled
-    await page.waitForURL("**/workspaces");
+    await signIn(page);
   });
 
   test("Process Map (Diagram view) has no automatically detectable violations", async ({ page }) => {

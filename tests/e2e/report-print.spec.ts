@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 /**
  * Print/PDF-specific defects reported live: the Org Chart's live zoom
@@ -9,9 +10,7 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("Export Report print layout", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.click('button[type="submit"]');
-    await page.waitForURL("**/workspaces");
+    await signIn(page);
   });
 
   test("Org Chart in the report has no live zoom controls or export button baked in", async ({ page }) => {

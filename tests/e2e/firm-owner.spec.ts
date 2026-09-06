@@ -1,14 +1,11 @@
 import { test, expect } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 // NOTE: runs against the same dev database seeded by `pnpm db:seed` (see
 // prisma/seed.ts), same pragmatic choice as core-workflows.spec.ts.
 
 async function loginAs(page: import("@playwright/test").Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.fill("#email", email);
-  await page.fill("#password", password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("**/workspaces");
+  await signIn(page, { email, password });
 }
 
 test.describe("Firm Owner management", () => {

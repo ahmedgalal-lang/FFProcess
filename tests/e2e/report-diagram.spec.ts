@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { Client } from "pg";
 import { test, expect } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 const PROCESS_ID = "report-wide-diagram-1";
 const STEP_COUNT = 17;
@@ -111,9 +112,7 @@ test.afterAll(async () => {
 });
 
 test("Export Report's static diagram fits a wide process instead of clipping it", async ({ page }) => {
-  await page.goto("/login");
-  await page.click('button[type="submit"]');
-  await page.waitForURL("**/workspaces");
+  await signIn(page);
 
   await page.goto("/workspaces/workspace-acme/export");
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
@@ -154,9 +153,7 @@ test("Export Report's static diagram fits a wide process instead of clipping it"
 });
 
 test("Export Report's static diagram draws an Unassigned lane for steps with no owner", async ({ page }) => {
-  await page.goto("/login");
-  await page.click('button[type="submit"]');
-  await page.waitForURL("**/workspaces");
+  await signIn(page);
 
   await page.goto("/workspaces/workspace-acme/export");
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
@@ -185,9 +182,7 @@ test("Export Report's static diagram draws an Unassigned lane for steps with no 
 });
 
 test("Export Report's static diagram shows the same documented-card content as the live canvas", async ({ page }) => {
-  await page.goto("/login");
-  await page.click('button[type="submit"]');
-  await page.waitForURL("**/workspaces");
+  await signIn(page);
 
   await page.goto("/workspaces/workspace-acme/export");
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');

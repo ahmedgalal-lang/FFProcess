@@ -2,6 +2,7 @@ import path from "node:path";
 import "dotenv/config";
 import { Client } from "pg";
 import { test, expect } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 const FIXTURE = path.join(process.cwd(), "tests/fixtures/value-chain-sample.xlsx");
 const SEEDED_ROLES = ["AP Clerk", "Finance Manager", "Procurement Lead"];
@@ -30,9 +31,7 @@ test("Value Chain: import a spreadsheet, then read, filter and re-phase the boar
   // A board with a column per phase needs room: at the default width the later
   // columns sit off-screen, where a pointer can't reach them to drop a card.
   await page.setViewportSize({ width: 1500, height: 1000 });
-  await page.goto("/login");
-  await page.click('button[type="submit"]');
-  await page.waitForURL("**/workspaces");
+  await signIn(page);
   await page.goto("/workspaces/workspace-acme/value-chain");
   await expect(page.locator("h1")).toHaveText("Value Chain");
 

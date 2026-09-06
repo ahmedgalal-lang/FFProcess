@@ -1,13 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 // NOTE: runs against the same dev database seeded by `pnpm db:seed` (see
 // prisma/seed.ts), same pragmatic choice as core-workflows.spec.ts.
 
 test.describe("Export", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.click('button[type="submit"]'); // seeded Firm Owner credentials are pre-filled
-    await page.waitForURL("**/workspaces");
+    await signIn(page);
   });
 
   test("RACI PDF and Excel downloads return well-formed files", async ({ page }) => {

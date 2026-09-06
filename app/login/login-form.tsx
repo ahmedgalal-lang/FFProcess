@@ -21,7 +21,6 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           type="email"
           required
           autoComplete="email"
-          defaultValue="ahmed.galal@forefront.consulting"
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
       </div>
@@ -35,7 +34,6 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           type="password"
           required
           autoComplete="current-password"
-          defaultValue="password123"
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
       </div>
@@ -49,10 +47,6 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>
-      <p className="text-xs text-slate-500">
-        Seeded accounts: ahmed.galal@forefront.consulting (Firm Owner) or
-        sam.osei@acme-example.com (Editor) — password123 for both.
-      </p>
     </form>
   );
 }
