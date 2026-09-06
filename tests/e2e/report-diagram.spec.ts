@@ -210,3 +210,104 @@ test("Export Report's static diagram shows the same documented-card content as t
   const decision = diagram.locator(".react-flow__node").filter({ hasText: "Approve PO?" });
   await expect(decision.getByText(/At or above \$100,000/)).toBeVisible();
 });
+
+/**
+ * A wide chain of rails for the report's Helicopter View: one long process
+ * with two others branching off it, which is what pushes buildMilestoneRails'
+ * fixed-pixel layout past the width of an A4 page.
+ */
+const RAILS_MAIN_ID = "report-rails-main-1";
+const RAILS_BRANCH_ID = "report-rails-branch-1";
+const RAILS_MAIN_STEPS = 18;
+
+test.beforeAll(async () => {
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  try {
+    for (const id of [RAILS_BRANCH_ID, RAILS_MAIN_ID]) {
+      await client.query(`DELETE FROM processes WHERE id = $1`, [id]);
+    }
+    const role = await client.query(
+      `SELECT id FROM roles WHERE "workspaceId" = 'workspace-acme' ORDER BY name LIMIT 1`
+    );
+    const roleId = role.rows[0].id;
+
+    await client.query(
+      `INSERT INTO processes (id, "workspaceId", code, name, "createdAt", "updatedAt")
+       VALUES ($1, 'workspace-acme', 'RAIL100', 'Wide Rail Chain', now(), now())`,
+      [RAILS_MAIN_ID]
+    );
+    for (let i = 0; i < RAILS_MAIN_STEPS; i++) {
+      await client.query(
+        `INSERT INTO process_steps
+           (id, "processId", type, label, "assignedRoleId", "swimlaneRoleId", "positionX", "positionY", "order", "createdAt", milestone)
+         VALUES ($1, $2, 'TASK', $3, $4, $4, $5, 105, $6, now(), true)`,
+        [`${RAILS_MAIN_ID}-s${i}`, RAILS_MAIN_ID, `Rail step ${i + 1}`, roleId, 210 + i * 262, i]
+      );
+    }
+
+    // Branching off the last step pushes the second rail out to the far right,
+    // which is what makes the drawing wider than the page.
+    await client.query(
+      `INSERT INTO processes (id, "workspaceId", code, name, "createdAt", "updatedAt", "branchFromStepId")
+       VALUES ($1, 'workspace-acme', 'RAIL101', 'Rail Branch', now(), now(), $2)`,
+      [RAILS_BRANCH_ID, `${RAILS_MAIN_ID}-s${RAILS_MAIN_STEPS - 1}`]
+    );
+    for (let i = 0; i < 4; i++) {
+      await client.query(
+        `INSERT INTO process_steps
+           (id, "processId", type, label, "assignedRoleId", "swimlaneRoleId", "positionX", "positionY", "order", "createdAt", milestone)
+         VALUES ($1, $2, 'TASK', $3, $4, $4, $5, 105, $6, now(), true)`,
+        [`${RAILS_BRANCH_ID}-s${i}`, RAILS_BRANCH_ID, `Branch step ${i + 1}`, roleId, 210 + i * 262, i]
+      );
+    }
+  } finally {
+    await client.end();
+  }
+});
+
+test.afterAll(async () => {
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  try {
+    for (const id of [RAILS_BRANCH_ID, RAILS_MAIN_ID]) {
+      await client.query(`DELETE FROM processes WHERE id = $1`, [id]);
+    }
+  } finally {
+    await client.end();
+  }
+});
+
+test("Export Report's Helicopter View scales a wide chain to fit instead of scrolling it", async ({ page }) => {
+  await signIn(page);
+
+  await page.goto("/workspaces/workspace-acme/export");
+  const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
+  const count = await checkboxes.count();
+  for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
+  await page.getByLabel(/RAIL100/).check();
+  await page.getByLabel(/RAIL101/).check();
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+
+  const railsSection = page.locator("main > section").filter({ hasText: "Helicopter View" });
+  const railsBox = railsSection.locator(".break-inside-avoid").first();
+  await expect(railsBox).toBeVisible();
+
+  // The failure mode: the rails were drawn at their own fixed pixel width
+  // inside an overflow-x-auto box, so on paper everything past the page edge
+  // was simply gone — and the scrollbar that would have reached it is dead
+  // furniture in a PDF. Nothing may extend past the box it's drawn in.
+  const fit = await railsBox.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth + 1);
+
+  // Both rails are actually rendered, including the branch pushed furthest
+  // right — the part a clipped drawing lost first.
+  await expect(railsBox.getByText("Wide Rail Chain")).toBeVisible();
+  await expect(railsBox.getByText("Rail Branch")).toBeVisible();
+  await expect(railsBox.getByText(`Rail step ${RAILS_MAIN_STEPS}`)).toBeVisible();
+  await expect(railsBox.getByText("Branch step 4")).toBeVisible();
+});

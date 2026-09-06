@@ -4,6 +4,19 @@ const TRACK_Y = 34;
 const BEAD_SIZE = 13;
 
 /**
+ * The printable width of a report page in CSS pixels: an A4 landscape sheet
+ * (297mm) less the 14mm margin on each side, which the printed page gets from
+ * `@page` and the on-screen preview gets from .report-paper's padding — so the
+ * same number holds for both. buildMilestoneRails lays the rails out in fixed
+ * pixels with no idea of the page, and a real chain is wider than this, so
+ * this is what they have to be fitted into.
+ */
+const PAGE_CONTENT_WIDTH_PX = (297 - 14 * 2) * (96 / 25.4);
+
+/** The 1px border on each side of the framed box the rails are drawn inside. */
+const BOX_BORDER_PX = 2;
+
+/**
  * A read-only rendering of the Milestone Rails for the Export Report — same
  * geometry as the interactive MilestoneRailsView, but with no PNG-export
  * button and no navigation link on a process's name, so it's safe to embed in
@@ -12,6 +25,14 @@ const BEAD_SIZE = 13;
 export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }) {
   const layout = buildMilestoneRails(processes);
 
+  // px-6 / py-5 on the drawing itself, counted here so the box the rails are
+  // fitted into is the one actually drawn rather than the bare layout size.
+  const boxWidth = layout.width + 48;
+  const boxHeight = layout.height + 40;
+  // Only ever shrinks: a chain narrower than the page is left at its own size
+  // rather than stretched up to fill the width.
+  const scale = Math.min(1, (PAGE_CONTENT_WIDTH_PX - BOX_BORDER_PX) / boxWidth);
+
   return (
     <div>
       <p className="mb-2 text-xs text-slate-500">
@@ -19,20 +40,35 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
           ? `${layout.milestoneCount} milestone${layout.milestoneCount === 1 ? "" : "s"} marked · steps another process depends on are always shown`
           : "No milestones marked yet."}
       </p>
-      <div className="break-inside-avoid overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <div className="relative bg-white px-6 py-5" style={{ width: layout.width + 48, minHeight: layout.height + 40 }}>
-          {layout.drops.map((drop) => (
-            <div
-              key={drop.id}
-              aria-hidden="true"
-              className="pointer-events-none absolute w-0 border-l-[1.5px] border-dashed border-amber-400"
-              style={{ left: drop.x, top: drop.fromY + TRACK_Y, height: drop.toY - drop.fromY }}
-            />
-          ))}
+      {/* Scaled to fit the page rather than scrolled. This is a printed sheet:
+          a horizontal scrollbar is dead furniture in a PDF, and everything
+          past the container's edge was simply gone from the page — the rails
+          are laid out in fixed pixels, and a real chain is wider than A4. Same
+          answer the report's process diagram already gives with fitView. */}
+      <div className="break-inside-avoid overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div style={{ width: boxWidth * scale, height: boxHeight * scale }}>
+          <div
+            className="relative bg-white px-6 py-5"
+            style={{
+              width: boxWidth,
+              minHeight: boxHeight,
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+            }}
+          >
+            {layout.drops.map((drop) => (
+              <div
+                key={drop.id}
+                aria-hidden="true"
+                className="pointer-events-none absolute w-0 border-l-[1.5px] border-dashed border-amber-400"
+                style={{ left: drop.x, top: drop.fromY + TRACK_Y, height: drop.toY - drop.fromY }}
+              />
+            ))}
 
-          {layout.rails.map((rail) => (
-            <StaticRailRow key={rail.processId} rail={rail} />
-          ))}
+            {layout.rails.map((rail) => (
+              <StaticRailRow key={rail.processId} rail={rail} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
