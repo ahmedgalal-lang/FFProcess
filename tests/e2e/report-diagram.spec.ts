@@ -118,7 +118,7 @@ test("Export Report's static diagram fits a wide process instead of clipping it"
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
-  await page.getByLabel(/WIDE100/).check();
+  await page.getByRole("checkbox", { name: /WIDE100/ }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
@@ -159,7 +159,7 @@ test("Export Report's static diagram draws an Unassigned lane for steps with no 
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
-  await page.getByLabel(/NOLANE1/).check();
+  await page.getByRole("checkbox", { name: /NOLANE1/ }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
@@ -188,7 +188,7 @@ test("Export Report's static diagram shows the same documented-card content as t
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
-  await page.getByLabel(/PUR101/).check();
+  await page.getByRole("checkbox", { name: /PUR101/ }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
@@ -285,8 +285,8 @@ test("Export Report's Helicopter View scales a wide chain to fit instead of scro
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
-  await page.getByLabel(/RAIL100/).check();
-  await page.getByLabel(/RAIL101/).check();
+  await page.getByRole("checkbox", { name: /RAIL100/ }).check();
+  await page.getByRole("checkbox", { name: /RAIL101/ }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 

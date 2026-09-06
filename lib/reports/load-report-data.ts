@@ -10,6 +10,7 @@ import {
   involvedRoleIds,
   deriveRoleDuties,
 } from "@/lib/domain/process-report";
+import { applyPackOrder } from "@/lib/domain/process-order";
 import { valueChainSummary, type ActivityCard, type PhaseRef } from "@/lib/domain/value-chain";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ExportProcessData, ValueChainColumn } from "@/app/reports/[workspaceId]/export-preview";
@@ -171,8 +172,19 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
   const personNameById = new Map(people.map((p) => [p.id, p.name]));
 
+  // The order the pack was assembled in, which the report link carries as the
+  // sequence of its `ids`. The query above can't preserve it — a SQL `IN`
+  // doesn't order by its arguments, and the `orderBy` overrides it regardless
+  // — so it's re-applied here, once, for both the report and the PPTX: they
+  // read this array in order, so neither can drift from the other.
+  //
+  // A no-op for a pack nobody rearranged: the export picker renders in code
+  // order, so it submits in code order, so this sorts to the code order the
+  // query already returned.
+  const orderedProcesses = applyPackOrder(processes, processIds);
+
   const processData: ExportProcessData[] = await Promise.all(
-    processes.map(async (process) => {
+    orderedProcesses.map(async (process) => {
       const [steps, connections, activities, authorityAssignments] = await Promise.all([
         prisma.processStep.findMany({
           where: { processId: process.id },
