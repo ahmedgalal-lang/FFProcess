@@ -31,11 +31,10 @@
 
 ## Notes
 
-- One open question is recorded in the spec's **Open Question** section rather than as an
-  inline `[NEEDS CLARIFICATION]` marker: whether reordering from the export side edits the
-  single workspace order (assumed) or introduces a per-pack order. The spec is complete and
-  buildable under the stated assumption; the answer changes the scope of User Story 3 only,
-  and Stories 1 and 2 are unaffected either way.
+- The spec's one open question is now answered and folded in (see **Resolved Questions**):
+  reordering on the export side arranges that pack only and leaves the workspace order
+  untouched. Story 3, FR-010, FR-014 to FR-016, two success criteria and three edge cases were
+  rewritten accordingly; Stories 1 and 2 were unaffected, as anticipated.
 - Wording check against the constitution: FR-011 covers Principle IV (keyboard operation, no
   meaning by colour/position alone) and FR-012 covers Principle V (workspace isolation and
   server-side authorization), so both are testable requirements rather than assumed.

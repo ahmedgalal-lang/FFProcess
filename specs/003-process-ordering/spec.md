@@ -75,25 +75,36 @@ index, the per-process sections, and the slides all follow the same order.
 
 ---
 
-### User Story 3 - Arrange from the export side (Priority: P3)
+### User Story 3 - Order one pack without disturbing the library (Priority: P3)
 
-While assembling a pack the consultant realises the order is wrong for this particular
-audience. Rather than leaving the picker, fixing the library, and coming back, they rearrange
-directly on the export/preview side and continue.
+The consultant is assembling a pack for a particular audience — a board that wants execution
+first, say — and for this pack only the order should differ from the library's. They arrange
+the selected processes on the export side and generate the report. The pack comes out in that
+order; the workspace's own order is untouched, so the next pack, and everyone else's view of
+the library, is unaffected. Sending someone the report link gives them the pack in the same
+order it was arranged in.
 
-**Why this priority**: A convenience on top of P1 and P2 — the same outcome is reachable by
-going back to the Processes page. Worth having because reordering is most often noticed at
-the moment of assembling a pack, not while browsing the library.
+**Why this priority**: A convenience on top of P1 and P2 — a pack in library order is already
+useful, and the same result can be had by reordering the library. Worth having because the
+right order for one audience is often not the right order for the library, and reordering is
+most often noticed at the moment of assembling a pack.
 
-**Independent Test**: From the export picker, reorder two processes, generate the report, and
-confirm the report follows the new order.
+**Independent Test**: From the export side, reorder two selected processes, generate the
+report, confirm it follows the new order, then open the Processes page and confirm the library
+order is unchanged.
 
 **Acceptance Scenarios**:
 
-1. **Given** the export picker, **When** the consultant moves a process up or down, **Then**
-   the picker list reflects the new order immediately.
-2. **Given** a reorder made on the export side, **When** the consultant later opens the
-   Processes page, **Then** the order shown there is consistent with what the export produced.
+1. **Given** a selection on the export side, **When** the consultant moves a process up or
+   down, **Then** the list reflects the new order immediately.
+2. **Given** a pack arranged differently from the library, **When** the report is generated,
+   **Then** the report follows the pack's order.
+3. **Given** a pack arranged differently from the library, **When** the consultant afterwards
+   opens the Processes page, **Then** the library order is exactly as it was before.
+4. **Given** a generated report arranged for one audience, **When** its link is opened again by
+   anyone with access, **Then** the report is still in the order it was arranged in.
+5. **Given** a pack arranged for one audience, **When** the consultant starts a new pack,
+   **Then** it begins in library order rather than inheriting the previous pack's arrangement.
 
 ---
 
@@ -114,7 +125,14 @@ confirm the report follows the new order.
 - **Moving a parent across another parent that has its own sub-processes**: both families must
   stay intact, with no interleaving of one parent's children under another.
 - **A viewer without edit rights**: they must see the arranged order but must not be offered
-  controls that change it, and must not be able to change it by other means.
+  controls that change the library's order, and must not be able to change it by other means.
+  Arranging a pack they are assembling changes nothing stored, so it need not be restricted the
+  same way.
+- **A pack naming a process that has since been deleted or moved to another workspace**: the
+  report must render the processes that remain, in the arranged order, rather than failing.
+- **A pack whose carried order names only some of its processes** (a hand-edited or truncated
+  link): the named ones must keep their given order and the rest must fall in behind them
+  deterministically, rather than the report refusing to render.
 
 ## Requirements *(mandatory)*
 
@@ -138,8 +156,14 @@ confirm the report follows the new order.
   and the sequence of its per-process sections.
 - **FR-009**: The PowerPoint export MUST follow the same order as the report, from the same
   source, so the two cannot drift apart.
-- **FR-010**: Users with edit rights MUST be able to reorder from the export/preview side, and
-  the result MUST be consistent with what the Processes page shows.
+- **FR-010**: Users MUST be able to reorder the processes selected for one pack from the export
+  side, and that arrangement MUST apply to that pack alone.
+- **FR-014**: A pack's own arrangement MUST NOT change the workspace's stored order, nor what
+  any other pack or user sees.
+- **FR-015**: A pack MUST start in the workspace's arranged order, so a consultant who does not
+  rearrange gets the library order without doing anything.
+- **FR-016**: A pack's arrangement MUST travel with the report it produced, so re-opening or
+  sharing that report reproduces the same order rather than falling back to library order.
 - **FR-011**: Reordering MUST be operable by keyboard alone and MUST NOT rely on pointer
   dragging as the only means, nor on colour or position alone to convey what moved.
 - **FR-012**: The system MUST reject a reorder request for a process outside the requesting
@@ -159,9 +183,11 @@ confirm the report follows the new order.
 
 - **SC-001**: A consultant can put a workspace's processes into a chosen order using only the
   keyboard, without renaming or re-coding any process.
-- **SC-002**: An order set once is the order seen on the Processes page, the export picker, the
-  generated report, and the PowerPoint export — four surfaces, one order, with no manual step
-  in between.
+- **SC-002**: An order set once on the Processes page is the order seen on the export picker,
+  the generated report, and the PowerPoint export, with no manual step in between — a pack the
+  consultant does not rearrange comes out in library order.
+- **SC-006**: A pack arranged for one audience can be produced without changing the library or
+  any other pack, and re-opening that report's link reproduces its order exactly.
 - **SC-003**: Reloading a workspace whose data has not changed produces exactly the same order
   every time, including for workspaces that have never been arranged.
 - **SC-004**: A sub-process is never separated from its parent by any sequence of move
@@ -181,20 +207,28 @@ confirm the report follows the new order.
 - **Two levels of nesting only.** The Processes page already renders a two-level tree
   (top-level processes, each followed by its sub-processes); ordering follows the same shape
   rather than introducing arbitrary depth.
-- **The order is a property of the workspace, not of a pack.** See the open question below —
-  this assumption is what Story 3 rests on and would change if the answer is per-pack ordering.
+- **Two orders, with the library as the default.** The workspace has one stored order (Story
+  1). A pack may override it for itself (Story 3) without writing back. Confirmed by the user
+  in preference to a single shared order, so that different audiences can get different
+  sequences of the same processes.
+- **A pack's order rides with the report rather than being stored.** The report is already
+  addressed by a link naming the processes it covers, so the pack's order can live in that link
+  — which is what makes an arranged report shareable and re-openable without inventing a stored
+  "pack" the user then has to manage, name, or clean up (Principle VI).
+- **Arranged where the pack is assembled.** The reordering controls belong with the selection
+  step, and the preview then renders whatever order the link carries. Reordering from inside the
+  preview itself is not assumed; if that is wanted, it is a small addition on top rather than a
+  different design.
 - **Existing workspaces start in their current order.** Processes that have never been arranged
   keep the code-ascending order they have today, so nothing appears to move on first deploy.
 - **Reuses the existing ordering pattern.** Position, reorder operations, and permission checks
   follow the shape already established for steps and phases rather than inventing a second one
   (Principle II).
 
-## Open Question
+## Resolved Questions
 
-- **Q1 — Is the export order the workspace order, or a per-pack order?**
-  Story 3 assumes rearranging on the export side edits the one workspace order, so the change
-  is visible everywhere afterwards. The alternative is a per-pack order that applies to just
-  the report being assembled and leaves the library untouched — useful when different audiences
-  want different sequences, but it means an order that exists only for one export and has to
-  live somewhere. This decides whether Story 3 writes to the same place as Story 1 or
-  introduces a second, temporary notion of order.
+- **Q1 — Is the export order the workspace order, or a per-pack order?** *(answered: per-pack)*
+  Rearranging on the export side arranges that pack only and leaves the library untouched, so
+  different audiences can get different sequences of the same processes. The workspace order
+  remains the default a pack starts from. See FR-010 and FR-014 to FR-016, and the assumption
+  about a pack's order riding with its report link.
