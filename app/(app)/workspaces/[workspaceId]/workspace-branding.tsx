@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "./workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateWorkspaceBranding } from "@/lib/actions/organization";
@@ -25,6 +27,7 @@ export function WorkspaceBranding({
   accentColorSecondary: string | null;
   accentColorTertiary: string | null;
 }) {
+  const canEdit = useCanEdit();
   const [preview, setPreview] = useState<string | null>(logoDataUrl);
   const [accents, setAccents] = useState<Accents>({
     primary: accentColor ?? DEFAULT_PRIMARY,
@@ -34,6 +37,10 @@ export function WorkspaceBranding({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   function save(
     nextLogo: string | null,

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../../../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addProcessStep, addProcessStepsBulk } from "@/lib/actions/process";
@@ -29,6 +31,7 @@ export function AddStepForm({
   steps: StepOption[];
   otherProcesses: ProcessOption[];
 }) {
+  const canEdit = useCanEdit();
   const [label, setLabel] = useState("");
   const [type, setType] = useState<"TASK" | "DECISION" | "START" | "END">("TASK");
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
@@ -43,6 +46,10 @@ export function AddStepForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   return (
     <form
@@ -188,12 +195,17 @@ export function AddStepForm({
 }
 
 export function BulkAddStepsForm({ workspaceId, processId }: { workspaceId: string; processId: string }) {
+  const canEdit = useCanEdit();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [addedCount, setAddedCount] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   const lines = text
     .split("\n")

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProcessKpis } from "@/lib/actions/process";
@@ -22,6 +24,7 @@ export function ProcessKpisControls({
   kpis: Kpi[];
   controlPoints: ControlPoint[];
 }) {
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState(false);
   const [kpisInput, setKpisInput] = useState<Kpi[]>(kpis);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +116,7 @@ export function ProcessKpisControls({
 
       <div className="mt-4 flex items-center justify-between">
         <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Operational KPIs &amp; SLAs</div>
-        {!editing && (
+        {canEdit && !editing && (
           <button
             type="button"
             onClick={() => {

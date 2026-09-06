@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { generateProcessTemplateDraft, createProcessFromTemplate } from "@/lib/actions/process-template";
@@ -13,6 +15,7 @@ const STEP_TYPE_STYLES: Record<string, string> = {
 };
 
 export function GenerateTemplateForm({ workspaceId }: { workspaceId: string }) {
+  const canEdit = useCanEdit();
   const [open, setOpen] = useState(false);
   const [topic, setTopic] = useState("");
   const [draft, setDraft] = useState<ProcessTemplateResult | null>(null);
@@ -20,6 +23,10 @@ export function GenerateTemplateForm({ workspaceId }: { workspaceId: string }) {
   const [generating, startGenerating] = useTransition();
   const [creating, startCreating] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   function generate() {
     setError(null);

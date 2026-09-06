@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../workspace-access";
+
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -54,6 +56,7 @@ export function ValueChainBoard({
   const [search, setSearch] = useState("");
   const [ownerId, setOwnerId] = useState<string>("");
   const [addingTo, setAddingTo] = useState<string | null>(null);
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -220,11 +223,13 @@ export function ValueChainBoard({
                     phases={phases}
                     pending={pending}
                     isDragging={drag.stepId === card.stepId}
-                    draggable={groupBy === "phase"}
-                    onPointerDown={(e) => drag.onPointerDown(e, card.stepId)}
-                    onEdit={() => setEditing(card.stepId)}
+                    draggable={canEdit && groupBy === "phase"}
+                    onPointerDown={(e) => {
+                      if (canEdit) drag.onPointerDown(e, card.stepId);
+                    }}
+                    onEdit={canEdit ? () => setEditing(card.stepId) : null}
                     onPhaseChange={(phaseId) => moveToPhase(card.stepId, phaseId)}
-                    canMove={groupBy === "phase"}
+                    canMove={canEdit && groupBy === "phase"}
                     isFirst={index === 0}
                     isLast={index === column.cards.length - 1}
                     onMove={(direction) => moveWithinPhase(card.stepId, direction)}
@@ -577,7 +582,7 @@ function Card({
   isDragging: boolean;
   draggable: boolean;
   onPointerDown: (event: React.PointerEvent) => void;
-  onEdit: () => void;
+  onEdit: (() => void) | null;
   onPhaseChange: (phaseId: string | null) => void;
   canMove: boolean;
   isFirst: boolean;
@@ -624,14 +629,16 @@ function Card({
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`Edit ${card.label}`}
-            className="rounded px-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-          >
-            Edit
-          </button>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              aria-label={`Edit ${card.label}`}
+              className="rounded px-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            >
+              Edit
+            </button>
+          )}
         </div>
       </div>
       <h3 className="mt-0.5 text-[13px] font-semibold leading-tight text-slate-900">{card.label}</h3>

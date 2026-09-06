@@ -20,11 +20,13 @@ export function WorkspaceSidebar({
   workspaceName,
   logoDataUrl,
   isFirmOwnerAccess,
+  canEdit,
 }: {
   workspaceId: string;
   workspaceName: string;
   logoDataUrl: string | null;
   isFirmOwnerAccess: boolean;
+  canEdit: boolean;
 }) {
   const pathname = usePathname();
   // Plain component state — this sidebar doesn't remount when navigating between
@@ -56,6 +58,13 @@ export function WorkspaceSidebar({
             {isFirmOwnerAccess && (
               <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                 ★ Firm Owner access
+              </span>
+            )}
+            {/* Said once, here, rather than leaving a Viewer to infer it from
+                controls that simply aren't there. */}
+            {!canEdit && (
+              <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                View only
               </span>
             )}
           </div>

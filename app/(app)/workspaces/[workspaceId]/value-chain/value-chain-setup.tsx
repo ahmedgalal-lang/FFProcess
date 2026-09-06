@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../workspace-access";
+
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createPhase, importValueChain, type ImportPreview } from "@/lib/actions/value-chain";
@@ -17,7 +19,12 @@ export function ValueChainSetup({
   phases: PhaseRef[];
   processes: ProcessRef[];
 }) {
+  const canEdit = useCanEdit();
   const [open, setOpen] = useState<"phases" | "import" | null>(null);
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   return (
     <div className="mb-4">

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../../../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProcessScope } from "@/lib/actions/process";
@@ -21,6 +23,7 @@ export function ProcessDocumentation({
   outOfScope: string[];
   externalEntities: Entity[];
 }) {
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState(false);
   const [purposeInput, setPurposeInput] = useState(processPurpose ?? "");
   const [inScopeInput, setInScopeInput] = useState(inScope.join("\n"));
@@ -168,14 +171,16 @@ export function ProcessDocumentation({
     <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="text-sm font-semibold text-slate-800">Process Documentation</div>
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          aria-label="Edit process documentation"
-          className="flex-none rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Edit
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            aria-label="Edit process documentation"
+            className="flex-none rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Edit
+          </button>
+        )}
       </div>
       {!hasContent ? (
         <p className="mt-1.5 text-sm text-slate-500">

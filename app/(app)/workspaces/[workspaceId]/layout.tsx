@@ -1,7 +1,9 @@
 import { notFound as nextNotFound, redirect } from "next/navigation";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { prisma } from "@/lib/db/client";
+import { hasSufficientAccess } from "@/lib/domain/access-control";
 import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
+import { WorkspaceAccessProvider } from "./workspace-access";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
 const DEFAULT_ACCENT = "#334155"; // slate-700 — a workspace with no logo/accent set yet
@@ -21,6 +23,11 @@ export default async function WorkspaceLayout(
 
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) nextNotFound();
+
+  // Resolved once here, for every control on every page below. The server
+  // actions enforce this independently — this is what stops the interface
+  // offering a Viewer edits it will then refuse.
+  const canEdit = hasSufficientAccess(access.data.accessLevel, "EDITOR");
 
   const primary = workspace.accentColor ?? DEFAULT_ACCENT;
   const tertiary = workspace.accentColorTertiary ?? DEFAULT_ACCENT_TERTIARY;
@@ -47,6 +54,7 @@ export default async function WorkspaceLayout(
         workspaceName={workspace.name}
         logoDataUrl={workspace.logoDataUrl}
         isFirmOwnerAccess={access.data.accessVia === "OWNER_CARVEOUT"}
+        canEdit={canEdit}
       />
       <div className="relative min-w-0 flex-1">
         {workspace.logoDataUrl && (
@@ -63,7 +71,9 @@ export default async function WorkspaceLayout(
             className="pointer-events-none absolute left-5 top-8 hidden h-auto w-[min(240px,calc((100%-896px)/2-28px))] object-contain xl:block"
           />
         )}
-        {props.children}
+        <WorkspaceAccessProvider value={{ accessLevel: access.data.accessLevel, canEdit }}>
+          {props.children}
+        </WorkspaceAccessProvider>
       </div>
     </div>
   );

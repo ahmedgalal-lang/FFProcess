@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createProcess, cloneProcess, updateProcess, archiveProcess } from "@/lib/actions/process";
@@ -78,6 +80,7 @@ export function CreateProcessForm({
   processes: ProcessOption[];
   categories: CategoryOption[];
 }) {
+  const canEdit = useCanEdit();
   const [name, setName] = useState("");
   const [parentProcessId, setParentProcessId] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -91,6 +94,10 @@ export function CreateProcessForm({
   const [lastCreatedCode, setLastCreatedCode] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   function addCategory() {
     if (!newCategoryName.trim()) return;
@@ -259,12 +266,17 @@ export function CloneProcessButton({
   sourceParentProcessId: string | null;
   processes: ProcessOption[];
 }) {
+  const canEdit = useCanEdit();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(`${sourceName} (Copy)`);
   const [parentProcessId, setParentProcessId] = useState(sourceParentProcessId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   if (!open) {
     return (
@@ -385,6 +397,7 @@ export function EditProcessButton({
   processes: ProcessOption[];
   categories: CategoryOption[];
 }) {
+  const canEdit = useCanEdit();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(process.name);
   const [description, setDescription] = useState(process.description);
@@ -397,6 +410,10 @@ export function EditProcessButton({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   if (!open) {
     return (
@@ -539,9 +556,14 @@ export function EditProcessButton({
 }
 
 export function ArchiveProcessButton({ workspaceId, processId }: { workspaceId: string; processId: string }) {
+  const canEdit = useCanEdit();
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   if (confirming) {
     return (

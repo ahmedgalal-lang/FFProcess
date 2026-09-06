@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../../../workspace-access";
+
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -63,6 +65,7 @@ export function RaciTable({
   const [visibleRoles, setVisibleRoles] = useState(initialVisibleRoles);
   const [pending, startTransition] = useTransition();
   const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
+  const canEdit = useCanEdit();
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -445,7 +448,7 @@ export function RaciTable({
                   })}
                   <td className="px-3 py-2 text-center">
                     {row.kind === "step" ? (
-                      <button
+                      !canEdit ? null : <button
                         type="button"
                         onClick={() => toggleSkip(row)}
                         className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-700"
@@ -470,7 +473,7 @@ export function RaciTable({
                           No
                         </button>
                       </span>
-                    ) : editingRowId === row.id ? null : (
+                    ) : editingRowId === row.id || !canEdit ? null : (
                       <span className="inline-flex items-center gap-1">
                         <button
                           type="button"

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../../../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveAuthorityRow, skipAuthorityRow, unskipAuthorityRow, clearAuthorityRow } from "@/lib/actions/authority";
@@ -69,6 +71,7 @@ export function AuthorityTable({
   const [rows, setRows] = useState(initialRows);
   const [issues, setIssues] = useState(initialIssues);
   const [pending, startTransition] = useTransition();
+  const canEdit = useCanEdit();
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmingClearId, setConfirmingClearId] = useState<string | null>(null);
@@ -278,7 +281,7 @@ export function AuthorityTable({
                 No
               </button>
             </span>
-          ) : (
+          ) : !canEdit ? null : (
             <span className="inline-flex items-center gap-1">
               <button
                 type="button"
@@ -540,14 +543,18 @@ export function AuthorityTable({
                 <td className="px-3 py-2 text-center text-slate-600">—</td>
                 <td className="px-3 py-2 text-center text-slate-600">—</td>
                 <td className="px-3 py-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => toggleSkip(row)}
-                    disabled={pending}
-                    className="rounded-md px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-50"
-                  >
-                    Skipped ✕
-                  </button>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleSkip(row)}
+                      disabled={pending}
+                      className="rounded-md px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-50"
+                    >
+                      Skipped ✕
+                    </button>
+                  ) : (
+                    <span className="text-xs font-semibold text-amber-800">Skipped</span>
+                  )}
                 </td>
               </tr>
             ))}

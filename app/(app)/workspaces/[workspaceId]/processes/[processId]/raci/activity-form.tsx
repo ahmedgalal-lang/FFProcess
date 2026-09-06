@@ -1,14 +1,21 @@
 "use client";
 
+import { useCanEdit } from "../../../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createActivity } from "@/lib/actions/process";
 
 export function AddActivityForm({ workspaceId, processId }: { workspaceId: string; processId: string }) {
+  const canEdit = useCanEdit();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   return (
     <form

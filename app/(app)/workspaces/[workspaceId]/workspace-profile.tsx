@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "./workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateWorkspaceProfile } from "@/lib/actions/organization";
@@ -13,6 +15,7 @@ export function WorkspaceProfile({
   industry: string | null;
   description: string | null;
 }) {
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState(false);
   const [industryInput, setIndustryInput] = useState(industry ?? "");
   const [descriptionInput, setDescriptionInput] = useState(description ?? "");
@@ -102,13 +105,15 @@ export function WorkspaceProfile({
           {description || <span className="text-slate-500">No background notes yet.</span>}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="flex-none rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-      >
-        Edit
-      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="flex-none rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Edit
+        </button>
+      )}
     </div>
   );
 }

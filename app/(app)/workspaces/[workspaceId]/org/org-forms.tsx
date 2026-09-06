@@ -1,5 +1,7 @@
 "use client";
 
+import { useCanEdit } from "../workspace-access";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -16,10 +18,15 @@ type RoleOption = { id: string; name: string };
 type PersonOption = { id: string; name: string };
 
 export function AddRoleForm({ workspaceId }: { workspaceId: string }) {
+  const canEdit = useCanEdit();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   return (
     <form
@@ -61,6 +68,7 @@ export function AddRoleForm({ workspaceId }: { workspaceId: string }) {
 }
 
 export function RoleRow({ workspaceId, role }: { workspaceId: string; role: RoleOption }) {
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(role.name);
   const [error, setError] = useState<string | null>(null);
@@ -119,8 +127,10 @@ export function RoleRow({ workspaceId, role }: { workspaceId: string; role: Role
   return (
     <tr className="border-t border-slate-100">
       <td className="px-4 py-2 font-medium text-slate-900">{role.name}</td>
+      {/* The row itself is what a Viewer came to read, so it stays — only the
+          controls in this cell go, leaving the role and its name visible. */}
       <td className="px-4 py-2 text-right">
-        {confirmingDelete ? (
+        {!canEdit ? null : confirmingDelete ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-xs text-slate-500">Delete?</span>
             <button
@@ -172,6 +182,7 @@ export function AddPersonForm({
   roles: RoleOption[];
   people: PersonOption[];
 }) {
+  const canEdit = useCanEdit();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -179,6 +190,10 @@ export function AddPersonForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change something, so a Viewer is shown none
+  // of it rather than controls the server would refuse.
+  if (!canEdit) return null;
 
   return (
     <form
@@ -279,9 +294,17 @@ export function ManagerPicker({
   managerId: string | null;
   people: PersonOption[];
 }) {
+  const canEdit = useCanEdit();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // The manager is worth reading even when it can't be changed, so a Viewer
+  // gets the name rather than a disabled dropdown or a blank cell.
+  if (!canEdit) {
+    const manager = people.find((person) => person.id === managerId);
+    return <span className="text-slate-600">{manager ? manager.name : "—"}</span>;
+  }
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -337,6 +360,7 @@ export function PersonRow({
   allRoles: RoleOption[];
   people: PersonOption[];
 }) {
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(person.name);
   const [email, setEmail] = useState(person.email ?? "");
@@ -448,8 +472,9 @@ export function PersonRow({
           people={people}
         />
       </td>
+      {/* Same as RoleRow: the person and their details stay, the controls go. */}
       <td className="px-4 py-2 text-right">
-        {confirmingDelete ? (
+        {!canEdit ? null : confirmingDelete ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-xs text-slate-500">Delete?</span>
             <button
