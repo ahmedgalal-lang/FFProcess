@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { DIRECTION_LABELS, formatMoney, type AuthorityDirection } from "@/lib/domain/authority-table";
+import { gateLine, type AuthorityDirection } from "@/lib/domain/authority-table";
+import { DECISION_TEXT_INSET, NODE_HALF_SIZE } from "@/lib/domain/process-layout";
 
 // One handle per side, doing double duty as both a source and a target — the
 // canvas picks which id to wire an edge to based on the geometric relationship
@@ -109,23 +110,59 @@ export function TaskNode({ data }: NodeProps & { data: StepNodeData }) {
   );
 }
 
-/** A step's approval gate, in plain words — "At or above $10,000 · Yes / No". */
-function gateLine(threshold: number | null | undefined, direction: AuthorityDirection | undefined): string | null {
-  if (threshold == null) return null;
-  const label = DIRECTION_LABELS[direction ?? "GREATER_THAN"].label;
-  return `${label} ${formatMoney(threshold)} · Yes / No`;
-}
-
+/**
+ * A decision, drawn as a real flowchart diamond rather than a coloured box.
+ *
+ * The shape is the notation: a rhombus means "this is where the flow splits",
+ * which a rectangle does not, however it is coloured. Drawn as an inline SVG
+ * polygon rather than a rotated div so the label stays upright and laid out
+ * normally, and so the outline survives print — a CSS clip-path would cut the
+ * border off with the corners and leave the diamond edgeless on paper.
+ *
+ * DECISION_TEXT_INSET is why the box is bigger than the old one: the usable
+ * area inside a diamond is only about a quarter of its bounding box, so the
+ * same label needs roughly twice the box to sit in.
+ */
 export function DecisionNode({ data }: NodeProps & { data: StepNodeData }) {
   const gate = gateLine(data.threshold, data.direction);
+  const { x: hx, y: hy } = NODE_HALF_SIZE.decision;
+  const w = hx * 2;
+  const h = hy * 2;
+
   return (
-    <div className="relative flex min-h-[92px] w-[176px] flex-col justify-center gap-1 rounded-xl border-[1.5px] border-amber-400 bg-amber-50 px-3.5 py-3 shadow-sm">
+    <div className="relative" style={{ width: w, height: h }}>
       <Handles />
-      <div className="text-[14px] font-semibold leading-tight text-amber-900">{data.label}</div>
-      {data.roleName && (
-        <div className="text-[10px] font-bold uppercase tracking-wide text-amber-800">{data.roleName}</div>
-      )}
-      {gate && <div className="font-mono text-[9.5px] font-bold text-amber-700">{gate}</div>}
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        width={w}
+        height={h}
+        className="absolute inset-0 overflow-visible"
+        aria-hidden="true"
+      >
+        {/* vectorEffect for the same reason as the connector edges: React Flow
+            zooms the whole canvas out to fit a wide process, and a stroke that
+            scales with it thins to nothing at that zoom. */}
+        <polygon
+          points={`${w / 2},1 ${w - 1},${h / 2} ${w / 2},${h - 1} 1,${h / 2}`}
+          fill="#fffbeb"
+          stroke="#f59e0b"
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <div
+        className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center"
+        style={{ width: w * DECISION_TEXT_INSET, maxHeight: h * DECISION_TEXT_INSET }}
+      >
+        <div className="text-[13px] font-semibold leading-tight text-amber-900">{data.label}</div>
+        {data.roleName && (
+          <div className="text-[9px] font-bold uppercase leading-tight tracking-wide text-amber-800">
+            {data.roleName}
+          </div>
+        )}
+        {gate && <div className="font-mono text-[9px] font-bold leading-tight text-amber-700">{gate}</div>}
+      </div>
     </div>
   );
 }

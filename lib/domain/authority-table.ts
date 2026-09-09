@@ -147,6 +147,23 @@ export function formatMoney(value: number): string {
   return `$${value.toLocaleString()}`;
 }
 
+/**
+ * A decision step's approval gate, in plain words — "At or above $10,000".
+ *
+ * Shared by the live canvas, the print/PDF diagram and the PPTX so the three
+ * cannot drift. It deliberately stops at the threshold: the branching is
+ * already said twice over by the diamond the gate is drawn in and by the Yes
+ * and No labels on the connectors leaving it, and a third copy inside the
+ * shape only crowds out the number the reader is actually there for.
+ */
+export function gateLine(
+  threshold: number | null | undefined,
+  direction: AuthorityDirection | undefined
+): string | null {
+  if (threshold == null) return null;
+  return `${DIRECTION_LABELS[direction ?? "GREATER_THAN"].label} ${formatMoney(threshold)}`;
+}
+
 export function formatSla(days: number | null): string {
   if (days === null) return "—";
   return `${days} day${days === 1 ? "" : "s"}`;

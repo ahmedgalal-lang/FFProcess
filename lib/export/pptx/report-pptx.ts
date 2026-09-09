@@ -1,8 +1,8 @@
 import PptxGenJS from "pptxgenjs";
-import { assignSwimlanes, LANE_HEIGHT, LANE_TOP_OFFSET, NODE_HALF_SIZE, type LaneStep } from "@/lib/domain/process-layout";
+import { assignSwimlanes, DECISION_TEXT_INSET, LANE_HEIGHT, LANE_TOP_OFFSET, NODE_HALF_SIZE, type LaneStep } from "@/lib/domain/process-layout";
 import { layoutOrgChart, CHART_NODE_SPACING, CHART_LEVEL_HEIGHT, type ChartPerson } from "@/lib/domain/org-chart";
 import { readableInkOn } from "@/lib/domain/color-contrast";
-import { DIRECTION_LABELS, formatMoney } from "@/lib/domain/authority-table";
+import { gateLine } from "@/lib/domain/authority-table";
 import type { RaciCode } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ReportData } from "@/lib/reports/load-report-data";
@@ -641,20 +641,25 @@ function drawProcessDiagram(
     }
 
     if (kind === "decision") {
-      slide.addShape("roundRect", {
+      // A real rhombus, matching the live canvas and the PDF diagram — the
+      // shape is what says "the flow splits here", so the deck must not be the
+      // one surface that draws a decision as a box.
+      slide.addShape("diamond", {
         x: left, y: top, w, h,
-        fill: { color: "fef3c7" },
-        line: { color: "d97706", width: 1.25 },
-        rectRadius: 0.08,
+        fill: { color: "fffbeb" },
+        line: { color: "f59e0b", width: 1.25 },
       });
-      const gate = s.threshold == null ? null : `${DIRECTION_LABELS[s.direction ?? "GREATER_THAN"].label} ${formatMoney(s.threshold)} · Yes / No`;
+      const gate = gateLine(s.threshold, s.direction);
       const runs: { text: string; options?: PptxGenJS.TextPropsOptions }[] = [
         { text: `${s.label}\n`, options: { bold: true, fontSize: 7.5, color: "92400e", breakLine: true } },
       ];
       if (s.assignedRole?.name) runs.push({ text: `${s.assignedRole.name}\n`, options: { fontSize: 6, bold: true, color: "b45309", breakLine: true } });
       if (gate) runs.push({ text: gate, options: { fontSize: 6, bold: true, color: "b45309", fontFace: "Courier New" } });
       slide.addText(runs, {
-        x: left + 0.04, y: top, w: w - 0.08, h,
+        x: left + (w * (1 - DECISION_TEXT_INSET)) / 2,
+        y: top + (h * (1 - DECISION_TEXT_INSET)) / 2,
+        w: w * DECISION_TEXT_INSET,
+        h: h * DECISION_TEXT_INSET,
         valign: "middle", align: "center", shrinkText: true,
       });
       continue;

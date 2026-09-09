@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { signIn } from "./sign-in";
+import { processIdByCode } from "./seed-lookup";
 
 // Automated a11y scan (tasks.md T058) across the three primary data surfaces:
 // the Process Map canvas, the RACI grid, and the Authority Matrix. Runs axe-core's
@@ -54,7 +55,7 @@ test.describe("Accessibility", () => {
   });
 
   test("Authority matrix has no automatically detectable violations", async ({ page }) => {
-    await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
+    await page.goto(`/workspaces/workspace-acme/processes/${await processIdByCode("PUR101")}/authority`);
     await page.waitForSelector("text=Escalation");
 
     const results = await new AxeBuilder({ page }).include("main").analyze();
@@ -75,7 +76,7 @@ test.describe("Accessibility", () => {
   });
 
   test("Export Report preview has no automatically detectable violations", async ({ page }) => {
-    await page.goto("/reports/workspace-acme?ids=7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8");
+    await page.goto(`/reports/workspace-acme?ids=${await processIdByCode("PUR101")}`);
     await page.waitForSelector("text=Authority Matrix");
 
     const results = await new AxeBuilder({ page }).include("main").analyze();

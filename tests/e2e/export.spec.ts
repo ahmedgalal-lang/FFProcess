@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
+import { processIdByCode } from "./seed-lookup";
 
 // NOTE: runs against the same dev database seeded by `pnpm db:seed` (see
 // prisma/seed.ts), same pragmatic choice as core-workflows.spec.ts.
@@ -51,7 +52,7 @@ test.describe("Export", () => {
   });
 
   test("Authority PDF and Excel downloads return well-formed files", async ({ page }) => {
-    await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
+    await page.goto(`/workspaces/workspace-acme/processes/${await processIdByCode("PUR101")}/authority`);
     await page.waitForSelector("text=Escalation");
 
     const pdfHref = await page.locator('a:has-text("Export PDF")').first().getAttribute("href");

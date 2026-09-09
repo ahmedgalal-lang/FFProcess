@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Client } from "pg";
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
+import { expectDiamond } from "./shapes";
 
 const PROCESS_ID = "report-wide-diagram-1";
 const STEP_COUNT = 17;
@@ -209,6 +210,11 @@ test("Export Report's static diagram shows the same documented-card content as t
 
   const decision = diagram.locator(".react-flow__node").filter({ hasText: "Approve PO?" });
   await expect(decision.getByText(/At or above \$100,000/)).toBeVisible();
+
+  // The printed diagram draws the same notation as the live canvas — a
+  // decision is a diamond on paper too, not just on screen.
+  await expectDiamond(decision);
+  await expect(createPO.locator("svg polygon")).toHaveCount(0);
 });
 
 /**

@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
+import { expectDiamond } from "./shapes";
+import { processIdByCode } from "./seed-lookup";
 
 // NOTE: runs against the same dev database seeded by `pnpm db:seed` (see
 // prisma/seed.ts) rather than an isolated test database — a dedicated test DB
@@ -48,7 +50,17 @@ test.describe("Core workflows", () => {
     // direction are on the card, which used to only fit a short label.
     const decision = page.locator(".react-flow__node").filter({ hasText: "Approve PO?" });
     await expect(decision.getByText(/At or above \$100,000/)).toBeVisible();
-    await expect(decision.getByText(/Yes \/ No/)).toBeVisible();
+
+    // ...and it is drawn as a diamond. This is the assertion the earlier
+    // card redesign needed and did not have: every step became a rounded
+    // rectangle, the text assertions above all still passed, and the map
+    // silently lost the one piece of notation that says where the flow
+    // splits. Shape is meaning here, so it is checked as such.
+    await expectDiamond(decision);
+
+    // The counterpart that keeps the check honest — a task must NOT be a
+    // diamond, or "everything is a diamond" would pass too.
+    await expect(createPO.locator("svg polygon")).toHaveCount(0);
   });
 
   test("Process Map shows the seeded Purchase-to-Pay steps and cross-process links", async ({ page }) => {
@@ -193,7 +205,7 @@ test.describe("Core workflows", () => {
   test("Authority Matrix shows SLA, amount, direction, approval, co-approval and escalation per task", async ({
     page,
   }) => {
-    await page.goto("/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/authority");
+    await page.goto(`/workspaces/workspace-acme/processes/${await processIdByCode("PUR101")}/authority`);
     await expect(page.locator("h1")).toHaveText("Authority Matrix");
 
     // Columns read in the order a rule plays out.
@@ -303,7 +315,7 @@ test.describe("Core workflows", () => {
   });
 
   test("Process Map is where the report's per-step and process-level documentation is written", async ({ page }) => {
-    const mapUrl = "/workspaces/workspace-acme/processes/7a8eb0b6-cd1d-42ed-a3b1-9b5a0137a5e8/map";
+    const mapUrl = `/workspaces/workspace-acme/processes/${await processIdByCode("PUR101")}/map`;
     await page.goto(mapUrl);
 
     // Process-level documentation (Purpose, Scope, External Entities) lives here.

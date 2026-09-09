@@ -19,9 +19,24 @@ export const FIRST_STEP_X = 210;
  */
 export const NODE_HALF_SIZE: Record<"task" | "decision" | "terminal", { x: number; y: number }> = {
   task: { x: 107, y: 56 },
-  decision: { x: 88, y: 46 },
+  // Wider and taller than a task card despite carrying less text: a decision
+  // is drawn as a diamond, and only the middle of a diamond is writable — see
+  // DECISION_TEXT_INSET.
+  decision: { x: 115, y: 70 },
   terminal: { x: 63, y: 27 },
 };
+
+/**
+ * How much of a decision's bounding box its label may actually occupy, per
+ * side.
+ *
+ * A diamond with width W and height H has, at any point, a horizontal chord
+ * that narrows to nothing at the top and bottom vertices, so a centred box of
+ * W/2 x H/2 is exactly the largest rectangle whose corners still touch the
+ * edges. Text is laid out inside that box rather than the full node, which is
+ * why a decision's box has to be roughly twice the size of the text it holds.
+ */
+export const DECISION_TEXT_INSET = 0.5;
 
 /** Y-coordinate for a step's swimlane, given the workspace-wide lane order for this process. */
 export function laneY(roleId: string | null, laneOrder: string[]): number {
