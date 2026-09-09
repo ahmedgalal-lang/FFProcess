@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
 import { buildRaciTableRows, computeVisibleRoleIds } from "@/lib/domain/raci-table";
 import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
-import { RaciTable } from "./raci-table";
+import { RaciIntro, RaciTable } from "./raci-table";
 import { AddActivityForm } from "./activity-form";
 import { ProcessStepper } from "../process-stepper";
 
@@ -108,10 +108,7 @@ export default async function RaciMatrixPage(
         </div>
       </div>
       <h1 className="text-xl font-semibold text-slate-900">RACI Matrix</h1>
-      <p className="mt-1 mb-4 text-sm text-slate-500">
-        Every Process Map step is already a row — click a cell to cycle Responsible → Accountable → Consulted →
-        Informed → clear, or Skip a step that doesn&apos;t need RACI.
-      </p>
+      <RaciIntro />
 
       <ProcessStepper workspaceId={workspaceId} processId={processId} {...stepperCounts} />
 

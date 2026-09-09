@@ -42,6 +42,25 @@ const CELL_STYLE: Record<Code, string> = {
 
 type RoleT = { id: string; name: string };
 
+/**
+ * The page's one-line description of the matrix.
+ *
+ * Lives here, next to the table it describes, because it has to say different
+ * things to different readers and only a client component can ask: telling
+ * someone to "click a cell to cycle" when clicking does nothing is its own
+ * kind of broken, separate from the buttons being hidden.
+ */
+export function RaciIntro() {
+  const canEdit = useCanEdit();
+  return (
+    <p className="mt-1 mb-4 text-sm text-slate-500">
+      {canEdit
+        ? "Every Process Map step is already a row — click a cell to cycle Responsible → Accountable → Consulted → Informed → clear, or Skip a step that doesn't need RACI."
+        : "Every Process Map step is a row, and each cell shows that role's involvement: Responsible, Accountable, Consulted or Informed."}
+    </p>
+  );
+}
+
 export function RaciTable({
   workspaceId,
   processId,
@@ -235,7 +254,10 @@ export function RaciTable({
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {status === "DRAFT" ? (
+        {/* Finalising and reopening the matrix are Editor actions. The status
+            badge below stays either way — a Viewer still needs to know whether
+            what they are reading is a draft. */}
+        {!canEdit ? null : status === "DRAFT" ? (
           <button
             type="button"
             disabled={pending || issues.length > 0}
@@ -277,7 +299,7 @@ export function RaciTable({
         </span>
 
         <div className="ml-auto">
-          {addingTitle ? (
+          {!canEdit ? null : addingTitle ? (
             <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2">
               {hiddenRoles.length > 0 && (
                 <>
@@ -355,11 +377,20 @@ export function RaciTable({
       )}
 
       <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm" role="grid" aria-label="RACI assignments by task and role">
+        {/* An editable grid for an Editor, a plain data table for a Viewer.
+            role="grid" with roving-tabindex cells describes something you
+            operate; for someone who can only read it that is both a lie and
+            worse to navigate than the table semantics screen readers already
+            handle well. */}
+        <table
+          className="w-full text-sm"
+          role={canEdit ? "grid" : undefined}
+          aria-label="RACI assignments by task and role"
+        >
           <caption className="sr-only">
-            Each cell cycles Responsible, Accountable, Consulted, Informed, then clear. Use the arrow keys to move
-            between cells. Every Process Map step is already a row — use Skip for a step that doesn&apos;t need
-            RACI. Column titles stay visible while you scroll.
+            {canEdit
+              ? "Each cell cycles Responsible, Accountable, Consulted, Informed, then clear. Use the arrow keys to move between cells. Every Process Map step is already a row — use Skip for a step that doesn't need RACI. Column titles stay visible while you scroll."
+              : "Each cell shows the role's involvement in that task: Responsible, Accountable, Consulted or Informed. Column titles stay visible while you scroll."}
           </caption>
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
             <tr>
@@ -371,9 +402,11 @@ export function RaciTable({
                   {r.name}
                 </th>
               ))}
-              <th scope="col" className="sticky top-0 z-20 bg-slate-50 px-3 py-2 text-center">
-                Actions
-              </th>
+              {canEdit && (
+                <th scope="col" className="sticky top-0 z-20 bg-slate-50 px-3 py-2 text-center">
+                  Actions
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -427,28 +460,40 @@ export function RaciTable({
                   {roles.map((r, colIdx) => {
                     const code = row.assignments[r.id] as Code | undefined;
                     return (
-                      <td key={r.id} role="gridcell" className="px-3 py-2 text-center">
-                        <button
-                          ref={(el) => {
-                            if (el) cellRefs.current.set(cellKey(rowIdx, colIdx), el);
-                            else cellRefs.current.delete(cellKey(rowIdx, colIdx));
-                          }}
-                          type="button"
-                          tabIndex={focusedCell.row === rowIdx && focusedCell.col === colIdx ? 0 : -1}
-                          onFocus={() => setFocusedCell({ row: rowIdx, col: colIdx })}
-                          onClick={() => cycleCell(row, r.id)}
-                          onKeyDown={(e) => onCellKeyDown(e, rowIdx, colIdx)}
-                          aria-label={`${row.label}, ${r.name}: ${code ? CODE_NAME[code] : "not assigned"}`}
-                          className={`h-8 w-8 rounded-lg font-mono text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${code ? CELL_STYLE[code] : "border border-dashed border-slate-300 text-slate-300"}`}
-                        >
-                          {code ? LETTER[code] : ""}
-                        </button>
+                      <td key={r.id} role={canEdit ? "gridcell" : undefined} className="px-3 py-2 text-center">
+                        {canEdit ? (
+                          <button
+                            ref={(el) => {
+                              if (el) cellRefs.current.set(cellKey(rowIdx, colIdx), el);
+                              else cellRefs.current.delete(cellKey(rowIdx, colIdx));
+                            }}
+                            type="button"
+                            tabIndex={focusedCell.row === rowIdx && focusedCell.col === colIdx ? 0 : -1}
+                            onFocus={() => setFocusedCell({ row: rowIdx, col: colIdx })}
+                            onClick={() => cycleCell(row, r.id)}
+                            onKeyDown={(e) => onCellKeyDown(e, rowIdx, colIdx)}
+                            aria-label={`${row.label}, ${r.name}: ${code ? CODE_NAME[code] : "not assigned"}`}
+                            className={`h-8 w-8 rounded-lg font-mono text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${code ? CELL_STYLE[code] : "border border-dashed border-slate-300 text-slate-300"}`}
+                          >
+                            {code ? LETTER[code] : ""}
+                          </button>
+                        ) : (
+                          // Same letter, same colour, no affordance — the
+                          // assignment is the data, cycling it is the edit.
+                          <span
+                            aria-label={`${row.label}, ${r.name}: ${code ? CODE_NAME[code] : "not assigned"}`}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg font-mono text-xs font-bold ${code ? CELL_STYLE[code] : "border border-dashed border-slate-300 text-slate-300"}`}
+                          >
+                            {code ? LETTER[code] : ""}
+                          </span>
+                        )}
                       </td>
                     );
                   })}
+                  {canEdit && (
                   <td className="px-3 py-2 text-center">
                     {row.kind === "step" ? (
-                      !canEdit ? null : <button
+                      <button
                         type="button"
                         onClick={() => toggleSkip(row)}
                         className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-700"
@@ -473,7 +518,7 @@ export function RaciTable({
                           No
                         </button>
                       </span>
-                    ) : editingRowId === row.id || !canEdit ? null : (
+                    ) : editingRowId === row.id ? null : (
                       <span className="inline-flex items-center gap-1">
                         <button
                           type="button"
@@ -492,6 +537,7 @@ export function RaciTable({
                       </span>
                     )}
                   </td>
+                  )}
                 </tr>
               );
             })}
@@ -507,6 +553,14 @@ export function RaciTable({
                         </span>
                       )}
                       <span>{row.label}</span>
+                      {!canEdit && (
+                        // For an Editor the word "Skipped" is on the button in
+                        // the Actions column; a Viewer has no such column, and
+                        // strikethrough alone is too quiet to carry it.
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700 no-underline">
+                          Skipped
+                        </span>
+                      )}
                     </div>
                   </th>
                   {roles.map((r) => (
@@ -514,15 +568,17 @@ export function RaciTable({
                       —
                     </td>
                   ))}
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => toggleSkip(row)}
-                      className="rounded-md px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50"
-                    >
-                      Skipped ✕
-                    </button>
-                  </td>
+                  {canEdit && (
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => toggleSkip(row)}
+                        className="rounded-md px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+                      >
+                        Skipped ✕
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
           </tbody>

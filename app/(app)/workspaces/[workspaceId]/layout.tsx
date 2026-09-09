@@ -28,6 +28,9 @@ export default async function WorkspaceLayout(
   // actions enforce this independently — this is what stops the interface
   // offering a Viewer edits it will then refuse.
   const canEdit = hasSufficientAccess(access.data.accessLevel, "EDITOR");
+  // Membership is Admin-gated, not Editor-gated (see lib/actions/membership.ts),
+  // so it gets its own answer rather than riding on canEdit.
+  const canManageMembers = hasSufficientAccess(access.data.accessLevel, "ADMIN");
 
   const primary = workspace.accentColor ?? DEFAULT_ACCENT;
   const tertiary = workspace.accentColorTertiary ?? DEFAULT_ACCENT_TERTIARY;
@@ -71,7 +74,7 @@ export default async function WorkspaceLayout(
             className="pointer-events-none absolute left-5 top-8 hidden h-auto w-[min(240px,calc((100%-896px)/2-28px))] object-contain xl:block"
           />
         )}
-        <WorkspaceAccessProvider value={{ accessLevel: access.data.accessLevel, canEdit }}>
+        <WorkspaceAccessProvider value={{ accessLevel: access.data.accessLevel, canEdit, canManageMembers }}>
           {props.children}
         </WorkspaceAccessProvider>
       </div>

@@ -4,13 +4,19 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { test, expect } from "@playwright/test";
 import { signIn, SEEDED_EDITOR } from "./sign-in";
+import { processIdByCode } from "./seed-lookup";
 
 /**
  * Reported live: a member set to Viewer "can edit". The server was never the
  * problem — every mutating action requires Editor and refuses a Viewer
- * (Constitution Principle V) — but only the Members page consulted the access
- * level, so every other page offered a Viewer Edit, Delete and New and only
- * refused after they had filled a form in.
+ * (Constitution Principle V) — but the pages did not consult the access level,
+ * so a Viewer was offered Edit, Delete and New and only refused after they had
+ * filled a form in.
+ *
+ * The Members page was the worst of it and was missed on the first pass: it
+ * had no gate at all, so a Viewer was shown the invite form, a per-row access
+ * dropdown and Remove — the controls that hand out access — and membership is
+ * Admin-gated, not Editor-gated, so an Editor was being offered them too.
  *
  * Two things have to hold, and the second is the one that is easy to break
  * while fixing the first: a Viewer must be offered nothing that mutates, and
@@ -27,10 +33,19 @@ const SURFACES = [
   { name: "Value Chain", path: "/workspaces/workspace-acme/value-chain" },
   { name: "Governance", path: "/workspaces/workspace-acme/governance" },
   { name: "Dashboard", path: "/workspaces/workspace-acme" },
+  { name: "Members", path: "/workspaces/workspace-acme/members" },
 ];
 
-/** Anything whose label means "this changes something". */
-const MUTATING_LABEL = /^(edit|delete|remove|add|new|clone|save|create|import|generate|apply|archive|skip)/i;
+/**
+ * Anything whose label means "this changes something".
+ *
+ * The leading [^a-z]* matters: the first version of this anchored straight at
+ * the word, so "+ Add title" and "✨ Generate from best practice" slipped
+ * through the check and shipped visible to a Viewer. Decoration in front of a
+ * verb does not make it less of a verb.
+ */
+const MUTATING_LABEL =
+  /^[^a-z]*(edit|delete|remove|add|new|clone|save|create|import|generate|apply|archive|skip|rename|invite|revoke|change|update|mark|finalis|finaliz|reopen|pin|unpin)/i;
 
 test.beforeAll(async () => {
   const client = new Client({ connectionString: process.env["DATABASE_URL"] });
@@ -127,4 +142,45 @@ test("the server refuses a Viewer's write even when the request is made directly
   // Reload and confirm nothing was added by anything on this page.
   await page.reload();
   expect(await page.locator("tbody tr").count()).toBe(rowsBefore);
+});
+
+test("a Viewer reads the RACI matrix without being able to work it", async ({ page }) => {
+  // The grid is the subtle one: every cell is a button that cycles the
+  // assignment on click, so hiding the toolbar alone would still have left a
+  // Viewer a fully operable matrix. The letters have to survive — they are the
+  // matrix — while the affordance does not.
+  await signIn(page, VIEWER);
+  const processId = await processIdByCode("PUR101");
+  await page.goto(`/workspaces/workspace-acme/processes/${processId}/raci`);
+  await expect(page.getByRole("table")).toBeVisible();
+
+  await expect(page.getByRole("button", { name: /Mark Final|Reopen/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Add title/i })).toHaveCount(0);
+  // No cell is a control: cell buttons are named "<task>, <role>: <code>".
+  await expect(page.getByRole("button", { name: /: (Responsible|Accountable|Consulted|Informed|not assigned)$/ })).toHaveCount(0);
+
+  // ...and the assignments are still on the page for them to read.
+  const editorPage = await page.context().browser()!.newPage();
+  await signIn(editorPage, SEEDED_EDITOR);
+  await editorPage.goto(`/workspaces/workspace-acme/processes/${processId}/raci`);
+  const letters = (p: typeof page) => p.locator("tbody td").filter({ hasText: /^[RACI]$/ }).count();
+  expect(await letters(page)).toBe(await letters(editorPage));
+  await editorPage.close();
+});
+
+test("membership is Admin-gated, so an Editor is offered none of it either", async ({ page }) => {
+  // The mistake worth guarding against is gating this on canEdit: a Viewer
+  // would be fixed and an Editor would still be shown Remove and an access
+  // dropdown that the server refuses just as firmly.
+  await signIn(page, SEEDED_EDITOR);
+  await page.goto("/workspaces/workspace-acme/members");
+
+  await expect(page.getByRole("button", { name: /Remove/i })).toHaveCount(0);
+  await expect(page.getByLabel("Access level")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Send invitation/i })).toHaveCount(0);
+
+  // The list itself is not a privilege — an Editor still sees who is in here
+  // and at what level, as text.
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  await expect(page.getByText("Admin", { exact: true }).first()).toBeVisible();
 });

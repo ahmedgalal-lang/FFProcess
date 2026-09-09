@@ -23,6 +23,14 @@ export type WorkspaceAccess = {
   accessLevel: AccessLevel;
   /** True when this viewer may change workspace content — Editor or above. */
   canEdit: boolean;
+  /**
+   * True when this viewer may change who else is in the workspace — Admin
+   * only, which is a higher bar than canEdit. Membership is the one surface
+   * where an Editor is as unprivileged as a Viewer, so it cannot reuse
+   * canEdit: doing so would show an Editor invite and Remove controls that
+   * the server refuses just as firmly.
+   */
+  canManageMembers: boolean;
 };
 
 const WorkspaceAccessContext = createContext<WorkspaceAccess | null>(null);
@@ -48,7 +56,16 @@ export function useCanEdit(): boolean {
   return useContext(WorkspaceAccessContext)?.canEdit ?? false;
 }
 
+/**
+ * Whether the current viewer may invite, remove, or re-level members.
+ *
+ * Same fail-closed default as useCanEdit.
+ */
+export function useCanManageMembers(): boolean {
+  return useContext(WorkspaceAccessContext)?.canManageMembers ?? false;
+}
+
 /** The viewer's full access level, for the rarer cases that need to distinguish Admin. */
 export function useWorkspaceAccess(): WorkspaceAccess {
-  return useContext(WorkspaceAccessContext) ?? { accessLevel: "VIEWER", canEdit: false };
+  return useContext(WorkspaceAccessContext) ?? { accessLevel: "VIEWER", canEdit: false, canManageMembers: false };
 }

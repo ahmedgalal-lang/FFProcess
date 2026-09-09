@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useCanManageMembers } from "../workspace-access";
 import {
   changeMemberAccessLevel,
   createMemberWithPassword,
@@ -10,12 +11,17 @@ import {
 } from "@/lib/actions/membership";
 
 export function InviteForm({ workspaceId }: { workspaceId: string }) {
+  const canManageMembers = useCanManageMembers();
   const [email, setEmail] = useState("");
   const [accessLevel, setAccessLevel] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [error, setError] = useState<string | null>(null);
   const [lastInvite, setLastInvite] = useState<{ acceptUrl: string; emailSent: boolean } | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Nothing here but a way to change who has access, so anyone who cannot is
+  // shown none of it. Declared after the hooks above, never before them.
+  if (!canManageMembers) return null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -81,6 +87,7 @@ export function InviteForm({ workspaceId }: { workspaceId: string }) {
  * an existing account would let the admin take it over.
  */
 export function CreateMemberForm({ workspaceId }: { workspaceId: string }) {
+  const canManageMembers = useCanManageMembers();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -89,6 +96,10 @@ export function CreateMemberForm({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Ahead of the collapsed state below, not after it — the collapsed state is
+  // itself a button offering to create an account.
+  if (!canManageMembers) return null;
 
   if (!open) {
     return (
@@ -184,6 +195,12 @@ export function CreateMemberForm({ workspaceId }: { workspaceId: string }) {
   );
 }
 
+const ACCESS_LEVEL_LABEL: Record<"VIEWER" | "EDITOR" | "ADMIN", string> = {
+  VIEWER: "Viewer",
+  EDITOR: "Editor",
+  ADMIN: "Admin",
+};
+
 export function MemberRowActions({
   workspaceId,
   memberId,
@@ -193,9 +210,23 @@ export function MemberRowActions({
   memberId: string;
   accessLevel: "VIEWER" | "EDITOR" | "ADMIN";
 }) {
+  const canManageMembers = useCanManageMembers();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Who holds what access is worth reading whoever you are — it is the answer
+  // to "can this person change our process pack". Only the means of changing
+  // it goes away, so the column keeps its value as plain text.
+  if (!canManageMembers) {
+    return (
+      <div className="flex items-center justify-end">
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+          {ACCESS_LEVEL_LABEL[accessLevel]}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-end gap-2">
