@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import "dotenv/config";
+import bcrypt from "bcryptjs";
 import { Client } from "pg";
+import { E2E_EDITOR } from "./sign-in";
 
 const SEEDED_PROCESS_CODES = ["PUR100", "PUR101", "PUR102", "SAL101"];
 const SEEDED_ROLES = ["AP Clerk", "Finance Manager", "Procurement Lead"];
@@ -36,4 +39,41 @@ export default async function globalSetup() {
   // The seed owns everything else about the seeded rows — step order, roles,
   // positions, and the flags a session may have set on them.
   execFileSync("pnpm", ["run", "db:seed"], { stdio: "inherit" });
+
+  await createEditorFixture();
+}
+
+/**
+ * The non-owner account several specs sign in as.
+ *
+ * This used to be a seeded stand-in employee, a fictional person who
+ * nonetheless had a real login on the same well-known password — so every
+ * database the seed had ever touched, deployed ones included, carried a
+ * working Editor account for someone who did not exist. A test needs a second
+ * user; a product seed does not, so it lives here now, named for what it is.
+ *
+ * Recreated from scratch each run rather than upserted: the firm-owner spec
+ * promotes and demotes this account, and dropping the user takes its
+ * firm_members row with it, so every run starts from the same state instead
+ * of inheriting whatever the last one left.
+ */
+async function createEditorFixture() {
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  try {
+    await client.query(`DELETE FROM users WHERE email = $1`, [E2E_EDITOR.email]);
+    const userId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO users (id, email, name, "passwordHash", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, now(), now())`,
+      [userId, E2E_EDITOR.email, E2E_EDITOR.name, await bcrypt.hash(E2E_EDITOR.password, 10)]
+    );
+    await client.query(
+      `INSERT INTO members (id, "workspaceId", "userId", "accessLevel", status, "createdAt", "updatedAt")
+       VALUES ($1, 'workspace-acme', $2, 'EDITOR', 'ACTIVE', now(), now())`,
+      [crypto.randomUUID(), userId]
+    );
+  } finally {
+    await client.end();
+  }
 }

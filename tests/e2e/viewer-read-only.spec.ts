@@ -3,7 +3,7 @@ import { Client } from "pg";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { test, expect } from "@playwright/test";
-import { signIn, SEEDED_EDITOR } from "./sign-in";
+import { signIn, E2E_EDITOR } from "./sign-in";
 import { processIdByCode } from "./seed-lookup";
 
 /**
@@ -100,7 +100,7 @@ test("a Viewer can still read everything an Editor can", async ({ page, browser 
   // The failure this guards against is over-correction: hiding a row or a
   // panel along with its controls, so a Viewer loses the data too.
   const editorPage = await (await browser.newContext()).newPage();
-  await signIn(editorPage, SEEDED_EDITOR);
+  await signIn(editorPage, E2E_EDITOR);
   await signIn(page, VIEWER);
 
   for (const surface of SURFACES) {
@@ -161,7 +161,7 @@ test("a Viewer reads the RACI matrix without being able to work it", async ({ pa
 
   // ...and the assignments are still on the page for them to read.
   const editorPage = await page.context().browser()!.newPage();
-  await signIn(editorPage, SEEDED_EDITOR);
+  await signIn(editorPage, E2E_EDITOR);
   await editorPage.goto(`/workspaces/workspace-acme/processes/${processId}/raci`);
   const letters = (p: typeof page) => p.locator("tbody td").filter({ hasText: /^[RACI]$/ }).count();
   expect(await letters(page)).toBe(await letters(editorPage));
@@ -172,7 +172,7 @@ test("membership is Admin-gated, so an Editor is offered none of it either", asy
   // The mistake worth guarding against is gating this on canEdit: a Viewer
   // would be fixed and an Editor would still be shown Remove and an access
   // dropdown that the server refuses just as firmly.
-  await signIn(page, SEEDED_EDITOR);
+  await signIn(page, E2E_EDITOR);
   await page.goto("/workspaces/workspace-acme/members");
 
   await expect(page.getByRole("button", { name: /Remove/i })).toHaveCount(0);

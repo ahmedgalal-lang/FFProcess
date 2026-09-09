@@ -31,12 +31,6 @@ async function main() {
     create: { firmId: firm.id, userId: owner.id, role: "OWNER" },
   });
 
-  const editorUser = await prisma.user.upsert({
-    where: { email: "sam.osei@acme-example.com" },
-    update: {},
-    create: { email: "sam.osei@acme-example.com", name: "Sam Osei", passwordHash },
-  });
-
   const workspace = await prisma.workspace.upsert({
     where: { id: "workspace-acme" },
     update: {},
@@ -47,11 +41,6 @@ async function main() {
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: owner.id } },
     update: {},
     create: { workspaceId: workspace.id, userId: owner.id, accessLevel: "ADMIN", status: "ACTIVE" },
-  });
-  await prisma.member.upsert({
-    where: { workspaceId_userId: { workspaceId: workspace.id, userId: editorUser.id } },
-    update: {},
-    create: { workspaceId: workspace.id, userId: editorUser.id, accessLevel: "EDITOR", status: "ACTIVE" },
   });
   await prisma.member.create({
     data: {
@@ -79,7 +68,6 @@ async function main() {
 
   const people: [string, string, string][] = [
     ["Priya Nair", "priya.nair@acme-example.com", "AP Clerk"],
-    ["Sam Osei", "sam.osei@acme-example.com", "Finance Manager"],
     ["Marcus Webb", "marcus.webb@acme-example.com", "Procurement Lead"],
     ["Dana Whitfield", "dana.whitfield@acme-example.com", "Controller"],
   ];
@@ -395,7 +383,6 @@ async function main() {
 
   console.log("Seed complete.");
   console.log("Sign in as ahmed.galal@forefront.consulting / password123 (Firm Owner)");
-  console.log("or sam.osei@acme-example.com / password123 (Editor on Acme Industrial)");
 }
 
 main()

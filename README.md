@@ -23,10 +23,15 @@ Auth.js v5 (Credentials, JWT sessions) · Zod · Vitest · Playwright.
    pnpm db:seed            # seeds a demo Firm + Workspace (see below)
    pnpm dev
    ```
-3. Open http://localhost:3000 — sign in with a seeded account (password `password123` for both):
-   - `ahmed.galal@forefront.consulting` — **Firm Owner** (reaches every client Workspace via
-     the Constitution Principle V carve-out, even without an explicit Member record)
-   - `sam.osei@acme-example.com` — Editor on the "Acme Industrial" Workspace only
+3. Open http://localhost:3000 — sign in as the seeded **Firm Owner**,
+   `ahmed.galal@forefront.consulting`, password `password123` (it reaches every client
+   Workspace via the Constitution Principle V carve-out, even without an explicit Member
+   record). Change this password on any deployment: the seed's is public, in this file.
+
+   The seed creates no other sign-in. It used to add a second account for a fictional
+   employee, which left a working Editor login for someone who did not exist on every
+   database it had ever run against. The e2e suite creates the non-owner account it needs
+   in `tests/e2e/global-setup.ts`.
 
 The seed creates one Workspace ("Acme Industrial") with a Purchase-to-Pay process
 (`PUR101`, under program `PUR100`), its RACI matrix (with one intentional validation gap to

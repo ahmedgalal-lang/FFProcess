@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn } from "./sign-in";
+import { signIn, E2E_EDITOR, SEEDED_FIRM_OWNER } from "./sign-in";
 
 // NOTE: runs against the same dev database seeded by `pnpm db:seed` (see
 // prisma/seed.ts), same pragmatic choice as core-workflows.spec.ts.
@@ -10,45 +10,47 @@ async function loginAs(page: import("@playwright/test").Page, email: string, pas
 
 test.describe("Firm Owner management", () => {
   test("a non-owner cannot see or reach Firm Settings, and a Firm Owner can promote/demote", async ({ page, context }) => {
-    // Sam starts as a plain Workspace member with no Firm role at all.
-    const samPage = await context.newPage();
-    await loginAs(samPage, "sam.osei@acme-example.com", "password123");
-    await expect(samPage.getByRole("link", { name: "Firm Settings" })).toHaveCount(0);
-    const directNav = await samPage.goto("/firm/settings");
+    // The editor starts as a plain Workspace member with no Firm role at all.
+    const editorPage = await context.newPage();
+    await loginAs(editorPage, E2E_EDITOR.email, E2E_EDITOR.password);
+    await expect(editorPage.getByRole("link", { name: "Firm Settings" })).toHaveCount(0);
+    const directNav = await editorPage.goto("/firm/settings");
     expect(directNav?.status()).toBe(404);
 
-    // The Firm Owner promotes Sam to Owner.
-    await loginAs(page, "ahmed.galal@forefront.consulting", "password123");
+    // The Firm Owner promotes them to Owner.
+    await loginAs(page, SEEDED_FIRM_OWNER.email, SEEDED_FIRM_OWNER.password);
     await expect(page.getByRole("link", { name: "Firm Settings" })).toBeVisible();
     await page.goto("/firm/settings");
     await expect(page.locator("h1")).toHaveText("Firm Settings");
 
-    // Sam may already have a Firm Member row from a previous run (promote/demote leaves one
-    // behind — see below) or none at all (fresh seed). Handle both starting states.
-    const samRow = page.locator("tr", { hasText: "Sam Osei" });
-    if (await samRow.count()) {
-      await samRow.locator('button:has-text("Promote to Owner")').click();
+    // The fixture may already have a Firm Member row from a previous run
+    // (promote/demote leaves one behind — see below) or none at all. Handle
+    // both starting states.
+    const editorRow = page.locator("tr", { hasText: E2E_EDITOR.name });
+    if (await editorRow.count()) {
+      await editorRow.locator('button:has-text("Promote to Owner")').click();
     } else {
-      await page.selectOption("select", { label: "Sam Osei (sam.osei@acme-example.com)" });
+      await page.selectOption("select", { label: `${E2E_EDITOR.name} (${E2E_EDITOR.email})` });
       await page.click('button:has-text("Make Firm Owner")');
     }
-    await expect(samRow).toContainText("Firm Owner");
+    await expect(editorRow).toContainText("Firm Owner");
 
     // With two owners, either can be demoted.
     const ahmedRow = page.locator("tr", { hasText: "Ahmed Galal" });
     await expect(ahmedRow.locator('button:has-text("Demote to Member")')).toBeEnabled();
 
-    // Sam, now promoted, can reach the page himself.
-    await samPage.reload();
-    await expect(samPage.getByRole("link", { name: "Firm Settings" })).toBeVisible();
-    await samPage.goto("/firm/settings");
-    await expect(samPage.locator("h1")).toHaveText("Firm Settings");
+    // Now promoted, they can reach the page themselves.
+    await editorPage.reload();
+    await expect(editorPage.getByRole("link", { name: "Firm Settings" })).toBeVisible();
+    await editorPage.goto("/firm/settings");
+    await expect(editorPage.locator("h1")).toHaveText("Firm Settings");
 
-    // Demote Sam back to Member — exercises the LAST_OWNER guard below and leaves a stable,
-    // idempotent state for re-runs (a Firm Member row for Sam, not the pristine no-row seed state).
+    // Demote back to Member — exercises the LAST_OWNER guard below and leaves a
+    // stable, idempotent state for re-runs (a Firm Member row, not the pristine
+    // no-row state).
     await page.reload();
-    await page.locator("tr", { hasText: "Sam Osei" }).locator('button:has-text("Demote to Member")').click();
-    await expect(page.locator("tr", { hasText: "Sam Osei" })).toContainText("Firm Member");
+    await page.locator("tr", { hasText: E2E_EDITOR.name }).locator('button:has-text("Demote to Member")').click();
+    await expect(page.locator("tr", { hasText: E2E_EDITOR.name })).toContainText("Firm Member");
 
     // Ahmed is now the sole owner — his own demote button must be disabled (FR-026).
     await page.reload();
@@ -59,38 +61,38 @@ test.describe("Firm Owner management", () => {
     page,
     context,
   }) => {
-    await loginAs(page, "ahmed.galal@forefront.consulting", "password123");
+    await loginAs(page, SEEDED_FIRM_OWNER.email, SEEDED_FIRM_OWNER.password);
     await page.goto("/firm/settings");
 
     // Ahmed alone is the sole Owner — his own Remove must be blocked (same LAST_OWNER guard as Demote).
     await expect(page.locator("tr", { hasText: "Ahmed Galal" }).locator('button:has-text("Remove")')).toBeDisabled();
 
-    // Ensure Sam has a Firm Member row to remove (idempotent across re-runs, same as the promote/demote test).
-    const samRow = page.locator("tr", { hasText: "Sam Osei" });
-    if (!(await samRow.count())) {
-      await page.selectOption("select", { label: "Sam Osei (sam.osei@acme-example.com)" });
+    // Ensure the editor has a Firm Member row to remove (idempotent across re-runs, same as the promote/demote test).
+    const editorRow = page.locator("tr", { hasText: E2E_EDITOR.name });
+    if (!(await editorRow.count())) {
+      await page.selectOption("select", { label: `${E2E_EDITOR.name} (${E2E_EDITOR.email})` });
       await page.click('button:has-text("Make Firm Owner")');
-      await expect(samRow).toBeVisible();
-      await samRow.locator('button:has-text("Demote to Member")').click();
-      await expect(samRow).toContainText("Firm Member");
+      await expect(editorRow).toBeVisible();
+      await editorRow.locator('button:has-text("Demote to Member")').click();
+      await expect(editorRow).toContainText("Firm Member");
     }
 
-    // Remove Sam entirely — the row disappears rather than just changing role.
-    await samRow.locator('button:has-text("Remove")').click();
+    // Remove them entirely — the row disappears rather than just changing role.
+    await editorRow.locator('button:has-text("Remove")').click();
     await expect(page.getByText("Remove from the Firm permanently?")).toBeVisible();
     await page.click('button:has-text("Yes")');
-    await expect(page.locator("tr", { hasText: "Sam Osei" })).toHaveCount(0);
+    await expect(page.locator("tr", { hasText: E2E_EDITOR.name })).toHaveCount(0);
 
-    // Sam, no longer a Firm Member at all, loses the Firm-wide access carve-out.
-    const samPage = await context.newPage();
-    await loginAs(samPage, "sam.osei@acme-example.com", "password123");
-    await expect(samPage.getByRole("link", { name: "Firm Settings" })).toHaveCount(0);
-    const directNav = await samPage.goto("/firm/settings");
+    // No longer a Firm Member at all, they lose the Firm-wide access carve-out.
+    const editorPage = await context.newPage();
+    await loginAs(editorPage, E2E_EDITOR.email, E2E_EDITOR.password);
+    await expect(editorPage.getByRole("link", { name: "Firm Settings" })).toHaveCount(0);
+    const directNav = await editorPage.goto("/firm/settings");
     expect(directNav?.status()).toBe(404);
   });
 
   test("a Firm Owner can create and delete a client Workspace; a non-owner cannot", async ({ page, context }) => {
-    await loginAs(page, "ahmed.galal@forefront.consulting", "password123");
+    await loginAs(page, SEEDED_FIRM_OWNER.email, SEEDED_FIRM_OWNER.password);
 
     const name = `E2E Client ${Date.now()}`;
     await page.click('button:has-text("+ New Client")');
@@ -112,9 +114,9 @@ test.describe("Firm Owner management", () => {
     await expect(card).toHaveCount(0);
 
     // A non-owner sees neither affordance.
-    const samPage = await context.newPage();
-    await loginAs(samPage, "sam.osei@acme-example.com", "password123");
-    await expect(samPage.locator('button:has-text("+ New Client")')).toHaveCount(0);
-    await expect(samPage.locator('button[aria-label^="Delete"]')).toHaveCount(0);
+    const editorPage = await context.newPage();
+    await loginAs(editorPage, E2E_EDITOR.email, E2E_EDITOR.password);
+    await expect(editorPage.locator('button:has-text("+ New Client")')).toHaveCount(0);
+    await expect(editorPage.locator('button[aria-label^="Delete"]')).toHaveCount(0);
   });
 });
