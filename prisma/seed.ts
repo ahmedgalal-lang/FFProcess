@@ -42,15 +42,6 @@ async function main() {
     update: {},
     create: { workspaceId: workspace.id, userId: owner.id, accessLevel: "ADMIN", status: "ACTIVE" },
   });
-  await prisma.member.create({
-    data: {
-      workspaceId: workspace.id,
-      invitedEmail: "priya.nair@acme-example.com",
-      accessLevel: "VIEWER",
-      status: "PENDING",
-    },
-  });
-
   const roleNames = ["AP Clerk", "Finance Manager", "Procurement Lead", "Controller"] as const;
   const roles: Record<string, string> = {};
   for (const name of roleNames) {
@@ -66,23 +57,11 @@ async function main() {
     roles[name] = role.id;
   }
 
-  const people: [string, string, string][] = [
-    ["Priya Nair", "priya.nair@acme-example.com", "AP Clerk"],
-    ["Marcus Webb", "marcus.webb@acme-example.com", "Procurement Lead"],
-    ["Dana Whitfield", "dana.whitfield@acme-example.com", "Controller"],
-  ];
-  for (const [name, email, roleName] of people) {
-    const person = await prisma.person.upsert({
-      where: { id: `person-${workspace.id}-${email}` },
-      update: {},
-      create: { id: `person-${workspace.id}-${email}`, workspaceId: workspace.id, name, email },
-    });
-    await prisma.personRole.upsert({
-      where: { personId_roleId: { personId: person.id, roleId: roles[roleName] } },
-      update: {},
-      create: { personId: person.id, roleId: roles[roleName] },
-    });
-  }
+  // No people. The seed deliberately ships an empty Org Directory: it used to
+  // invent a staff list, and invented staff in a real client's directory are
+  // worse than an empty one they fill in themselves. The roles above stay —
+  // the RACI, Authority and Process Map data all reference a role, never
+  // whoever fills it.
 
   const program = await prisma.process.upsert({
     where: { workspaceId_code: { workspaceId: workspace.id, code: "PUR100" } },

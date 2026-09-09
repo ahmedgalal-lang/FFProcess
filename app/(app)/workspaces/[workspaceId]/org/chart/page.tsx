@@ -33,7 +33,7 @@ export default async function OrgChartPage(props: PageProps<"/workspaces/[worksp
       />
 
       {people.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-400">
+        <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
           No people yet —{" "}
           <Link href={`/workspaces/${workspaceId}/org`} className="font-semibold text-slate-600 hover:text-slate-900">
             add some in the Org Directory

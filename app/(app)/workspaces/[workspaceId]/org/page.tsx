@@ -95,7 +95,7 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
               ))}
               {people.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-4 text-center text-slate-400">
+                  <td colSpan={5} className="px-4 py-4 text-center text-slate-500">
                     No people yet.
                   </td>
                 </tr>

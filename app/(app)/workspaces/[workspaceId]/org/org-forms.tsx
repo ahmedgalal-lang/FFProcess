@@ -414,7 +414,7 @@ export function PersonRow({
                     {r.name}
                   </label>
                 ))}
-                {allRoles.length === 0 && <span className="text-xs text-slate-400">No roles yet</span>}
+                {allRoles.length === 0 && <span className="text-xs text-slate-500">No roles yet</span>}
               </div>
             </div>
             <button

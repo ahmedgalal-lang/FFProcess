@@ -41,6 +41,7 @@ export default async function globalSetup() {
   execFileSync("pnpm", ["run", "db:seed"], { stdio: "inherit" });
 
   await createEditorFixture();
+  await createPeopleFixture();
 }
 
 /**
@@ -73,6 +74,54 @@ async function createEditorFixture() {
        VALUES ($1, 'workspace-acme', $2, 'EDITOR', 'ACTIVE', now(), now())`,
       [crypto.randomUUID(), userId]
     );
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Staff for the Org Directory and Org Chart specs.
+ *
+ * The seed used to invent these — a directory full of people who do not exist,
+ * in what is a real client's workspace on a real deployment. Only the tests
+ * ever needed them: three specs assert on the org chart, which cannot draw
+ * anything without people. So the invented staff moved here, where invented is
+ * the point, and the seed now ships an empty directory for a client to fill in
+ * themselves.
+ *
+ * Reuses whichever seeded roles exist rather than creating its own, so the
+ * chart is drawn from the same roles the RACI and Authority data reference.
+ */
+async function createPeopleFixture() {
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  try {
+    const people = [
+      ["E2E Person One", "person1.e2e@example.com", "AP Clerk"],
+      ["E2E Person Two", "person2.e2e@example.com", "Finance Manager"],
+      ["E2E Person Three", "person3.e2e@example.com", "Procurement Lead"],
+    ] as const;
+
+    for (const [name, email, roleName] of people) {
+      const personId = `person-e2e-${email}`;
+      await client.query(`DELETE FROM people WHERE id = $1`, [personId]);
+      await client.query(
+        `INSERT INTO people (id, "workspaceId", name, email, "createdAt")
+         VALUES ($1, 'workspace-acme', $2, $3, now())`,
+        [personId, name, email]
+      );
+      const role = await client.query<{ id: string }>(
+        `SELECT id FROM roles WHERE "workspaceId" = 'workspace-acme' AND name = $1`,
+        [roleName]
+      );
+      const roleId = role.rows[0]?.id;
+      if (roleId) {
+        await client.query(
+          `INSERT INTO person_roles ("personId", "roleId") VALUES ($1, $2)`,
+          [personId, roleId]
+        );
+      }
+    }
   } finally {
     await client.end();
   }
