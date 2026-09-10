@@ -20,7 +20,7 @@ Auth.js v5 (Credentials, JWT sessions) · Zod · Vitest · Playwright.
    pnpm install
    cp .env.example .env   # fill in DATABASE_URL and AUTH_SECRET
    pnpm db:migrate         # applies prisma/migrations
-   pnpm db:seed            # seeds a demo Firm + Workspace (see below)
+   pnpm db:seed            # seeds the Firm and its Firm Owner (see below)
    pnpm dev
    ```
 3. Open http://localhost:3000 — sign in as the seeded **Firm Owner**,
@@ -28,15 +28,29 @@ Auth.js v5 (Credentials, JWT sessions) · Zod · Vitest · Playwright.
    Workspace via the Constitution Principle V carve-out, even without an explicit Member
    record). Change this password on any deployment: the seed's is public, in this file.
 
-   The seed creates no other sign-in. It used to add a second account for a fictional
-   employee, which left a working Editor login for someone who did not exist on every
-   database it had ever run against. The e2e suite creates the non-owner account it needs
-   in `tests/e2e/global-setup.ts`.
+   The seed creates no other sign-in, and no Workspaces, people or processes — you make
+   your first Workspace in the app. It used to build a fictional client ("Acme
+   Industrial") complete with invented staff, one of whom had a working Editor login on
+   the password above. That put a made-up client and four made-up employees into every
+   database the seed had ever been pointed at, deployed ones included.
 
-The seed creates one Workspace ("Acme Industrial") with a Purchase-to-Pay process
-(`PUR101`, under program `PUR100`), its RACI matrix (with one intentional validation gap to
+### The demo Workspace
+
+That demo content still exists, because the e2e suite asserts against it — it is just
+opt-in now, and only the tests opt in:
+
+```bash
+SEED_DEMO_WORKSPACE=1 pnpm db:seed
+```
+
+It creates one Workspace ("Acme Industrial") with a Purchase-to-Pay process (`PUR101`,
+under program `PUR100`), its RACI matrix (with one intentional validation gap to
 demonstrate FR-006), an Authority Matrix for "Purchase Order" approvals, and cross-process
-links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment).
+links to `PUR102` (Vendor Onboarding) and `SAL101` (Sales Order Fulfillment). The people
+and the non-owner account the org-chart and permission specs need are created separately,
+in `tests/e2e/global-setup.ts`.
+
+Never run it against a deployment.
 
 ## Scripts
 

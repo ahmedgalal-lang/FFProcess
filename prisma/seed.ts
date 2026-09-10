@@ -6,7 +6,16 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-async function main() {
+/**
+ * Everything a real deployment needs: the consulting firm and its Firm Owner.
+ *
+ * Deliberately nothing else. This used to continue straight into a demo client
+ * workspace full of invented processes and staff, which then existed in every
+ * database the seed had ever been pointed at — including deployed ones, where
+ * a made-up client sitting alongside the real ones is a liability rather than
+ * a convenience.
+ */
+async function seedFirmAndOwner() {
   const passwordHash = await bcrypt.hash("password123", 10);
 
   const owner = await prisma.user.upsert({
@@ -31,6 +40,19 @@ async function main() {
     create: { firmId: firm.id, userId: owner.id, role: "OWNER" },
   });
 
+  return { firm, owner };
+}
+
+/**
+ * The "Acme Industrial" demo workspace — four processes, their steps, RACI and
+ * Authority data.
+ *
+ * Only the e2e suite builds this now, which is the only thing that ever needed
+ * it: every spec asserts against this exact content. It is off by default so
+ * that `pnpm db:seed` cannot put a fictional client into a real deployment;
+ * tests opt in with SEED_DEMO_WORKSPACE=1 (see tests/e2e/global-setup.ts).
+ */
+async function seedDemoWorkspace({ firm, owner }: { firm: { id: string }; owner: { id: string } }) {
   const workspace = await prisma.workspace.upsert({
     where: { id: "workspace-acme" },
     update: {},
@@ -360,7 +382,18 @@ async function main() {
     });
   }
 
-  console.log("Seed complete.");
+}
+
+async function main() {
+  const seeded = await seedFirmAndOwner();
+
+  if (process.env["SEED_DEMO_WORKSPACE"] === "1") {
+    await seedDemoWorkspace(seeded);
+    console.log("Seed complete, including the Acme Industrial demo workspace.");
+  } else {
+    console.log("Seed complete — firm and Firm Owner only.");
+    console.log("Set SEED_DEMO_WORKSPACE=1 to add the Acme Industrial demo workspace.");
+  }
   console.log("Sign in as ahmed.galal@forefront.consulting / password123 (Firm Owner)");
 }
 

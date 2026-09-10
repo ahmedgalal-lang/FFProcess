@@ -38,7 +38,15 @@ export default async function globalSetup() {
 
   // The seed owns everything else about the seeded rows — step order, roles,
   // positions, and the flags a session may have set on them.
-  execFileSync("pnpm", ["run", "db:seed"], { stdio: "inherit" });
+  //
+  // SEED_DEMO_WORKSPACE is what builds "Acme Industrial" and the four
+  // processes every spec below asserts against. It is opt-in precisely so a
+  // plain `pnpm db:seed` cannot create a fictional client in a real
+  // deployment; the tests are the only caller that wants one.
+  execFileSync("pnpm", ["run", "db:seed"], {
+    stdio: "inherit",
+    env: { ...process.env, SEED_DEMO_WORKSPACE: "1" },
+  });
 
   await createEditorFixture();
   await createPeopleFixture();
