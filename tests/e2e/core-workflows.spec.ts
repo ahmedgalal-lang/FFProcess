@@ -268,15 +268,18 @@ test.describe("Core workflows", () => {
     await expect(page.locator("main input")).toHaveCount(0);
 
     // RACI and Authority are combined into one matrix, with real seeded data.
-    // The authority side is broken into the same columns the Authority Matrix uses,
-    // rather than crammed into one cell.
+    // The authority side prints the task's rules as statements — six columns
+    // summarising the first rule of each kind could not show a task that has
+    // two spending limits, which is now an ordinary thing for a task to have.
     const matrixHeaders = await page.locator("table thead th").allInnerTexts();
     expect(matrixHeaders.map((h) => h.trim().toUpperCase())).toEqual(
-      expect.arrayContaining(["SLA", "AMOUNT", "DIRECTION", "APPROVAL", "CO-APPROVAL", "ESCALATION"])
+      expect.arrayContaining(["PROCESS STEP", "AUTHORITY RULES"])
     );
-    await expect(page.locator("tr", { hasText: "Create Purchase Order" }).filter({ hasText: "$10,000" })).toHaveCount(1);
+    const createPORow = page.locator("tr", { hasText: "Create Purchase Order" }).first();
+    await expect(createPORow).toContainText("More than $10,000 needs approval from AP Clerk.");
+    await expect(createPORow).toContainText("More than 2 days without a decision escalates to Procurement Lead.");
 
-    // Key Control Points, derived from real co-approval data, surface a real gap in the seed.
+    // Key Control Points, derived from a task needing a second signature.
     await expect(page.getByText("Key Control Points").first()).toBeVisible();
     await expect(page.getByText(/requires a second sign-off/).first()).toBeVisible();
 

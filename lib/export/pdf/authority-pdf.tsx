@@ -36,12 +36,12 @@ const styles = StyleSheet.create({
 export type AuthorityPdfRow = {
   id: string;
   label: string;
-  slaDays: number | null;
-  threshold: number | null;
+  turnsOn: string;
+  value: string;
   directionLabel: string;
-  approverLabel: string | null;
-  extraApprovals: { amount: number | null; label: string | null }[];
-  escalationLabel: string | null;
+  thenLabel: string;
+  whoLabel: string;
+  sentence: string;
 };
 
 export type AuthorityPdfProps = {
@@ -52,11 +52,6 @@ export type AuthorityPdfProps = {
   issueCount: number;
   generatedFor: string;
 };
-
-function formatMoneyCell(value: number | null): string {
-  if (value === null) return "—";
-  return `$${value.toLocaleString("en-US")}`;
-}
 
 export function AuthorityPdfDocument({
   workspaceName,
@@ -81,35 +76,29 @@ export function AuthorityPdfDocument({
 
         {issueCount > 0 && (
           <View style={styles.banner}>
-            <Text style={styles.bannerText}>⚠ {issueCount} task(s) need an approver (or co-approver)</Text>
+            <Text style={styles.bannerText}>
+              ⚠ {issueCount} rule(s) still need finishing — a figure, and somebody to carry it
+            </Text>
           </View>
         )}
 
         <View style={styles.table}>
           <View style={[styles.row, styles.headerRow]}>
             <Text style={styles.taskCell}>Task</Text>
-            <Text style={styles.headerCell}>SLA</Text>
-            <Text style={styles.headerCell}>Amount</Text>
+            <Text style={styles.headerCell}>Turns on</Text>
+            <Text style={styles.headerCell}>Value</Text>
             <Text style={styles.headerCell}>Direction</Text>
-            <Text style={styles.headerCell}>Approver</Text>
-            <Text style={styles.headerCell}>Co-approval</Text>
-            <Text style={styles.headerCell}>Escalation</Text>
+            <Text style={styles.headerCell}>Then</Text>
+            <Text style={styles.headerCell}>Who</Text>
           </View>
           {rows.map((r) => (
             <View key={r.id} style={styles.row}>
               <Text style={styles.taskCell}>{r.label}</Text>
-              <Text style={styles.cell}>{r.slaDays === null ? "—" : `${r.slaDays} day${r.slaDays === 1 ? "" : "s"}`}</Text>
-              <Text style={styles.cell}>{formatMoneyCell(r.threshold)}</Text>
+              <Text style={styles.cell}>{r.turnsOn}</Text>
+              <Text style={styles.cell}>{r.value}</Text>
               <Text style={styles.cell}>{r.directionLabel}</Text>
-              <Text style={styles.cell}>{r.approverLabel ?? "—"}</Text>
-              <Text style={styles.cell}>
-                {r.extraApprovals.length > 0
-                  ? r.extraApprovals
-                      .map((e) => `${e.label ?? "unassigned"} above ${formatMoneyCell(e.amount)}`)
-                      .join("; ")
-                  : "—"}
-              </Text>
-              <Text style={styles.cell}>{r.escalationLabel ?? "—"}</Text>
+              <Text style={styles.cell}>{r.thenLabel}</Text>
+              <Text style={styles.cell}>{r.whoLabel}</Text>
             </View>
           ))}
         </View>

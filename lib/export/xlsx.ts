@@ -58,12 +58,12 @@ export async function buildAuthorityWorkbook(params: {
   rows: {
     id: string;
     label: string;
-    slaDays: number | null;
-    threshold: number | null;
+    turnsOn: string;
+    value: string;
     directionLabel: string;
-    approverLabel: string | null;
-    extraApprovals: { amount: number | null; label: string | null }[];
-    escalationLabel: string | null;
+    thenLabel: string;
+    whoLabel: string;
+    sentence: string;
   }[];
 }): Promise<Buffer> {
   const { workspaceName, processCode, processName, rows } = params;
@@ -75,43 +75,23 @@ export async function buildAuthorityWorkbook(params: {
   sheet.addRow([`${workspaceName} · ${processCode} · ${processName}`]);
   sheet.addRow([]);
 
-  const headerRow = sheet.addRow([
-    "Task",
-    "SLA (days)",
-    "Amount",
-    "Direction",
-    "Approver",
-    "Co-Approval Above",
-    "Co-Approver",
-    "Escalation",
-  ]);
+  const headerRow = sheet.addRow(["Task", "Turns on", "Value", "Direction", "Then", "Who", "Rule"]);
   headerRow.font = { bold: true };
   headerRow.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
   });
 
   for (const r of rows) {
-    sheet.addRow([
-      r.label,
-      r.slaDays ?? "",
-      r.threshold ?? "",
-      r.directionLabel,
-      r.approverLabel ?? "",
-      r.extraApprovals
-        .map((e) => `${e.label ?? "unassigned"}${e.amount === null ? "" : ` above ${e.amount}`}`)
-        .join("; "),
-      r.escalationLabel ?? "",
-    ]);
+    sheet.addRow([r.label, r.turnsOn, r.value, r.directionLabel, r.thenLabel, r.whoLabel, r.sentence]);
   }
 
   sheet.getColumn(1).width = 34;
   sheet.getColumn(2).width = 11;
   sheet.getColumn(3).width = 14;
   sheet.getColumn(4).width = 18;
-  sheet.getColumn(5).width = 22;
-  sheet.getColumn(6).width = 18;
-  sheet.getColumn(7).width = 22;
-  sheet.getColumn(8).width = 22;
+  sheet.getColumn(5).width = 16;
+  sheet.getColumn(6).width = 22;
+  sheet.getColumn(7).width = 62;
   sheet.getRow(1).font = { bold: true, size: 13 };
 
   const buffer = await workbook.xlsx.writeBuffer();

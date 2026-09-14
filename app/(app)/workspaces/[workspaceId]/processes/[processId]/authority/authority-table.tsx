@@ -60,8 +60,13 @@ export function AuthorityTable({
   initialRows: AuthorityTableRow[];
   initialIssues: AuthorityIssue[];
 }) {
-  const [rows] = useState(initialRows);
-  const [issues] = useState(initialIssues);
+  // Read straight from props rather than seeded into state. Every mutation
+  // here ends in router.refresh(), which re-renders the server component and
+  // hands down new props — but useState only ever takes its initial value, so
+  // holding them in state meant an added or deleted rule did not appear until
+  // a full page reload.
+  const rows = initialRows;
+  const issues = initialIssues;
   const [pending, startTransition] = useTransition();
   const canEdit = useCanEdit();
   const router = useRouter();

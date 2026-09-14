@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/db/client";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
-import { additionalApprovals, buildAuthorityTableRows, DIRECTION_LABELS, requiresApproval } from "@/lib/domain/authority-table";
+import {
+  additionalApprovals,
+  buildAuthorityTableRows,
+  describeAuthorityRule,
+  DIRECTION_LABELS,
+  requiresApproval,
+} from "@/lib/domain/authority-table";
 import { buildStepAuthoritySummary } from "@/lib/domain/step-authority-summary";
 import {
   buildCombinedMatrixRows,
@@ -289,6 +295,20 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
             label: rule.whoRoleId ? (roleNameById.get(rule.whoRoleId) ?? null) : null,
           })),
           escalationLabel: row.escalationRoleId ? (roleNameById.get(row.escalationRoleId) ?? null) : null,
+          // Every rule on the task, in the task's own order. The report, the
+          // deck and the spreadsheet all print this same array, so none of
+          // them can disagree about what a task's rules are — the reason
+          // gateLine was centralised earlier on this branch.
+          ruleSentences: row.rules.map((rule) =>
+            describeAuthorityRule(
+              rule,
+              rule.whoRoleId
+                ? (roleNameById.get(rule.whoRoleId) ?? null)
+                : rule.whoPersonId
+                  ? (personNameById.get(rule.whoPersonId) ?? null)
+                  : null
+            )
+          ),
         })),
         involvedRoles: involved.map((roleId) => ({
           id: roleId,

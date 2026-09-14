@@ -95,6 +95,7 @@ export type ExportProcessData = {
     directionLabel: string;
     requiresApproval: boolean;
     extraApprovals: { amount: number | null; label: string | null }[];
+    ruleSentences: string[];
     escalationLabel: string | null;
   }[];
   involvedRoles: {
@@ -733,12 +734,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                           {r.name}
                         </th>
                       ))}
-                      <th className="px-3 py-2 text-center">SLA</th>
-                      <th className="px-3 py-2 text-center">Amount</th>
-                      <th className="px-3 py-2 text-center">Direction</th>
-                      <th className="px-3 py-2 text-center">Approval</th>
-                      <th className="px-3 py-2 text-center">Co-approval</th>
-                      <th className="px-3 py-2 text-center">Escalation</th>
+                      <th className="px-3 py-2">Authority rules</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -756,33 +752,23 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                             </td>
                           );
                         })}
-                        <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
-                          {row.slaDays === null ? "—" : `${row.slaDays} day${row.slaDays === 1 ? "" : "s"}`}
-                        </td>
-                        <td className="px-3 py-2 text-center font-mono text-xs text-slate-600">
-                          {row.threshold === null ? "—" : `$${row.threshold.toLocaleString()}`}
-                        </td>
-                        <td className="px-3 py-2 text-center text-xs text-slate-600">{row.directionLabel}</td>
-                        <td className="px-3 py-2 text-center text-xs text-slate-600">{row.approverLabel ?? "—"}</td>
-                        <td className="px-3 py-2 text-center text-xs text-slate-600">
-                          {row.extraApprovals.length === 0 ? (
-                            "—"
+                        {/* Every rule the task carries, in its own order —
+                            six summarising columns replaced by the statements
+                            themselves, which is what the matrix on screen
+                            shows and what a reader actually needs. */}
+                        <td className="px-3 py-2 text-xs text-slate-600">
+                          {row.ruleSentences.length === 0 ? (
+                            <span className="text-slate-500">No authority rules.</span>
                           ) : (
-                            <span className="flex flex-col gap-0.5 leading-tight">
-                              {row.extraApprovals.map((extra, i) => (
-                                <span key={i} className="flex flex-col leading-tight">
-                                  <span>{extra.label ?? "not set"}</span>
-                                  {extra.amount !== null && (
-                                    <span className="font-mono text-[10px] text-slate-500">
-                                      above ${extra.amount.toLocaleString()}
-                                    </span>
-                                  )}
-                                </span>
+                            <ul className="space-y-0.5">
+                              {row.ruleSentences.map((sentence, i) => (
+                                <li key={i} className="break-inside-avoid leading-snug">
+                                  {sentence}
+                                </li>
                               ))}
-                            </span>
+                            </ul>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-center text-xs text-slate-600">{row.escalationLabel ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -715,10 +715,7 @@ function addRaciAuthoritySlide(pptx: PptxGenJS, process: ExportProcessData) {
   const header: PptxGenJS.TableRow = [
     { text: "Process Step", options: { bold: true, fontSize: 8, fill: headerFill } },
     ...process.matrixRoles.map((r) => ({ text: r.name, options: { bold: true, fontSize: 8, fill: headerFill, align: "center" as const } })),
-    { text: "SLA", options: { bold: true, fontSize: 8, fill: headerFill, align: "center" as const } },
-    { text: "Amount", options: { bold: true, fontSize: 8, fill: headerFill, align: "center" as const } },
-    { text: "Direction", options: { bold: true, fontSize: 8, fill: headerFill, align: "center" as const } },
-    { text: "Approval", options: { bold: true, fontSize: 8, fill: headerFill, align: "center" as const } },
+    { text: "Authority rules", options: { bold: true, fontSize: 8, fill: headerFill } },
   ];
 
   const rows: PptxGenJS.TableRow[] = process.combinedRows.map((row) => [
@@ -727,18 +724,21 @@ function addRaciAuthoritySlide(pptx: PptxGenJS, process: ExportProcessData) {
       const code = row.raci[r.id] as RaciCode | undefined;
       return { text: code ? CODE_LETTER[code] : "", options: { fontSize: 8, align: "center" as const, fontFace: "Courier New" } };
     }),
-    { text: row.slaDays === null ? "—" : `${row.slaDays}d`, options: { fontSize: 8, align: "center" as const } },
-    { text: row.threshold === null ? "—" : `$${row.threshold.toLocaleString()}`, options: { fontSize: 8, align: "center" as const } },
-    { text: row.directionLabel, options: { fontSize: 8, align: "center" as const } },
-    { text: row.approverLabel ?? "—", options: { fontSize: 8, align: "center" as const } },
+    // Every rule the task carries, one per line and in the task's own order,
+    // rather than four columns summarising the first of each kind. Same array
+    // the report and the spreadsheet print, so the three cannot disagree.
+    {
+      text: row.ruleSentences.length === 0 ? "No authority rules." : row.ruleSentences.join("\n"),
+      options: { fontSize: 7.5, color: row.ruleSentences.length === 0 ? INK_MUTED : INK_DARK },
+    },
   ]);
 
-  const roleColW = process.matrixRoles.length > 0 ? Math.min(1.2, (CONTENT_W - 5.6) / process.matrixRoles.length) : 0;
+  const roleColW = process.matrixRoles.length > 0 ? Math.min(0.5, (CONTENT_W - 5.6) / process.matrixRoles.length) : 0;
   slide.addTable([header, ...rows], {
     x: MARGIN,
     y: 0.75,
     w: CONTENT_W,
-    colW: [2.4, ...process.matrixRoles.map(() => roleColW), 0.8, 1, 1.2, 1.2],
+    colW: [2.0, ...process.matrixRoles.map(() => roleColW), CONTENT_W - 2.0 - roleColW * process.matrixRoles.length],
     fontFace: FONT,
     border: { type: "solid", color: BORDER, pt: 0.5 },
     autoPage: true,
