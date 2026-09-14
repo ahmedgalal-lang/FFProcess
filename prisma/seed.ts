@@ -310,76 +310,100 @@ async function seedDemoWorkspace({ firm, owner }: { firm: { id: string }; owner:
     });
   }
   // revisePO has no linked Activity, so it's a step-scoped row. It carries a
-  // turnaround SLA but no approval gate — the "Equal — no approval" state.
-  await prisma.authorityAssignment.upsert({
+  // turnaround but no approval gate — a NONE rule (which dims the row) beside
+  // a time rule, which is how "no approval required, but still expected within
+  // 3 days" is expressed now.
+  const reviseAssignment = await prisma.authorityAssignment.upsert({
     where: { stepId: stepIds.revisePO },
     update: {},
-    create: {
-      processId: p2p.id,
-      stepId: stepIds.revisePO,
-      slaDays: 3,
-      direction: "EQUAL_NO_APPROVAL",
-    },
+    create: { processId: p2p.id, stepId: stepIds.revisePO },
+  });
+  await prisma.authorityRule.deleteMany({ where: { assignmentId: reviseAssignment.id } });
+  await prisma.authorityRule.createMany({
+    data: [
+      { assignmentId: reviseAssignment.id, order: 0, measure: "NONE", direction: "EQUAL_NO_APPROVAL" },
+      { assignmentId: reviseAssignment.id, order: 1, measure: "TIME", days: 3, consequence: "ESCALATION" },
+    ],
   });
 
-  const authorityByActivity: Record<
-    string,
-    {
-      skipped?: boolean;
-      slaDays?: number;
-      threshold?: number;
-      direction?: "GREATER_THAN" | "GREATER_OR_EQUAL" | "LESS_THAN" | "LESS_OR_EQUAL" | "EQUAL_NO_APPROVAL";
-      approverRoleId?: string;
-      coApprovalAboveThreshold?: number;
-      coApproverRoleId?: string;
-      escalationRoleId?: string;
-    }
-  > = {
+  /**
+   * Each task's rules, in display order. A second signer is an ordinary second
+   * APPROVAL rule rather than a special field, and a task with both a spending
+   * limit and a turnaround is two rules rather than one row carrying both.
+   */
+  type SeedRule = {
+    measure: "MONEY" | "TIME" | "NONE";
+    amount?: number;
+    days?: number;
+    direction?: "GREATER_THAN" | "GREATER_OR_EQUAL" | "LESS_THAN" | "LESS_OR_EQUAL" | "EQUAL_NO_APPROVAL";
+    consequence?: "APPROVAL" | "ESCALATION";
+    whoRoleId?: string;
+  };
+
+  const authorityByActivity: Record<string, { skipped?: boolean; rules?: SeedRule[] }> = {
     createPO: {
-      slaDays: 2,
-      threshold: 10000,
-      approverRoleId: roles["AP Clerk"],
-      escalationRoleId: roles["Procurement Lead"],
+      rules: [
+        { measure: "MONEY", amount: 10000, whoRoleId: roles["AP Clerk"] },
+        { measure: "TIME", days: 2, consequence: "ESCALATION", whoRoleId: roles["Procurement Lead"] },
+      ],
     },
     approvePO: {
-      slaDays: 3,
-      threshold: 100000,
-      direction: "GREATER_OR_EQUAL",
-      approverRoleId: roles["Finance Manager"],
-      coApprovalAboveThreshold: 50000,
-      coApproverRoleId: roles.Controller,
-      escalationRoleId: roles.Controller,
+      rules: [
+        { measure: "MONEY", amount: 100000, direction: "GREATER_OR_EQUAL", whoRoleId: roles["Finance Manager"] },
+        { measure: "MONEY", amount: 50000, whoRoleId: roles.Controller },
+        { measure: "TIME", days: 3, consequence: "ESCALATION", whoRoleId: roles.Controller },
+      ],
     },
     receiveGoods: { skipped: true },
-    matchInvoice: { slaDays: 2, threshold: 20000, approverRoleId: roles["Finance Manager"] },
-    // Deliberately incomplete: a co-approval threshold with no co-approver assigned yet.
-    approvePayment: {
-      slaDays: 5,
-      threshold: 100000,
-      approverRoleId: roles.Controller,
-      coApprovalAboveThreshold: 50000,
-      escalationRoleId: roles["Finance Manager"],
+    matchInvoice: {
+      rules: [
+        { measure: "MONEY", amount: 20000, whoRoleId: roles["Finance Manager"] },
+        { measure: "TIME", days: 2, consequence: "ESCALATION" },
+      ],
     },
-    payVendor: { slaDays: 1, threshold: 100000, approverRoleId: roles["Finance Manager"] },
+    // Deliberately incomplete: a second approval rule with nobody assigned yet,
+    // so the matrix has something for its validation banner to report.
+    approvePayment: {
+      rules: [
+        { measure: "MONEY", amount: 100000, whoRoleId: roles.Controller },
+        { measure: "MONEY", amount: 50000 },
+        { measure: "TIME", days: 5, consequence: "ESCALATION", whoRoleId: roles["Finance Manager"] },
+      ],
+    },
+    // The one fully-documented task in the seed — every rule has a figure and
+    // somebody to carry it, so it is what a finished task looks like.
+    payVendor: {
+      rules: [
+        { measure: "MONEY", amount: 100000, whoRoleId: roles["Finance Manager"] },
+        { measure: "TIME", days: 1, consequence: "ESCALATION", whoRoleId: roles.Controller },
+      ],
+    },
   };
+
   for (const [key, data] of Object.entries(authorityByActivity)) {
     const activityId = `activity-${p2p.id}-${key}`;
-    await prisma.authorityAssignment.upsert({
+    const assignment = await prisma.authorityAssignment.upsert({
       where: { activityId },
       update: {},
-      create: {
-        processId: p2p.id,
-        activityId,
-        skipped: data.skipped ?? false,
-        slaDays: data.slaDays,
-        threshold: data.threshold,
-        direction: data.direction ?? "GREATER_THAN",
-        approverRoleId: data.approverRoleId,
-        coApprovalAboveThreshold: data.coApprovalAboveThreshold,
-        coApproverRoleId: data.coApproverRoleId,
-        escalationRoleId: data.escalationRoleId,
-      },
+      create: { processId: p2p.id, activityId, skipped: data.skipped ?? false },
     });
+    // Replaced rather than upserted: rules have generated ids, so re-seeding
+    // would otherwise stack duplicates on every run.
+    await prisma.authorityRule.deleteMany({ where: { assignmentId: assignment.id } });
+    if (data.rules) {
+      await prisma.authorityRule.createMany({
+        data: data.rules.map((rule, order) => ({
+          assignmentId: assignment.id,
+          order,
+          measure: rule.measure,
+          amount: rule.amount,
+          days: rule.days,
+          direction: rule.direction ?? "GREATER_THAN",
+          consequence: rule.consequence ?? "APPROVAL",
+          whoRoleId: rule.whoRoleId,
+        })),
+      });
+    }
   }
 
 }

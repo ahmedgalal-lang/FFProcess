@@ -34,47 +34,101 @@ export function requiresApproval(direction: AuthorityDirection): boolean {
 export type TableStep = { id: string; type: StepType; label: string };
 export type TableActivity = { id: string; name: string; relatedStepId: string | null; order: number };
 
+export type AuthorityMeasure = "MONEY" | "TIME" | "NONE";
+export type AuthorityConsequence = "APPROVAL" | "ESCALATION";
+
+/**
+ * One governance statement about one task: what it turns on, the figure,
+ * which side of the figure it fires on, and who it lands on.
+ *
+ * A task carries an ordered list of these. That list is what replaced the old
+ * fixed columns — a second signer is a second APPROVAL rule rather than a
+ * special co-approval field, and a task with both a spending limit and a
+ * turnaround is two rules rather than one row holding two unrelated rules.
+ */
+export type AuthorityRuleData = {
+  id: string;
+  order: number;
+  measure: AuthorityMeasure;
+  amount: number | null;
+  days: number | null;
+  direction: AuthorityDirection;
+  consequence: AuthorityConsequence;
+  whoRoleId: string | null;
+  whoPersonId: string | null;
+};
+
 export type AuthorityAssignmentData = {
   activityId: string | null;
   stepId: string | null;
   skipped: boolean;
-  slaDays: number | null;
+  rules: AuthorityRuleData[];
+};
+
+/**
+ * The single answer to "one fact about this task".
+ *
+ * Nineteen files read authority data and most of them want one thing — the
+ * figure a decision gates on, or whether a task still needs an approver — not
+ * the rule list. Deriving those here once is what keeps the Process Map, the
+ * printed diagram and the deck out of this feature's blast radius, and is the
+ * same reasoning that centralised gateLine.
+ */
+export type AuthorityRowSummary = {
   threshold: number | null;
   direction: AuthorityDirection;
+  slaDays: number | null;
   approverRoleId: string | null;
   approverPersonId: string | null;
-  coApprovalAboveThreshold: number | null;
-  coApproverRoleId: string | null;
   escalationRoleId: string | null;
 };
 
-export type AuthorityTableRow = {
+export type AuthorityTableRow = AuthorityRowSummary & {
   id: string; // the Activity's id if one exists for this row, otherwise the Step's id
   kind: "activity" | "step";
   stepId: string | null;
   stepType: StepType | null;
   label: string;
   skipped: boolean;
-  slaDays: number | null;
-  threshold: number | null;
-  direction: AuthorityDirection;
-  approverRoleId: string | null;
-  approverPersonId: string | null;
-  coApprovalAboveThreshold: number | null;
-  coApproverRoleId: string | null;
-  escalationRoleId: string | null;
+  /** Every rule on this task, in display order. */
+  rules: AuthorityRuleData[];
 };
+
+/**
+ * The approval rules on a task beyond the first — the second and subsequent
+ * signatures it needs.
+ *
+ * This is what the old "co-approval" field became. Stated once here so the
+ * report's control points, the spreadsheet and the AI prompt all mean the same
+ * thing by "a task that needs another sign-off".
+ */
+export function additionalApprovals(rules: AuthorityRuleData[]): AuthorityRuleData[] {
+  return rules.filter((r) => r.consequence === "APPROVAL" && r.measure !== "NONE").slice(1);
+}
+
+export function deriveRowSummary(rules: AuthorityRuleData[]): AuthorityRowSummary {
+  const firstMoney = rules.find((r) => r.measure === "MONEY");
+  const firstTime = rules.find((r) => r.measure === "TIME");
+  const firstApproval = rules.find((r) => r.consequence === "APPROVAL" && r.measure !== "NONE");
+  const firstEscalation = rules.find((r) => r.consequence === "ESCALATION" && r.measure !== "NONE");
+
+  // A NONE rule carries EQUAL_NO_APPROVAL, which is what dims the row — so it
+  // has to win the direction even though it has no figure.
+  const noRule = rules.find((r) => r.measure === "NONE");
+
+  return {
+    threshold: firstMoney?.amount ?? null,
+    direction: noRule?.direction ?? firstMoney?.direction ?? rules[0]?.direction ?? "GREATER_THAN",
+    slaDays: firstTime?.days ?? null,
+    approverRoleId: firstApproval?.whoRoleId ?? null,
+    approverPersonId: firstApproval?.whoPersonId ?? null,
+    escalationRoleId: firstEscalation?.whoRoleId ?? null,
+  };
+}
 
 const EMPTY_DATA: Omit<AuthorityAssignmentData, "activityId" | "stepId"> = {
   skipped: false,
-  slaDays: null,
-  threshold: null,
-  direction: "GREATER_THAN",
-  approverRoleId: null,
-  approverPersonId: null,
-  coApprovalAboveThreshold: null,
-  coApproverRoleId: null,
-  escalationRoleId: null,
+  rules: [],
 };
 
 export function buildAuthorityTableRows(
@@ -108,6 +162,9 @@ export function buildAuthorityTableRows(
     label: string
   ): AuthorityTableRow {
     const data = assignmentByRowId.get(id) ?? EMPTY_DATA;
+    // Sorted here rather than trusted from the caller, so the display order is
+    // the same however the rules were fetched.
+    const rules = [...data.rules].sort((a, b) => a.order - b.order);
     return {
       id,
       kind,
@@ -115,14 +172,8 @@ export function buildAuthorityTableRows(
       stepType,
       label,
       skipped: data.skipped,
-      slaDays: data.slaDays,
-      threshold: data.threshold,
-      direction: data.direction,
-      approverRoleId: data.approverRoleId,
-      approverPersonId: data.approverPersonId,
-      coApprovalAboveThreshold: data.coApprovalAboveThreshold,
-      coApproverRoleId: data.coApproverRoleId,
-      escalationRoleId: data.escalationRoleId,
+      rules,
+      ...deriveRowSummary(rules),
     };
   }
 
@@ -169,82 +220,104 @@ export function formatSla(days: number | null): string {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-export type AuthorityRuleNames = {
-  approver: string | null;
-  coApprover: string | null;
-  escalation: string | null;
+/**
+ * States one rule as one plain sentence — the same wording the Authority
+ * Matrix shows under each rule and the Export Report, the deck and the
+ * spreadsheet all print. Written here rather than in any component so the four
+ * surfaces cannot say different things about the same rule.
+ */
+export function describeAuthorityRule(rule: AuthorityRuleData, whoName: string | null): string {
+  if (rule.measure === "NONE" || !requiresApproval(rule.direction)) {
+    return "No approval required — this step proceeds on its own.";
+  }
+
+  const tail =
+    rule.consequence === "APPROVAL"
+      ? whoName
+        ? `needs approval from ${whoName}`
+        : "needs approval"
+      : whoName
+        ? `escalates to ${whoName}`
+        : "escalates, but nobody is assigned";
+
+  const label = DIRECTION_LABELS[rule.direction].label;
+
+  if (rule.measure === "MONEY") {
+    // A figure that was never filled in prints as no clause at all rather than
+    // as a half-sentence in a client pack. Validation reports it separately.
+    if (rule.amount === null) return `${tail.charAt(0).toUpperCase()}${tail.slice(1)}.`;
+    return `${label} ${formatMoney(rule.amount)} ${tail}.`;
+  }
+
+  if (rule.days === null) return `${tail.charAt(0).toUpperCase()}${tail.slice(1)}.`;
+  const days = `${rule.days} day${rule.days === 1 ? "" : "s"}`;
+  // "without a decision" only reads correctly on the escalation branch; a time
+  // rule that demands approval is just a deadline for signing.
+  const clause = rule.consequence === "ESCALATION" ? `${days} without a decision` : days;
+  return `${label} ${clause} ${tail}.`;
+}
+
+/**
+ * Every rule on a task, in the task's rule order. This is the array the
+ * report, the deck and the spreadsheet print, so none of them can disagree
+ * about what a task's rules are or what order they come in.
+ */
+export function describeAuthorityRow(
+  row: AuthorityTableRow,
+  whoNameFor: (rule: AuthorityRuleData) => string | null
+): string[] {
+  return row.rules.map((rule) => describeAuthorityRule(rule, whoNameFor(rule)));
+}
+
+export type AuthorityIssueType =
+  | "MISSING_APPROVER"
+  | "INCOMPLETE_RULE_WHO"
+  | "INCOMPLETE_RULE_FIGURE";
+
+export type AuthorityIssue = {
+  rowId: string;
+  /** Present when the issue is about one rule rather than the task as a whole. */
+  ruleId?: string;
+  type: AuthorityIssueType;
 };
 
 /**
- * States a row's rule as one plain sentence — the same wording the Authority
- * Matrix shows under each row and the Export Report prints. Written here
- * rather than in the component so both surfaces say exactly the same thing.
- */
-export function describeAuthorityRule(row: AuthorityTableRow, names: AuthorityRuleNames): string {
-  const sla = row.slaDays === null ? null : formatSla(row.slaDays);
-
-  if (!requiresApproval(row.direction)) {
-    const base = "No approval required — this step proceeds on its own.";
-    return sla ? `${base} Turnaround expectation: within ${sla}.` : base;
-  }
-
-  const parts: string[] = [];
-  const amount = row.threshold === null ? null : formatMoney(row.threshold);
-  const phrase = DIRECTION_LABELS[row.direction].phrase;
-
-  if (amount && names.approver) {
-    parts.push(`${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} ${amount} needs approval from ${names.approver}`);
-  } else if (amount) {
-    parts.push(`${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} ${amount} needs approval`);
-  } else if (names.approver) {
-    parts.push(`Needs approval from ${names.approver}`);
-  } else {
-    parts.push("Needs approval");
-  }
-
-  if (sla) parts.push(`within ${sla}`);
-
-  let sentence = `${parts.join(", ")}.`;
-
-  if (row.coApprovalAboveThreshold !== null) {
-    const coAmount = formatMoney(row.coApprovalAboveThreshold);
-    sentence += names.coApprover
-      ? ` A second sign-off from ${names.coApprover} is required above ${coAmount}.`
-      : ` Co-approval is required above ${coAmount}, but no co-approver is assigned.`;
-  }
-
-  if (names.escalation) {
-    sentence += sla
-      ? ` If ${sla} pass with no decision, it escalates to ${names.escalation}.`
-      : ` Unresolved, it escalates to ${names.escalation}.`;
-  }
-
-  return sentence;
-}
-
-export type AuthorityIssue =
-  | { rowId: string; type: "MISSING_APPROVER" }
-  | { rowId: string; type: "MISSING_CO_APPROVER" };
-
-/**
- * Mirrors RACI's rule (validateRaciMatrix): every non-skipped row must be
- * complete. Here that means an approver assigned, and — if a co-approval
- * threshold is set — a co-approver assigned too. A row marked
- * EQUAL_NO_APPROVAL is exempt: it deliberately has no approval gate, so
- * demanding an approver for it would be a false alarm.
+ * Mirrors RACI's rule (validateRaciMatrix): every non-skipped task must be
+ * complete. Here that means it has at least one rule, and every rule it has is
+ * finished — a figure, and somebody to carry the consequence.
+ *
+ * A task whose rule says "no approval required" is exempt, the same exemption
+ * EQUAL_NO_APPROVAL always had: demanding an approver for a task that
+ * deliberately has no gate would be a false alarm. There is no co-approver to
+ * check any more — a second signer is an ordinary second rule and is validated
+ * like any other.
  */
 export function validateAuthorityTable(rows: AuthorityTableRow[]): AuthorityIssue[] {
   const issues: AuthorityIssue[] = [];
+
   for (const row of rows) {
     if (row.skipped) continue;
     if (!requiresApproval(row.direction)) continue;
 
-    if (row.approverRoleId === null && row.approverPersonId === null) {
+    if (row.rules.length === 0) {
       issues.push({ rowId: row.id, type: "MISSING_APPROVER" });
+      continue;
     }
-    if (row.coApprovalAboveThreshold !== null && row.coApproverRoleId === null) {
-      issues.push({ rowId: row.id, type: "MISSING_CO_APPROVER" });
+
+    for (const rule of row.rules) {
+      if (rule.measure === "NONE") continue;
+
+      const figureMissing = rule.measure === "MONEY" ? rule.amount === null : rule.days === null;
+      if (figureMissing) {
+        issues.push({ rowId: row.id, ruleId: rule.id, type: "INCOMPLETE_RULE_FIGURE" });
+        continue;
+      }
+
+      if (rule.whoRoleId === null && rule.whoPersonId === null) {
+        issues.push({ rowId: row.id, ruleId: rule.id, type: "INCOMPLETE_RULE_WHO" });
+      }
     }
   }
+
   return issues;
 }

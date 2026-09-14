@@ -53,7 +53,7 @@ test.describe("Export", () => {
 
   test("Authority PDF and Excel downloads return well-formed files", async ({ page }) => {
     await page.goto(`/workspaces/workspace-acme/processes/${await processIdByCode("PUR101")}/authority`);
-    await page.waitForSelector("text=Escalation");
+    await page.waitForSelector("text=Turns on");
 
     const pdfHref = await page.locator('a:has-text("Export PDF")').first().getAttribute("href");
     const pdfResponse = await page.request.get(pdfHref!);

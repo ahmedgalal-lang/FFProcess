@@ -94,8 +94,7 @@ export type ExportProcessData = {
     threshold: number | null;
     directionLabel: string;
     requiresApproval: boolean;
-    coApprovalAboveThreshold: number | null;
-    coApproverLabel: string | null;
+    extraApprovals: { amount: number | null; label: string | null }[];
     escalationLabel: string | null;
   }[];
   involvedRoles: {
@@ -766,14 +765,20 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                         <td className="px-3 py-2 text-center text-xs text-slate-600">{row.directionLabel}</td>
                         <td className="px-3 py-2 text-center text-xs text-slate-600">{row.approverLabel ?? "—"}</td>
                         <td className="px-3 py-2 text-center text-xs text-slate-600">
-                          {row.coApprovalAboveThreshold === null ? (
+                          {row.extraApprovals.length === 0 ? (
                             "—"
                           ) : (
-                            <span className="flex flex-col leading-tight">
-                              <span>{row.coApproverLabel ?? "not set"}</span>
-                              <span className="font-mono text-[10px] text-slate-500">
-                                above ${row.coApprovalAboveThreshold.toLocaleString()}
-                              </span>
+                            <span className="flex flex-col gap-0.5 leading-tight">
+                              {row.extraApprovals.map((extra, i) => (
+                                <span key={i} className="flex flex-col leading-tight">
+                                  <span>{extra.label ?? "not set"}</span>
+                                  {extra.amount !== null && (
+                                    <span className="font-mono text-[10px] text-slate-500">
+                                      above ${extra.amount.toLocaleString()}
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
                             </span>
                           )}
                         </td>

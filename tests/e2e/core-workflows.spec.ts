@@ -167,6 +167,7 @@ test.describe("Core workflows", () => {
     // that validates them.
     await expect(row("Send PO to Vendor")).toContainText("no accountable");
     await expect(row("Send PO to Vendor")).toContainText("no approver");
+    // An unfinished rule reads as one, rather than as a missing co-approver.
     await expect(row("Receive Goods")).toContainText("no accountable");
 
     // A step that is fully documented says nothing — the chip is a gap list,
@@ -202,46 +203,45 @@ test.describe("Core workflows", () => {
     await expect(page.locator('button:has-text("Mark Final")')).toBeDisabled();
   });
 
-  test("Authority Matrix shows SLA, amount, direction, approval, co-approval and escalation per task", async ({
+  test("Authority Matrix builds each rule from what it turns on, through to what happens then", async ({
     page,
   }) => {
     await page.goto(`/workspaces/workspace-acme/processes/${await processIdByCode("PUR101")}/authority`);
     await expect(page.locator("h1")).toHaveText("Authority Matrix");
 
-    // Columns read in the order a rule plays out.
+    // Columns read in the order a rule is built: what it turns on, the figure,
+    // which side of it, and then what.
     const headers = await page.locator("thead th").allInnerTexts();
     expect(headers.map((h) => h.trim().toUpperCase())).toEqual([
       "TASK",
-      "SLA",
-      "AMOUNT",
+      "TURNS ON",
+      "VALUE",
       "DIRECTION",
-      "APPROVAL",
-      "CO-APPROVAL",
-      "ESCALATION",
-      "ACTIONS",
+      "THEN",
     ]);
 
-    const createPORow = page.locator("tr", { hasText: "Create Purchase Order" }).first();
-    await expect(createPORow).toContainText("2 days");
-    await expect(createPORow).toContainText("$10,000");
-    await expect(createPORow).toContainText("More than");
-    await expect(createPORow).toContainText("AP Clerk");
-    await expect(createPORow).toContainText("Procurement Lead"); // escalation
-
-    // Each row states its rule as a sentence, built from the same data.
+    // Create Purchase Order carries two rules — a spending limit that needs a
+    // signature, and a turnaround that escalates. One row each; they used to
+    // be welded into one.
     await expect(
-      page.getByText("More than $10,000 needs approval from AP Clerk, within 2 days.", { exact: false })
+      page.getByText("More than $10,000 needs approval from AP Clerk.", { exact: false })
+    ).toBeVisible();
+    await expect(
+      page.getByText("More than 2 days without a decision escalates to Procurement Lead.", { exact: false })
     ).toBeVisible();
 
     // "At or above" is a distinct direction from "More than".
-    const approvePORow = page.locator("tr", { hasText: "Approve Purchase Order" }).first();
-    await expect(approvePORow).toContainText("At or above");
-    await expect(approvePORow).toContainText("$100,000");
+    await expect(
+      page.getByText("At or above $100,000 needs approval from Finance Manager.", { exact: false })
+    ).toBeVisible();
 
-    // A task with no approval gate is marked as such and dimmed.
-    const revisePORow = page.locator("tr", { hasText: "Revise Purchase Order" }).first();
-    await expect(revisePORow).toContainText("3 days");
-    await expect(revisePORow).toContainText("Equal — no approval");
+    // The second signature a task needs is an ordinary second rule, not a
+    // special co-approval field.
+    await expect(
+      page.getByText("More than $50,000 needs approval from Controller.", { exact: false })
+    ).toBeVisible();
+
+    // A task with no approval gate still says so.
     await expect(page.getByText(/No approval required — this step proceeds on its own/)).toBeVisible();
   });
 
@@ -278,7 +278,7 @@ test.describe("Core workflows", () => {
 
     // Key Control Points, derived from real co-approval data, surface a real gap in the seed.
     await expect(page.getByText("Key Control Points").first()).toBeVisible();
-    await expect(page.getByText(/no co-approver is assigned/).first()).toBeVisible();
+    await expect(page.getByText(/requires a second sign-off/).first()).toBeVisible();
 
     // Undocumented sections are skipped in the report, but named in a preview-only banner.
     const banner = page.getByText(/Some sections are missing content/);
@@ -335,7 +335,7 @@ test.describe("Core workflows", () => {
     // One section per process, and the seeded co-approval gap surfaces here.
     await expect(page.getByText("Purchase-to-Pay")).toBeVisible();
     await expect(page.getByText("Sales Order Fulfillment")).toBeVisible();
-    await expect(page.getByText(/no co-approver is assigned/).first()).toBeVisible();
+    await expect(page.getByText(/requires a second sign-off/).first()).toBeVisible();
 
     // KPIs are editable per process, from here rather than the Process Map.
     await expect(page.getByLabel("Edit KPIs for Purchase-to-Pay")).toBeVisible();

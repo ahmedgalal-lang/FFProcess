@@ -32,31 +32,82 @@ const rowRefSchema = z.object({
   kind: z.enum(["activity", "step"]),
 });
 
-const saveAuthorityRowSchema = rowRefSchema
-  .extend({
-    slaDays: z.number().int().nonnegative().max(3650).nullable(),
-    threshold: z.number().nonnegative().nullable(),
-    direction: z.enum(["GREATER_THAN", "GREATER_OR_EQUAL", "LESS_THAN", "LESS_OR_EQUAL", "EQUAL_NO_APPROVAL"]),
-    approverRoleId: z.string().min(1).nullable(),
-    approverPersonId: z.string().min(1).nullable(),
-    coApprovalAboveThreshold: z.number().nonnegative().nullable(),
-    coApproverRoleId: z.string().min(1).nullable(),
-    escalationRoleId: z.string().min(1).nullable(),
-  })
-  .refine((v) => !(v.approverRoleId && v.approverPersonId), {
-    message: "Choose a Role or a Person as approver, not both",
-  });
+const DIRECTIONS = ["GREATER_THAN", "GREATER_OR_EQUAL", "LESS_THAN", "LESS_OR_EQUAL", "EQUAL_NO_APPROVAL"] as const;
 
 /**
- * Creates or updates a row's Authority data — SLA, amount, direction,
- * approver, optional co-approval tier, and escalation. A row set to
- * EQUAL_NO_APPROVAL has no approval gate, so everything except the SLA is
- * cleared rather than persisted as stale values behind a dimmed row.
+ * The invariants a rule has to satisfy, enforced here at the boundary rather
+ * than only in the database (Constitution Principle I).
+ *
+ * The measure is the one that matters: a MONEY rule carries an amount and no
+ * days, a TIME rule the reverse. Enforcing it server-side is what stops a
+ * client that forgets to clear the other figure persisting a stale one, which
+ * is exactly the bug FR-003 exists to prevent.
  */
-export async function saveAuthorityRow(
-  input: z.infer<typeof saveAuthorityRowSchema>
+const ruleShapeSchema = z
+  .object({
+    measure: z.enum(["MONEY", "TIME", "NONE"]),
+    amount: z.number().nonnegative().nullable(),
+    days: z.number().int().nonnegative().max(3650).nullable(),
+    direction: z.enum(DIRECTIONS),
+    consequence: z.enum(["APPROVAL", "ESCALATION"]),
+    whoRoleId: z.string().min(1).nullable(),
+    whoPersonId: z.string().min(1).nullable(),
+  })
+  .refine((v) => !(v.whoRoleId && v.whoPersonId), {
+    message: "Choose a Role or a Person, not both",
+  })
+  .refine((v) => v.measure !== "MONEY" || v.days === null, {
+    message: "A money rule cannot carry a turnaround",
+  })
+  .refine((v) => v.measure !== "TIME" || v.amount === null, {
+    message: "A time rule cannot carry an amount",
+  })
+  .refine((v) => v.measure !== "NONE" || (v.amount === null && v.days === null), {
+    message: "A task with no rule carries no figure",
+  })
+  .refine((v) => v.measure !== "NONE" || v.direction === "EQUAL_NO_APPROVAL", {
+    message: "A task with no rule must use the no-approval direction",
+  });
+
+const addRuleSchema = rowRefSchema;
+const updateRuleSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  ruleId: z.string().min(1),
+  rule: ruleShapeSchema,
+});
+const deleteRuleSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+  ruleId: z.string().min(1),
+});
+
+/** Confirms a role or person belongs to this workspace before it is stored on a rule. */
+async function whoBelongsToWorkspace(
+  workspaceId: string,
+  whoRoleId: string | null,
+  whoPersonId: string | null
+): Promise<boolean> {
+  if (whoRoleId) {
+    const role = await prisma.role.findUnique({ where: { id: whoRoleId } });
+    if (!role || role.workspaceId !== workspaceId) return false;
+  }
+  if (whoPersonId) {
+    const person = await prisma.person.findUnique({ where: { id: whoPersonId } });
+    if (!person || person.workspaceId !== workspaceId) return false;
+  }
+  return true;
+}
+
+/**
+ * Adds an empty rule to a task, creating the task's assignment row if it does
+ * not have one yet. New rules land at the end of the list, which is what makes
+ * the displayed order stable and predictable (FR-013).
+ */
+export async function addAuthorityRule(
+  input: z.infer<typeof addRuleSchema>
 ): Promise<ActionResult<{ id: string }>> {
-  const parsed = saveAuthorityRowSchema.safeParse(input);
+  const parsed = addRuleSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
 
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
@@ -70,45 +121,96 @@ export async function saveAuthorityRow(
   const row = await loadRowInProcess(processId, rowId, kind);
   if (!row) return notFound();
 
-  if (parsed.data.approverRoleId) {
-    const role = await prisma.role.findUnique({ where: { id: parsed.data.approverRoleId } });
-    if (!role || role.workspaceId !== workspaceId) return notFound();
-  }
-  if (parsed.data.approverPersonId) {
-    const person = await prisma.person.findUnique({ where: { id: parsed.data.approverPersonId } });
-    if (!person || person.workspaceId !== workspaceId) return notFound();
-  }
-  if (parsed.data.coApproverRoleId) {
-    const role = await prisma.role.findUnique({ where: { id: parsed.data.coApproverRoleId } });
-    if (!role || role.workspaceId !== workspaceId) return notFound();
-  }
-  if (parsed.data.escalationRoleId) {
-    const role = await prisma.role.findUnique({ where: { id: parsed.data.escalationRoleId } });
-    if (!role || role.workspaceId !== workspaceId) return notFound();
-  }
-
-  const noGate = parsed.data.direction === "EQUAL_NO_APPROVAL";
-  const data = {
-    slaDays: parsed.data.slaDays,
-    direction: parsed.data.direction,
-    threshold: noGate ? null : parsed.data.threshold,
-    approverRoleId: noGate ? null : parsed.data.approverRoleId,
-    approverPersonId: noGate ? null : parsed.data.approverPersonId,
-    coApprovalAboveThreshold: noGate ? null : parsed.data.coApprovalAboveThreshold,
-    coApproverRoleId: noGate ? null : parsed.data.coApproverRoleId,
-    escalationRoleId: noGate ? null : parsed.data.escalationRoleId,
-  };
-
   const where = row.activityId ? { activityId: row.activityId } : { stepId: row.stepId! };
-
   const assignment = await prisma.authorityAssignment.upsert({
     where,
-    update: data,
-    create: { processId, activityId: row.activityId, stepId: row.stepId, skipped: false, ...data },
+    update: {},
+    create: { processId, activityId: row.activityId, stepId: row.stepId, skipped: false },
+  });
+
+  const last = await prisma.authorityRule.findFirst({
+    where: { assignmentId: assignment.id },
+    orderBy: { order: "desc" },
+  });
+
+  const rule = await prisma.authorityRule.create({
+    data: { assignmentId: assignment.id, order: (last?.order ?? -1) + 1 },
   });
 
   revalidatePath(`/workspaces/${workspaceId}/processes/${processId}/authority`);
-  return ok({ id: assignment.id });
+  return ok({ id: rule.id });
+}
+
+/**
+ * Saves one rule. Switching the measure clears the figure belonging to the
+ * other one here rather than trusting the client to, so a rule can never be
+ * stored carrying both an amount and a turnaround.
+ */
+export async function updateAuthorityRule(
+  input: z.infer<typeof updateRuleSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateRuleSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const { workspaceId, processId, ruleId, rule } = parsed.data;
+
+  const process = await loadProcessInWorkspace(workspaceId, processId);
+  if (!process) return notFound();
+
+  const existing = await prisma.authorityRule.findUnique({
+    where: { id: ruleId },
+    include: { assignment: true },
+  });
+  if (!existing || existing.assignment.processId !== processId) return notFound();
+
+  if (!(await whoBelongsToWorkspace(workspaceId, rule.whoRoleId, rule.whoPersonId))) return notFound();
+
+  const noRule = rule.measure === "NONE";
+  await prisma.authorityRule.update({
+    where: { id: ruleId },
+    data: {
+      measure: rule.measure,
+      amount: rule.measure === "MONEY" ? rule.amount : null,
+      days: rule.measure === "TIME" ? rule.days : null,
+      direction: rule.direction,
+      consequence: rule.consequence,
+      whoRoleId: noRule ? null : rule.whoRoleId,
+      whoPersonId: noRule ? null : rule.whoPersonId,
+    },
+  });
+
+  revalidatePath(`/workspaces/${workspaceId}/processes/${processId}/authority`);
+  return ok({ id: ruleId });
+}
+
+/** Removes one rule. The task keeps its other rules, and may end up with none. */
+export async function deleteAuthorityRule(
+  input: z.infer<typeof deleteRuleSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteRuleSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const { workspaceId, processId, ruleId } = parsed.data;
+
+  const process = await loadProcessInWorkspace(workspaceId, processId);
+  if (!process) return notFound();
+
+  const existing = await prisma.authorityRule.findUnique({
+    where: { id: ruleId },
+    include: { assignment: true },
+  });
+  if (!existing || existing.assignment.processId !== processId) return notFound();
+
+  await prisma.authorityRule.delete({ where: { id: ruleId } });
+
+  revalidatePath(`/workspaces/${workspaceId}/processes/${processId}/authority`);
+  return ok({ id: ruleId });
 }
 
 async function setSkipped(

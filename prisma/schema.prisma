@@ -201,9 +201,7 @@ model Role {
   swimlaneSteps        ProcessStep[]         @relation("StepSwimlaneRole")
   supportedSteps       ProcessStep[]         @relation("StepSupportingRoles")
   raciAssignments      RaciAssignment[]
-  authorityApprovals   AuthorityAssignment[] @relation("AuthorityApproverRole")
-  authorityCoApprovals AuthorityAssignment[] @relation("AuthorityCoApproverRole")
-  authorityEscalations AuthorityAssignment[] @relation("AuthorityEscalationRole")
+  authorityRules AuthorityRule[] @relation("AuthorityRuleRole")
 
   createdAt DateTime @default(now())
 
@@ -224,7 +222,7 @@ model Person {
   reports   Person[]  @relation("PersonManager")
 
   personRoles        PersonRole[]
-  authorityApprovals AuthorityAssignment[] @relation("AuthorityApproverPerson")
+  authorityRules AuthorityRule[] @relation("AuthorityRulePerson")
 
   createdAt DateTime @default(now())
 
@@ -599,41 +597,86 @@ model AuthorityAssignment {
   processId  String
   activityId String? @unique
   stepId     String? @unique
-  skipped    Boolean @default(false)
 
-  /// How long the approver has to respond, in days. Independent of the money
-  /// threshold below — a step can carry a turnaround expectation even when it
-  /// has no approval gate at all.
-  slaDays Int?
+  /// Task-level, not rule-level: a skipped task is skipped however many rules
+  /// it has, which is why this stays here while everything else moved to
+  /// AuthorityRule.
+  skipped Boolean @default(false)
 
-  /// The money amount this rule turns on. Always currency; time lives in
-  /// slaDays.
-  threshold Decimal? @db.Decimal(14, 2)
+  /// The task's rules, in display order. A task may have none — it then reads
+  /// as having no rules, and validation says so if it needs one.
+  rules AuthorityRule[]
 
-  /// Which side of `threshold` actually requires approval. EQUAL_NO_APPROVAL
-  /// means this step has no approval gate — the row renders dimmed and its
-  /// amount/approver/co-approval/escalation are all left unset.
-  direction AuthorityDirection @default(GREATER_THAN)
-
-  approverRoleId           String?
-  approverPersonId         String?
-  coApprovalAboveThreshold Decimal? @db.Decimal(14, 2)
-  coApproverRoleId         String?
-
-  /// Who it lands on when the SLA passes with no decision.
-  escalationRoleId String?
-
-  process        Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
-  activity       Activity?    @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  step           ProcessStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  approverRole   Role?        @relation("AuthorityApproverRole", fields: [approverRoleId], references: [id])
-  approverPerson Person?      @relation("AuthorityApproverPerson", fields: [approverPersonId], references: [id])
-  coApproverRole Role?        @relation("AuthorityCoApproverRole", fields: [coApproverRoleId], references: [id])
-  escalationRole Role?        @relation("AuthorityEscalationRole", fields: [escalationRoleId], references: [id])
+  process  Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
+  activity Activity?    @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  step     ProcessStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([processId])
   @@map("authority_assignments")
+}
+
+/// What a rule turns on. Exactly one figure applies: MONEY uses `amount`,
+/// TIME uses `days`, and NONE carries neither — it exists so a task can say
+/// "no approval required" and still render dimmed.
+enum AuthorityMeasure {
+  MONEY
+  TIME
+  NONE
+}
+
+/// What happens when a rule fires.
+enum AuthorityConsequence {
+  APPROVAL
+  ESCALATION
+}
+
+/// One governance statement about one task: what it turns on, the figure,
+/// which side of the figure it fires on, and who it lands on when it does.
+///
+/// A task carries an ordered list of these. That is what replaced the old
+/// fixed columns — a second signer is simply a second APPROVAL rule rather
+/// than a special "co-approval" field, and a task with both a spending limit
+/// and a turnaround is two rules rather than one row holding two unrelated
+/// governance rules at once.
+model AuthorityRule {
+  id           String @id @default(uuid())
+  assignmentId String
+
+  /// Position in this task's list. Same pattern as ProcessStep.order and
+  /// Phase.order; createdAt breaks ties.
+  order Int @default(0)
+
+  measure AuthorityMeasure @default(MONEY)
+
+  /// Set only when measure is MONEY.
+  amount Decimal? @db.Decimal(14, 2)
+
+  /// Set only when measure is TIME. Whole days.
+  days Int?
+
+  /// Which side of the figure the rule fires on. EQUAL_NO_APPROVAL pairs with
+  /// measure NONE and means the task has no rule at all.
+  direction AuthorityDirection @default(GREATER_THAN)
+
+  consequence AuthorityConsequence @default(APPROVAL)
+
+  /// Who the consequence lands on — a role or a named person, never both.
+  /// Neither means an unfinished rule, which validation reports rather than
+  /// the save rejecting: a consultant may set the figure before deciding who
+  /// signs.
+  whoRoleId   String?
+  whoPersonId String?
+
+  assignment AuthorityAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  whoRole    Role?               @relation("AuthorityRuleRole", fields: [whoRoleId], references: [id])
+  whoPerson  Person?             @relation("AuthorityRulePerson", fields: [whoPersonId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assignmentId, order])
+  @@map("authority_rules")
 }

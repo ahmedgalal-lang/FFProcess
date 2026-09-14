@@ -56,7 +56,7 @@ test.describe("Accessibility", () => {
 
   test("Authority matrix has no automatically detectable violations", async ({ page }) => {
     await page.goto(`/workspaces/workspace-acme/processes/${await processIdByCode("PUR101")}/authority`);
-    await page.waitForSelector("text=Escalation");
+    await page.waitForSelector("text=Turns on");
 
     const results = await new AxeBuilder({ page }).include("main").analyze();
     expect(results.violations).toEqual([]);

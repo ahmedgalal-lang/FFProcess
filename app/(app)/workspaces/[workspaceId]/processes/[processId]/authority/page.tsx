@@ -4,6 +4,7 @@ import { buildAuthorityTableRows, validateAuthorityTable } from "@/lib/domain/au
 import { getProcessStepperCounts } from "@/lib/data/process-stepper-data";
 import { AuthorityTable } from "./authority-table";
 import { ProcessStepper } from "../process-stepper";
+import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 export default async function AuthorityMatrixPage(
   props: PageProps<"/workspaces/[workspaceId]/processes/[processId]/authority">
@@ -22,18 +23,14 @@ export default async function AuthorityMatrixPage(
       select: { id: true, type: true, label: true },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.authorityAssignment.findMany({ where: { processId } }),
+    prisma.authorityAssignment.findMany({ where: { processId }, include: AUTHORITY_ASSIGNMENT_INCLUDE }),
     getProcessStepperCounts(processId),
   ]);
 
   const rows = buildAuthorityTableRows(
     steps,
     activities.map((a) => ({ id: a.id, name: a.name, relatedStepId: a.relatedStepId, order: a.order })),
-    assignments.map((a) => ({
-      ...a,
-      threshold: a.threshold === null ? null : Number(a.threshold),
-      coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-    }))
+    assignments.map(toAuthorityAssignmentData)
   );
 
   const issues = validateAuthorityTable(rows);
@@ -67,8 +64,8 @@ export default async function AuthorityMatrixPage(
       </div>
       <h1 className="text-xl font-semibold text-slate-900">Authority Matrix</h1>
       <p className="mt-1 mb-4 text-sm text-slate-500">
-        How long each task may take, the amount its rule turns on, which side of that amount needs approval, and who
-        signs, co-signs, or picks it up when it stalls.
+        Each task carries as many rules as it needs. A rule turns on an amount of money or an elapsed time, and says
+        what happens then — the task needs approval, or it escalates.
       </p>
 
       <ProcessStepper workspaceId={workspaceId} processId={processId} {...stepperCounts} />

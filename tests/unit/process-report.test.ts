@@ -9,6 +9,22 @@ import {
   type CombinedMatrixRow,
 } from "@/lib/domain/process-report";
 
+let ruleSeq = 0;
+/** A second approval rule is what "co-approval above X" became. */
+function approvalRule(amount: number, whoRoleId: string | null) {
+  return {
+    id: `rule-${++ruleSeq}`,
+    order: ruleSeq,
+    measure: "MONEY" as const,
+    amount,
+    days: null,
+    direction: "GREATER_THAN" as const,
+    consequence: "APPROVAL" as const,
+    whoRoleId,
+    whoPersonId: null,
+  };
+}
+
 describe("buildCombinedMatrixRows", () => {
   it("joins a RACI row and an Authority row with the same id", () => {
     const rows = buildCombinedMatrixRows(
@@ -22,8 +38,7 @@ describe("buildCombinedMatrixRows", () => {
           direction: "GREATER_THAN",
           approverRoleId: "r1",
           approverPersonId: null,
-          coApprovalAboveThreshold: null,
-          coApproverRoleId: null,
+          rules: [],
           escalationRoleId: null,
         },
       ]
@@ -40,8 +55,7 @@ describe("buildCombinedMatrixRows", () => {
         direction: "GREATER_THAN",
         approverRoleId: "r1",
         approverPersonId: null,
-        coApprovalAboveThreshold: null,
-        coApproverRoleId: null,
+        rules: [],
         escalationRoleId: null,
       },
     ]);
@@ -73,8 +87,7 @@ describe("buildCombinedMatrixRows", () => {
           direction: "GREATER_THAN",
           approverRoleId: null,
           approverPersonId: null,
-          coApprovalAboveThreshold: null,
-          coApproverRoleId: null,
+          rules: [],
           escalationRoleId: null,
         },
       ]
@@ -94,8 +107,7 @@ describe("buildCombinedMatrixRows", () => {
           direction: "GREATER_THAN",
           approverRoleId: null,
           approverPersonId: null,
-          coApprovalAboveThreshold: null,
-          coApproverRoleId: null,
+          rules: [],
           escalationRoleId: null,
         },
       ]
@@ -116,8 +128,7 @@ function row(overrides: Partial<CombinedMatrixRow>): CombinedMatrixRow {
     direction: "GREATER_THAN",
     approverRoleId: null,
     approverPersonId: null,
-    coApprovalAboveThreshold: null,
-    coApproverRoleId: null,
+    rules: [],
     escalationRoleId: null,
     ...overrides,
   };
@@ -135,7 +146,7 @@ describe("deriveControlPoints", () => {
 
   it("derives a dual-authorization statement when a co-approver is assigned", () => {
     const points = deriveControlPoints(
-      [row({ coApprovalAboveThreshold: 50000, coApproverRoleId: "controller" })],
+      [row({ rules: [approvalRule(10000, "ap-clerk"), approvalRule(50000, "controller")] })],
       roleNameById
     );
     expect(points).toEqual([
@@ -148,16 +159,16 @@ describe("deriveControlPoints", () => {
     ]);
   });
 
-  it("flags a co-approval threshold with no co-approver assigned", () => {
-    const points = deriveControlPoints([row({ coApprovalAboveThreshold: 50000, coApproverRoleId: null })], roleNameById);
+  it("flags a second sign-off with nobody assigned to it", () => {
+    const points = deriveControlPoints([row({ rules: [approvalRule(10000, "ap-clerk"), approvalRule(50000, null)] })], roleNameById);
     expect(points).toHaveLength(1);
     expect(points[0]!.flagged).toBe(true);
-    expect(points[0]!.statement).toContain("no co-approver is assigned");
+    expect(points[0]!.statement).toContain("nobody is assigned to it");
   });
 
   it("always formats the co-approval limit as money, since amounts are money-only", () => {
     const points = deriveControlPoints(
-      [row({ coApprovalAboveThreshold: 3000, coApproverRoleId: "finance-manager" })],
+      [row({ rules: [approvalRule(1000, "ap-clerk"), approvalRule(3000, "finance-manager")] })],
       roleNameById
     );
     expect(points[0]!.statement).toContain("above $3,000");
@@ -168,7 +179,7 @@ describe("involvedRoleIds", () => {
   it("collects RACI assignees, approvers, and co-approvers, deduplicated", () => {
     const rows = [
       row({ raciAssignments: { "ap-clerk": "RESPONSIBLE", "finance-manager": "ACCOUNTABLE" } }),
-      row({ rowId: "r2", approverRoleId: "finance-manager", coApproverRoleId: "controller" }),
+      row({ rowId: "r2", approverRoleId: "finance-manager", rules: [approvalRule(50000, "controller")] }),
     ];
     expect(new Set(involvedRoleIds(rows))).toEqual(new Set(["ap-clerk", "finance-manager", "controller"]));
   });
@@ -203,7 +214,7 @@ describe("deriveRoleDuties", () => {
 
   it("covers co-approval and escalation, not just RACI codes", () => {
     const rows = [
-      row({ rowId: "r1", label: "Approve Payment", coApproverRoleId: "ctrl", escalationRoleId: "ctrl" }),
+      row({ rowId: "r1", label: "Approve Payment", escalationRoleId: "ctrl", rules: [approvalRule(1000, "fm"), approvalRule(5000, "ctrl")] }),
     ];
     const { duties } = deriveRoleDuties(rows, "ctrl");
     expect(duties.map((d) => d.key)).toEqual(["coApproves", "escalationFor"]);

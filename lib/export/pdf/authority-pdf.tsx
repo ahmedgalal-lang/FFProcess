@@ -40,8 +40,7 @@ export type AuthorityPdfRow = {
   threshold: number | null;
   directionLabel: string;
   approverLabel: string | null;
-  coApprovalAboveThreshold: number | null;
-  coApproverLabel: string | null;
+  extraApprovals: { amount: number | null; label: string | null }[];
   escalationLabel: string | null;
 };
 
@@ -104,8 +103,10 @@ export function AuthorityPdfDocument({
               <Text style={styles.cell}>{r.directionLabel}</Text>
               <Text style={styles.cell}>{r.approverLabel ?? "—"}</Text>
               <Text style={styles.cell}>
-                {r.coApproverLabel
-                  ? `${r.coApproverLabel} above ${formatMoneyCell(r.coApprovalAboveThreshold)}`
+                {r.extraApprovals.length > 0
+                  ? r.extraApprovals
+                      .map((e) => `${e.label ?? "unassigned"} above ${formatMoneyCell(e.amount)}`)
+                      .join("; ")
                   : "—"}
               </Text>
               <Text style={styles.cell}>{r.escalationLabel ?? "—"}</Text>

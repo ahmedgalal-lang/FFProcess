@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
-import { buildAuthorityTableRows, DIRECTION_LABELS, requiresApproval } from "@/lib/domain/authority-table";
+import { additionalApprovals, buildAuthorityTableRows, DIRECTION_LABELS, requiresApproval } from "@/lib/domain/authority-table";
 import { buildStepAuthoritySummary } from "@/lib/domain/step-authority-summary";
 import {
   buildCombinedMatrixRows,
@@ -14,6 +14,7 @@ import { applyPackOrder } from "@/lib/domain/process-order";
 import { valueChainSummary, type ActivityCard, type PhaseRef } from "@/lib/domain/value-chain";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ExportProcessData, ValueChainColumn } from "@/app/reports/[workspaceId]/export-preview";
+import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 export type ReportData = {
   workspaceId: string;
@@ -197,7 +198,7 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
           include: { raciAssignments: true },
           orderBy: { order: "asc" },
         }),
-        prisma.authorityAssignment.findMany({ where: { processId: process.id } }),
+        prisma.authorityAssignment.findMany({ where: { processId: process.id }, include: AUTHORITY_ASSIGNMENT_INCLUDE }),
       ]);
 
       const raciRows = buildRaciTableRows(
@@ -217,11 +218,7 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
         relatedStepId: a.relatedStepId,
         order: a.order,
       }));
-      const authorityAssignmentData = authorityAssignments.map((a) => ({
-        ...a,
-        threshold: a.threshold === null ? null : Number(a.threshold),
-        coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-      }));
+      const authorityAssignmentData = authorityAssignments.map(toAuthorityAssignmentData);
 
       const authorityRows = buildAuthorityTableRows(steps, authorityActivities, authorityAssignmentData);
 
@@ -287,8 +284,10 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
           threshold: row.threshold,
           directionLabel: DIRECTION_LABELS[row.direction].label,
           requiresApproval: requiresApproval(row.direction),
-          coApprovalAboveThreshold: row.coApprovalAboveThreshold,
-          coApproverLabel: row.coApproverRoleId ? (roleNameById.get(row.coApproverRoleId) ?? null) : null,
+          extraApprovals: additionalApprovals(row.rules).map((rule) => ({
+            amount: rule.amount,
+            label: rule.whoRoleId ? (roleNameById.get(rule.whoRoleId) ?? null) : null,
+          })),
           escalationLabel: row.escalationRoleId ? (roleNameById.get(row.escalationRoleId) ?? null) : null,
         })),
         involvedRoles: involved.map((roleId) => ({

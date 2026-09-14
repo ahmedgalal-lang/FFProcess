@@ -7,7 +7,7 @@
  */
 
 import type { RaciCode, StepType } from "./raci-table";
-import { formatMoney, type AuthorityDirection } from "./authority-table";
+import { formatMoney, type AuthorityDirection, type AuthorityRuleData } from "./authority-table";
 
 export type CombinedMatrixRow = {
   rowId: string;
@@ -20,9 +20,9 @@ export type CombinedMatrixRow = {
   direction: AuthorityDirection;
   approverRoleId: string | null;
   approverPersonId: string | null;
-  coApprovalAboveThreshold: number | null;
-  coApproverRoleId: string | null;
   escalationRoleId: string | null;
+  /** Every rule on the task, in order — what a control point is derived from. */
+  rules: AuthorityRuleData[];
 };
 
 type RaciRowInput = {
@@ -41,9 +41,8 @@ type AuthorityRowInput = {
   direction: AuthorityDirection;
   approverRoleId: string | null;
   approverPersonId: string | null;
-  coApprovalAboveThreshold: number | null;
-  coApproverRoleId: string | null;
   escalationRoleId: string | null;
+  rules: AuthorityRuleData[];
 };
 
 /**
@@ -75,9 +74,8 @@ export function buildCombinedMatrixRows(
         direction: authority?.direction ?? "GREATER_THAN",
         approverRoleId: authority?.approverRoleId ?? null,
         approverPersonId: authority?.approverPersonId ?? null,
-        coApprovalAboveThreshold: authority?.coApprovalAboveThreshold ?? null,
-        coApproverRoleId: authority?.coApproverRoleId ?? null,
         escalationRoleId: authority?.escalationRoleId ?? null,
+        rules: authority?.rules ?? [],
       };
     })
     .filter((row) => !row.skipped);
@@ -91,34 +89,48 @@ export type ControlPoint = {
 
 /**
  * Derives Key Control Points straight from real co-approval rules already in
- * the Authority Matrix — not invented. A row with a co-approval threshold
- * becomes a "dual authorization" control statement; one with a threshold but
- * no co-approver assigned yet is flagged as a real gap rather than silently
- * described as though it were resolved.
+ * the Authority Matrix — not invented.
+ *
+ * A control point is a task that needs more than one signature. That used to
+ * be a dedicated "co-approval" field; it is now simply a task carrying more
+ * than one approval rule, which is the same fact stated by the data rather
+ * than by a special column. A second approval rule with nobody assigned is
+ * still flagged as a real gap rather than described as though it were
+ * resolved.
  */
 export function deriveControlPoints(
   rows: CombinedMatrixRow[],
   roleNameById: Map<string, string>
 ): ControlPoint[] {
   const points: ControlPoint[] = [];
+
   for (const row of rows) {
-    if (row.coApprovalAboveThreshold === null) continue;
-    const limit = formatMoney(row.coApprovalAboveThreshold);
-    const coApprover = row.coApproverRoleId ? roleNameById.get(row.coApproverRoleId) : null;
-    if (coApprover) {
-      points.push({
-        rowId: row.rowId,
-        statement: `"${row.label}" above ${limit} requires separate sign-off from ${coApprover} in addition to the primary approver.`,
-        flagged: false,
-      });
-    } else {
-      points.push({
-        rowId: row.rowId,
-        statement: `"${row.label}" has a co-approval threshold of ${limit} set, but no co-approver is assigned — this needs to be resolved in the Authority Matrix.`,
-        flagged: true,
-      });
+    const approvals = row.rules.filter((r) => r.consequence === "APPROVAL" && r.measure !== "NONE");
+    if (approvals.length < 2) continue;
+
+    // The first approval is the primary signature; everything after it is an
+    // additional one, and each is its own control point.
+    for (const extra of approvals.slice(1)) {
+      const limit = extra.amount === null ? null : formatMoney(extra.amount);
+      const who = extra.whoRoleId ? roleNameById.get(extra.whoRoleId) : null;
+      const scope = limit ? `above ${limit}` : "on this task";
+
+      if (who) {
+        points.push({
+          rowId: row.rowId,
+          statement: `"${row.label}" ${scope} requires separate sign-off from ${who} in addition to the primary approver.`,
+          flagged: false,
+        });
+      } else {
+        points.push({
+          rowId: row.rowId,
+          statement: `"${row.label}" requires a second sign-off ${scope}, but nobody is assigned to it — this needs to be resolved in the Authority Matrix.`,
+          flagged: true,
+        });
+      }
     }
   }
+
   return points;
 }
 
@@ -128,8 +140,10 @@ export function involvedRoleIds(rows: CombinedMatrixRow[]): string[] {
   for (const row of rows) {
     for (const roleId of Object.keys(row.raciAssignments)) ids.add(roleId);
     if (row.approverRoleId) ids.add(row.approverRoleId);
-    if (row.coApproverRoleId) ids.add(row.coApproverRoleId);
     if (row.escalationRoleId) ids.add(row.escalationRoleId);
+    for (const rule of row.rules) {
+      if (rule.whoRoleId) ids.add(rule.whoRoleId);
+    }
   }
   return [...ids];
 }
@@ -152,7 +166,17 @@ const DUTY_ORDER: { key: RoleDuty["key"]; label: string; pick: (r: CombinedMatri
   { key: "consulted", label: "Consulted", pick: (r, id) => r.raciAssignments[id] === "CONSULTED" },
   { key: "informed", label: "Informed", pick: (r, id) => r.raciAssignments[id] === "INFORMED" },
   { key: "approves", label: "Approves", pick: (r, id) => r.approverRoleId === id },
-  { key: "coApproves", label: "Co-approves", pick: (r, id) => r.coApproverRoleId === id },
+  {
+    key: "coApproves",
+    label: "Co-approves",
+    // Any approval rule after the first one — the second signature a task
+    // needs, which used to be a dedicated co-approval field.
+    pick: (r, id) =>
+      r.rules
+        .filter((rule) => rule.consequence === "APPROVAL" && rule.measure !== "NONE")
+        .slice(1)
+        .some((rule) => rule.whoRoleId === id),
+  },
   { key: "escalationFor", label: "Escalation point", pick: (r, id) => r.escalationRoleId === id },
 ];
 

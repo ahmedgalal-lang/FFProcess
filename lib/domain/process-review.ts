@@ -105,8 +105,7 @@ export type ProcessReviewContext = {
       requiresApproval: boolean;
       threshold: number | null;
       approverLabel: string | null;
-      coApprovalAboveThreshold: number | null;
-      coApproverLabel: string | null;
+      extraApprovals: { amount: number | null; label: string | null }[];
       escalationLabel: string | null;
     }[];
     issues: AuthorityIssue[];
@@ -186,10 +185,13 @@ export function buildProcessReviewPrompt(context: ProcessReviewContext): string 
           ? "no amount set"
           : `${row.directionLabel.toLowerCase()} $${row.threshold.toLocaleString()}`;
       const approver = row.approverLabel ?? "no approver assigned";
-      const co =
-        row.coApproverLabel && row.coApprovalAboveThreshold !== null
-          ? `, co-approval from ${row.coApproverLabel} above $${row.coApprovalAboveThreshold.toLocaleString()}`
-          : "";
+      const co = row.extraApprovals
+        .map((extra) =>
+          extra.label
+            ? `, also signed by ${extra.label}${extra.amount === null ? "" : ` above $${extra.amount.toLocaleString()}`}`
+            : ", a second sign-off with nobody assigned"
+        )
+        .join("");
       const escalation = row.escalationLabel ? `, escalates to ${row.escalationLabel}` : "";
       lines.push(`- ${row.label}: ${sla}, ${threshold} — ${approver}${co}${escalation}`);
     }

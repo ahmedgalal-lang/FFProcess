@@ -31,7 +31,7 @@ export type StepGap =
   | "TOO_MANY_ACCOUNTABLE"
   | "RESPONSIBLE"
   | "APPROVER"
-  | "CO_APPROVER";
+  | "INCOMPLETE_RULE";
 
 /** Short labels, for a chip that has to fit on one line. */
 export const STEP_GAP_LABELS: Record<StepGap, string> = {
@@ -40,7 +40,7 @@ export const STEP_GAP_LABELS: Record<StepGap, string> = {
   TOO_MANY_ACCOUNTABLE: "two accountables",
   RESPONSIBLE: "no responsible",
   APPROVER: "no approver",
-  CO_APPROVER: "no co-approver",
+  INCOMPLETE_RULE: "an unfinished rule",
 };
 
 /** The longer sentence, for a tooltip. */
@@ -50,7 +50,7 @@ export const STEP_GAP_DESCRIPTIONS: Record<StepGap, string> = {
   TOO_MANY_ACCOUNTABLE: "More than one role is accountable — exactly one A belongs on each task.",
   RESPONSIBLE: "No role is responsible for this step — assign an R in the RACI Matrix.",
   APPROVER: "No approver is named for this step — set one in the Authority Matrix.",
-  CO_APPROVER: "A co-approval threshold is set but no co-approver is named — set one in the Authority Matrix.",
+  INCOMPLETE_RULE: "A rule is missing its figure or the person it lands on — finish it in the Authority Matrix.",
 };
 
 /** The order gaps are filled in: what feeds it, who owns it, then who signs it off. */
@@ -60,7 +60,7 @@ const GAP_ORDER: StepGap[] = [
   "TOO_MANY_ACCOUNTABLE",
   "RESPONSIBLE",
   "APPROVER",
-  "CO_APPROVER",
+  "INCOMPLETE_RULE",
 ];
 
 export type ReadinessInput = {
@@ -110,7 +110,9 @@ export function deriveGapsByStep(input: ReadinessInput): Map<string, StepGap[]> 
   for (const issue of validateAuthorityTable(authorityRows)) {
     const stepId = authorityStepIdByRowId.get(issue.rowId) ?? null;
     if (issue.type === "MISSING_APPROVER") add(stepId, "APPROVER");
-    if (issue.type === "MISSING_CO_APPROVER") add(stepId, "CO_APPROVER");
+    if (issue.type === "INCOMPLETE_RULE_WHO" || issue.type === "INCOMPLETE_RULE_FIGURE") {
+      add(stepId, "INCOMPLETE_RULE");
+    }
   }
 
   return new Map(

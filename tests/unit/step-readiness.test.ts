@@ -7,21 +7,24 @@ function step(overrides: Partial<TableStep> & { id: string }): TableStep {
   return { type: "TASK", label: overrides.id, raciSkipped: false, ...overrides };
 }
 
-function authority(overrides: Partial<AuthorityAssignmentData>): AuthorityAssignmentData {
+let ruleSeq = 0;
+function moneyRule(amount: number, overrides: Record<string, unknown> = {}) {
   return {
-    activityId: null,
-    stepId: null,
-    skipped: false,
-    slaDays: null,
-    threshold: null,
-    direction: "GREATER_THAN",
-    approverRoleId: null,
-    approverPersonId: null,
-    coApprovalAboveThreshold: null,
-    coApproverRoleId: null,
-    escalationRoleId: null,
+    id: `r-${++ruleSeq}`,
+    order: 0,
+    measure: "MONEY" as const,
+    amount,
+    days: null,
+    direction: "GREATER_THAN" as const,
+    consequence: "APPROVAL" as const,
+    whoRoleId: null,
+    whoPersonId: null,
     ...overrides,
   };
+}
+
+function authority(overrides: Partial<AuthorityAssignmentData>): AuthorityAssignmentData {
+  return { activityId: null, stepId: null, skipped: false, rules: [], ...overrides };
 }
 
 function derive(input: Partial<ReadinessInput> & { steps: TableStep[] }) {
@@ -90,7 +93,7 @@ describe("deriveGapsByStep", () => {
           ],
         },
       ],
-      authorityAssignments: [authority({ activityId: "a1", approverRoleId: "r1" })],
+      authorityAssignments: [authority({ activityId: "a1", rules: [moneyRule(1000, { whoRoleId: "r1" })] })],
     });
     expect(gaps.get("s1")).toEqual([]);
   });
@@ -112,7 +115,7 @@ describe("deriveGapsByStep", () => {
           ],
         },
       ],
-      authorityAssignments: [authority({ activityId: "a1", approverRoleId: "r1" })],
+      authorityAssignments: [authority({ activityId: "a1", rules: [moneyRule(1000, { whoRoleId: "r1" })] })],
     });
     expect(gaps.get("s1")).toEqual(["TOO_MANY_ACCOUNTABLE"]);
   });
@@ -149,7 +152,7 @@ describe("deriveGapsByStep", () => {
           ],
         },
       ],
-      authorityAssignments: [authority({ activityId: "a1", approverRoleId: "r1" })],
+      authorityAssignments: [authority({ activityId: "a1", rules: [moneyRule(1000, { whoRoleId: "r1" })] })],
     });
     expect(gaps.get("s1")).toEqual([]);
   });
@@ -167,7 +170,7 @@ describe("deriveGapsByStep", () => {
     const gaps = derive({
       steps: [step({ id: "s1", raciSkipped: true })],
       incomingStepIds: new Set(["s1"]),
-      authorityAssignments: [authority({ stepId: "s1", direction: "EQUAL_NO_APPROVAL" })],
+      authorityAssignments: [authority({ stepId: "s1", rules: [moneyRule(0, { measure: "NONE", amount: null, direction: "EQUAL_NO_APPROVAL" })] })],
     });
     expect(gaps.get("s1")).toEqual([]);
   });
@@ -181,15 +184,20 @@ describe("deriveGapsByStep", () => {
     expect(gaps.get("s1")).toEqual([]);
   });
 
-  it("flags a co-approval threshold with nobody to co-approve it", () => {
+  it("flags an unfinished rule — a second sign-off with nobody assigned", () => {
     const gaps = derive({
       steps: [step({ id: "s1", raciSkipped: true })],
       incomingStepIds: new Set(["s1"]),
       authorityAssignments: [
-        authority({ stepId: "s1", approverRoleId: "r1", coApprovalAboveThreshold: 50000 }),
+        // A second approval rule with nobody assigned — what "a co-approval
+        // threshold with no co-approver" became.
+        authority({
+          stepId: "s1",
+          rules: [moneyRule(1000, { whoRoleId: "r1" }), moneyRule(50000, { order: 1 })],
+        }),
       ],
     });
-    expect(gaps.get("s1")).toEqual(["CO_APPROVER"]);
+    expect(gaps.get("s1")).toEqual(["INCOMPLETE_RULE"]);
   });
 
   it("lists a brand-new step's gaps in the order they get filled", () => {

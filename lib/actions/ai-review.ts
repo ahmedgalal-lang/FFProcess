@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
 import {
+  additionalApprovals,
   buildAuthorityTableRows,
   validateAuthorityTable,
   DIRECTION_LABELS,
@@ -22,6 +23,7 @@ import {
 import { runProcessReview } from "@/lib/ai/process-review";
 import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
 import type { ReviewFindingCategory, ReviewFindingArea, ReviewFindingSeverity } from "@/app/generated/prisma/client";
+import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 export type { PersistedReviewFinding } from "@/lib/domain/review-findings";
 
@@ -75,7 +77,7 @@ export async function reviewProcessWithAI(
       prisma.raciMatrixStatus.findUnique({ where: { processId } }),
       prisma.role.findMany({ where: { workspaceId } }),
       prisma.person.findMany({ where: { workspaceId } }),
-      prisma.authorityAssignment.findMany({ where: { processId } }),
+      prisma.authorityAssignment.findMany({ where: { processId }, include: AUTHORITY_ASSIGNMENT_INCLUDE }),
       prisma.reviewFinding.findMany({ where: { processId }, include: { integratedStep: true } }),
     ]);
 
@@ -93,11 +95,7 @@ export async function reviewProcessWithAI(
   const authorityRows = buildAuthorityTableRows(
     steps.map((s) => ({ id: s.id, type: s.type, label: s.label })),
     activities.map((a) => ({ id: a.id, name: a.name, relatedStepId: a.relatedStepId, order: a.order })),
-    authorityAssignments.map((a) => ({
-      ...a,
-      threshold: a.threshold === null ? null : Number(a.threshold),
-      coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-    }))
+    authorityAssignments.map(toAuthorityAssignmentData)
   );
   const authorityIssues = validateAuthorityTable(authorityRows);
   const authorityRowsForPrompt = authorityRows.map((r) => ({
@@ -113,8 +111,10 @@ export async function reviewProcessWithAI(
       : r.approverPersonId
         ? (personNameById.get(r.approverPersonId) ?? null)
         : null,
-    coApprovalAboveThreshold: r.coApprovalAboveThreshold,
-    coApproverLabel: r.coApproverRoleId ? (roleNameById.get(r.coApproverRoleId) ?? null) : null,
+    extraApprovals: additionalApprovals(r.rules).map((rule) => ({
+      amount: rule.amount,
+      label: rule.whoRoleId ? (roleNameById.get(rule.whoRoleId) ?? null) : null,
+    })),
     escalationLabel: r.escalationRoleId ? (roleNameById.get(r.escalationRoleId) ?? null) : null,
   }));
 

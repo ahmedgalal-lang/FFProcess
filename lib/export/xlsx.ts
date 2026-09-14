@@ -62,8 +62,7 @@ export async function buildAuthorityWorkbook(params: {
     threshold: number | null;
     directionLabel: string;
     approverLabel: string | null;
-    coApprovalAboveThreshold: number | null;
-    coApproverLabel: string | null;
+    extraApprovals: { amount: number | null; label: string | null }[];
     escalationLabel: string | null;
   }[];
 }): Promise<Buffer> {
@@ -98,8 +97,9 @@ export async function buildAuthorityWorkbook(params: {
       r.threshold ?? "",
       r.directionLabel,
       r.approverLabel ?? "",
-      r.coApprovalAboveThreshold ?? "",
-      r.coApproverLabel ?? "",
+      r.extraApprovals
+        .map((e) => `${e.label ?? "unassigned"}${e.amount === null ? "" : ` above ${e.amount}`}`)
+        .join("; "),
       r.escalationLabel ?? "",
     ]);
   }

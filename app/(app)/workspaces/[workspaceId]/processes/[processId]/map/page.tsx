@@ -7,6 +7,7 @@ import { AddStepForm, BulkAddStepsForm } from "./step-form";
 import { MapView } from "./map-view";
 import { ProcessStepper } from "../process-stepper";
 import { ProcessDocumentation } from "./process-documentation";
+import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 export default async function ProcessMapPage(
   props: PageProps<"/workspaces/[workspaceId]/processes/[processId]/map">
@@ -49,7 +50,7 @@ export default async function ProcessMapPage(
       include: { raciAssignments: true },
       orderBy: { order: "asc" },
     }),
-    prisma.authorityAssignment.findMany({ where: { processId } }),
+    prisma.authorityAssignment.findMany({ where: { processId }, include: AUTHORITY_ASSIGNMENT_INCLUDE }),
   ]);
 
   const externalEntities = process.externalEntities as unknown as { name: string; description: string }[];
@@ -62,20 +63,7 @@ export default async function ProcessMapPage(
     assignments: activity.raciAssignments.map((a) => ({ roleId: a.roleId, code: a.code })),
   }));
 
-  const authorityData = authorityAssignments.map((a) => ({
-    activityId: a.activityId,
-    stepId: a.stepId,
-    skipped: a.skipped,
-    slaDays: a.slaDays,
-    threshold: a.threshold === null ? null : Number(a.threshold),
-    direction: a.direction,
-    approverRoleId: a.approverRoleId,
-    approverPersonId: a.approverPersonId,
-    coApprovalAboveThreshold:
-      a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-    coApproverRoleId: a.coApproverRoleId,
-    escalationRoleId: a.escalationRoleId,
-  }));
+  const authorityData = authorityAssignments.map(toAuthorityAssignmentData);
 
   // What each step still needs — derived through the very builders and
   // validators the RACI and Authority pages use, so the chip in the list and

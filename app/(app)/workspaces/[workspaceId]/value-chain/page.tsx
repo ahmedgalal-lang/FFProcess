@@ -4,6 +4,7 @@ import type { ActivityCard, PhaseRef } from "@/lib/domain/value-chain";
 import { deriveGapsByStep } from "@/lib/domain/step-readiness";
 import { ValueChainBoard } from "./value-chain-board";
 import { ValueChainSetup } from "./value-chain-setup";
+import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 /**
  * The engagement's value chain: every step across every process, columned by
@@ -61,7 +62,7 @@ export default async function ValueChainPage(props: PageProps<"/workspaces/[work
       include: { raciAssignments: true },
       orderBy: { order: "asc" },
     }),
-    prisma.authorityAssignment.findMany({ where: { process: { workspaceId, archivedAt: null } } }),
+    prisma.authorityAssignment.findMany({ where: { process: { workspaceId, archivedAt: null } }, include: AUTHORITY_ASSIGNMENT_INCLUDE }),
   ]);
 
   // What each activity still needs — derived through the very builders and
@@ -81,20 +82,7 @@ export default async function ValueChainPage(props: PageProps<"/workspaces/[work
       order: activity.order,
       assignments: activity.raciAssignments.map((a) => ({ roleId: a.roleId, code: a.code })),
     })),
-    authorityAssignments: authorityAssignments.map((a) => ({
-      activityId: a.activityId,
-      stepId: a.stepId,
-      skipped: a.skipped,
-      slaDays: a.slaDays,
-      threshold: a.threshold === null ? null : Number(a.threshold),
-      direction: a.direction,
-      approverRoleId: a.approverRoleId,
-      approverPersonId: a.approverPersonId,
-      coApprovalAboveThreshold:
-        a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-      coApproverRoleId: a.coApproverRoleId,
-      escalationRoleId: a.escalationRoleId,
-    })),
+    authorityAssignments: authorityAssignments.map(toAuthorityAssignmentData),
     incomingStepIds: new Set(connections.map((c) => c.toStepId)),
   });
 

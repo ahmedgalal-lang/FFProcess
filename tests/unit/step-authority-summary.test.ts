@@ -2,21 +2,39 @@ import { describe, it, expect } from "vitest";
 import { buildStepAuthoritySummary } from "@/lib/domain/step-authority-summary";
 import type { TableStep, TableActivity, AuthorityAssignmentData } from "@/lib/domain/authority-table";
 
-function assignment(overrides: Partial<AuthorityAssignmentData>): AuthorityAssignmentData {
+let ruleSeq = 0;
+/** The old fixture set slaDays/threshold directly; those are rules now. */
+function moneyRule(amount: number, overrides: Record<string, unknown> = {}) {
   return {
-    activityId: null,
-    stepId: null,
-    skipped: false,
-    slaDays: null,
-    threshold: null,
-    direction: "GREATER_THAN",
-    approverRoleId: null,
-    approverPersonId: null,
-    coApprovalAboveThreshold: null,
-    coApproverRoleId: null,
-    escalationRoleId: null,
+    id: `r-${++ruleSeq}`,
+    order: 0,
+    measure: "MONEY" as const,
+    amount,
+    days: null,
+    direction: "GREATER_THAN" as const,
+    consequence: "APPROVAL" as const,
+    whoRoleId: null,
+    whoPersonId: null,
     ...overrides,
   };
+}
+function timeRule(days: number, overrides: Record<string, unknown> = {}) {
+  return {
+    id: `r-${++ruleSeq}`,
+    order: 1,
+    measure: "TIME" as const,
+    amount: null,
+    days,
+    direction: "GREATER_THAN" as const,
+    consequence: "ESCALATION" as const,
+    whoRoleId: null,
+    whoPersonId: null,
+    ...overrides,
+  };
+}
+
+function assignment(overrides: Partial<AuthorityAssignmentData>): AuthorityAssignmentData {
+  return { activityId: null, stepId: null, skipped: false, rules: [], ...overrides };
 }
 
 describe("buildStepAuthoritySummary", () => {
@@ -27,7 +45,7 @@ describe("buildStepAuthoritySummary", () => {
     const steps: TableStep[] = [{ id: "s1", type: "DECISION", label: "Approve PO?" }];
     const activities: TableActivity[] = [{ id: "a1", name: "Approve PO?", relatedStepId: "s1", order: 0 }];
     const assignments: AuthorityAssignmentData[] = [
-      assignment({ activityId: "a1", stepId: "s1", slaDays: 3, threshold: 10000, direction: "GREATER_OR_EQUAL" }),
+      assignment({ activityId: "a1", stepId: "s1", rules: [moneyRule(10000, { direction: "GREATER_OR_EQUAL" }), timeRule(3)] }),
     ];
 
     const summary = buildStepAuthoritySummary(steps, activities, assignments);
@@ -37,7 +55,7 @@ describe("buildStepAuthoritySummary", () => {
 
   it("finds a step's SLA when it has no related Activity at all", () => {
     const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Pay Vendor" }];
-    const assignments: AuthorityAssignmentData[] = [assignment({ stepId: "s1", slaDays: 1 })];
+    const assignments: AuthorityAssignmentData[] = [assignment({ stepId: "s1", rules: [timeRule(1)] })];
 
     const summary = buildStepAuthoritySummary(steps, [], assignments);
 
@@ -59,8 +77,8 @@ describe("buildStepAuthoritySummary", () => {
       { id: "a-first", name: "First", relatedStepId: "s1", order: 0 },
     ];
     const assignments: AuthorityAssignmentData[] = [
-      assignment({ activityId: "a-first", stepId: "s1", slaDays: 2 }),
-      assignment({ activityId: "a-second", stepId: "s1", slaDays: 5 }),
+      assignment({ activityId: "a-first", stepId: "s1", rules: [timeRule(2)] }),
+      assignment({ activityId: "a-second", stepId: "s1", rules: [timeRule(5)] }),
     ];
 
     const summary = buildStepAuthoritySummary(steps, activities, assignments);

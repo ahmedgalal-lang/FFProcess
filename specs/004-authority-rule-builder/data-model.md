@@ -108,9 +108,17 @@ Backfill order per existing assignment — this order becomes the displayed orde
    `GREATER_THAN` / `APPROVAL` / who = co-approver.
 3. `slaDays != null` → `TIME` / `days = slaDays` / `GREATER_THAN` / `ESCALATION` / who =
    escalation role.
-4. `direction = EQUAL_NO_APPROVAL` → a single `NONE` rule carrying that direction, instead
-   of 1–3.
+4. `direction = EQUAL_NO_APPROVAL` → a `NONE` rule carrying that direction, **instead of
+   step 1** (there is no approval to require). Steps 2 and 3 still apply.
 5. none of the above → no rules; the parent row survives with its `skipped` flag.
+
+> Corrected during implementation. The first draft said a `EQUAL_NO_APPROVAL` assignment
+> produced *only* a `NONE` rule — which would have silently dropped the turnaround on the
+> seeded "Revise Purchase Order", a task recorded as needing no approval but with a 3-day
+> expectation. The old sentence printed that as "No approval required … Turnaround
+> expectation: within 3 days", so it is a recorded value and FR-015 forbids losing it. The
+> fixture caught this before the migration was written, which is the point of writing the
+> fixture first.
 
 Old columns are dropped in the same migration, after the backfill runs.
 

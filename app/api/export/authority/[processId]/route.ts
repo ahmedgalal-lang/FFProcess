@@ -4,8 +4,9 @@ import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { AuthorityPdfDocument } from "@/lib/export/pdf/authority-pdf";
 import { buildAuthorityWorkbook } from "@/lib/export/xlsx";
-import { buildAuthorityTableRows, validateAuthorityTable, DIRECTION_LABELS } from "@/lib/domain/authority-table";
+import { additionalApprovals, buildAuthorityTableRows, validateAuthorityTable, DIRECTION_LABELS } from "@/lib/domain/authority-table";
 import { auth } from "@/lib/auth/config";
+import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 export async function GET(
   request: NextRequest,
@@ -33,7 +34,7 @@ export async function GET(
       select: { id: true, type: true, label: true },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.authorityAssignment.findMany({ where: { processId } }),
+    prisma.authorityAssignment.findMany({ where: { processId }, include: AUTHORITY_ASSIGNMENT_INCLUDE }),
     auth(),
   ]);
 
@@ -43,11 +44,7 @@ export async function GET(
   const rows = buildAuthorityTableRows(
     steps,
     activities.map((a) => ({ id: a.id, name: a.name, relatedStepId: a.relatedStepId, order: a.order })),
-    assignments.map((a) => ({
-      ...a,
-      threshold: a.threshold === null ? null : Number(a.threshold),
-      coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-    }))
+    assignments.map(toAuthorityAssignmentData)
   ).filter((r) => !r.skipped);
 
   const issueCount = validateAuthorityTable(rows).length;
@@ -64,8 +61,10 @@ export async function GET(
       : r.approverPersonId
         ? (personNameById.get(r.approverPersonId) ?? null)
         : null,
-    coApprovalAboveThreshold: r.coApprovalAboveThreshold,
-    coApproverLabel: r.coApproverRoleId ? (roleNameById.get(r.coApproverRoleId) ?? null) : null,
+    extraApprovals: additionalApprovals(r.rules).map((rule) => ({
+      amount: rule.amount,
+      label: rule.whoRoleId ? (roleNameById.get(rule.whoRoleId) ?? null) : null,
+    })),
     escalationLabel: r.escalationRoleId ? (roleNameById.get(r.escalationRoleId) ?? null) : null,
   }));
 

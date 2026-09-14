@@ -2,243 +2,307 @@ import { describe, it, expect } from "vitest";
 import {
   buildAuthorityTableRows,
   validateAuthorityTable,
+  deriveRowSummary,
   describeAuthorityRule,
+  describeAuthorityRow,
   requiresApproval,
+  gateLine,
   type TableStep,
   type TableActivity,
   type AuthorityAssignmentData,
+  type AuthorityRuleData,
 } from "@/lib/domain/authority-table";
 
-function assignment(overrides: Partial<AuthorityAssignmentData>): AuthorityAssignmentData {
+let seq = 0;
+function rule(overrides: Partial<AuthorityRuleData> = {}): AuthorityRuleData {
   return {
-    activityId: null,
-    stepId: null,
-    skipped: false,
-    slaDays: null,
-    threshold: null,
+    id: `rule-${++seq}`,
+    order: 0,
+    measure: "MONEY",
+    amount: null,
+    days: null,
     direction: "GREATER_THAN",
-    approverRoleId: null,
-    approverPersonId: null,
-    coApprovalAboveThreshold: null,
-    coApproverRoleId: null,
-    escalationRoleId: null,
+    consequence: "APPROVAL",
+    whoRoleId: null,
+    whoPersonId: null,
     ...overrides,
   };
 }
 
+function money(amount: number, overrides: Partial<AuthorityRuleData> = {}): AuthorityRuleData {
+  return rule({ measure: "MONEY", amount, ...overrides });
+}
+
+function time(days: number, overrides: Partial<AuthorityRuleData> = {}): AuthorityRuleData {
+  return rule({ measure: "TIME", days, consequence: "ESCALATION", ...overrides });
+}
+
+function assignment(overrides: Partial<AuthorityAssignmentData> = {}): AuthorityAssignmentData {
+  return { activityId: null, stepId: null, skipped: false, rules: [], ...overrides };
+}
+
+/**
+ * The read model's whole point: nineteen files want one fact from a task —
+ * "what figure does this decision gate on?" — not the rule list. This is the
+ * single place that answers them, so it is the place a wrong answer would
+ * spread from.
+ */
+describe("deriveRowSummary", () => {
+  it("has nothing to say about a task with no rules", () => {
+    expect(deriveRowSummary([])).toEqual({
+      threshold: null,
+      direction: "GREATER_THAN",
+      slaDays: null,
+      approverRoleId: null,
+      approverPersonId: null,
+      escalationRoleId: null,
+    });
+  });
+
+  it("takes the threshold and direction from the first money rule", () => {
+    const summary = deriveRowSummary([
+      time(3),
+      money(10000, { direction: "GREATER_OR_EQUAL" }),
+      money(50000, { direction: "LESS_THAN" }),
+    ]);
+    expect(summary.threshold).toBe(10000);
+    expect(summary.direction).toBe("GREATER_OR_EQUAL");
+  });
+
+  it("takes the turnaround from the first time rule", () => {
+    expect(deriveRowSummary([money(10000), time(2), time(9)]).slaDays).toBe(2);
+  });
+
+  it("takes the approver from the first approval rule and the escalation owner from the first escalation rule", () => {
+    const summary = deriveRowSummary([
+      money(10000, { consequence: "APPROVAL", whoRoleId: "role-ap" }),
+      money(50000, { consequence: "APPROVAL", whoRoleId: "role-controller" }),
+      time(2, { consequence: "ESCALATION", whoRoleId: "role-procurement" }),
+    ]);
+    expect(summary.approverRoleId).toBe("role-ap");
+    expect(summary.escalationRoleId).toBe("role-procurement");
+  });
+
+  it("carries a named person as the approver when the rule names one instead of a role", () => {
+    const summary = deriveRowSummary([money(10000, { whoPersonId: "person-1" })]);
+    expect(summary.approverPersonId).toBe("person-1");
+    expect(summary.approverRoleId).toBeNull();
+  });
+
+  it("reports the direction of a no-rule task so the row still renders dimmed", () => {
+    const summary = deriveRowSummary([rule({ measure: "NONE", direction: "EQUAL_NO_APPROVAL" })]);
+    expect(summary.direction).toBe("EQUAL_NO_APPROVAL");
+    expect(requiresApproval(summary.direction)).toBe(false);
+    expect(summary.threshold).toBeNull();
+  });
+
+  it("leaves the gate line resolvable for a decision step that also carries time rules", () => {
+    const summary = deriveRowSummary([time(3), money(100000, { direction: "GREATER_OR_EQUAL" })]);
+    expect(gateLine(summary.threshold, summary.direction)).toBe("At or above $100,000");
+  });
+
+  it("draws no gate line for a step whose only rules are about time", () => {
+    const summary = deriveRowSummary([time(3), time(5)]);
+    expect(gateLine(summary.threshold, summary.direction)).toBeNull();
+  });
+});
+
+describe("describeAuthorityRule", () => {
+  it("states a money rule that needs a named approver", () => {
+    expect(describeAuthorityRule(money(10000, { whoRoleId: "r" }), "AP Clerk")).toBe(
+      "More than $10,000 needs approval from AP Clerk."
+    );
+  });
+
+  it("states a money rule whose approver is not chosen yet", () => {
+    expect(describeAuthorityRule(money(10000), null)).toBe("More than $10,000 needs approval.");
+  });
+
+  it("states a time rule that escalates", () => {
+    expect(describeAuthorityRule(time(2, { whoRoleId: "r" }), "Procurement Lead")).toBe(
+      "More than 2 days without a decision escalates to Procurement Lead."
+    );
+  });
+
+  it("states a time rule that needs approval rather than escalating", () => {
+    expect(describeAuthorityRule(time(2, { consequence: "APPROVAL" }), "Controller")).toBe(
+      "More than 2 days needs approval from Controller."
+    );
+  });
+
+  it("says so plainly when a rule escalates to nobody", () => {
+    expect(describeAuthorityRule(time(5), null)).toBe(
+      "More than 5 days without a decision escalates, but nobody is assigned."
+    );
+  });
+
+  it("keeps the singular day", () => {
+    expect(describeAuthorityRule(time(1, { whoRoleId: "r" }), "Controller")).toBe(
+      "More than 1 day without a decision escalates to Controller."
+    );
+  });
+
+  it("honours the direction wording", () => {
+    expect(describeAuthorityRule(money(100000, { direction: "GREATER_OR_EQUAL" }), "Finance Manager")).toBe(
+      "At or above $100,000 needs approval from Finance Manager."
+    );
+    expect(describeAuthorityRule(money(500, { direction: "LESS_THAN" }), "AP Clerk")).toBe(
+      "Below $500 needs approval from AP Clerk."
+    );
+  });
+
+  it("states a task that deliberately has no rule", () => {
+    expect(describeAuthorityRule(rule({ measure: "NONE", direction: "EQUAL_NO_APPROVAL" }), null)).toBe(
+      "No approval required — this step proceeds on its own."
+    );
+  });
+
+  it("drops the figure clause rather than printing a half-sentence when the figure is missing", () => {
+    expect(describeAuthorityRule(rule({ measure: "MONEY", amount: null }), "AP Clerk")).toBe(
+      "Needs approval from AP Clerk."
+    );
+  });
+});
+
+describe("describeAuthorityRow", () => {
+  const nameFor = (r: AuthorityRuleData) => (r.whoRoleId === "role-ap" ? "AP Clerk" : r.whoRoleId ? "Procurement Lead" : null);
+
+  it("gives one sentence per rule, in the task's rule order", () => {
+    const row = buildAuthorityTableRows(
+      [{ id: "s1", type: "TASK", label: "Create Purchase Order" }],
+      [],
+      [
+        assignment({
+          stepId: "s1",
+          rules: [
+            money(10000, { order: 0, whoRoleId: "role-ap" }),
+            time(2, { order: 1, whoRoleId: "role-proc" }),
+          ],
+        }),
+      ]
+    )[0]!;
+
+    expect(describeAuthorityRow(row, nameFor)).toEqual([
+      "More than $10,000 needs approval from AP Clerk.",
+      "More than 2 days without a decision escalates to Procurement Lead.",
+    ]);
+  });
+
+  it("says nothing at all about a task with no rules", () => {
+    const row = buildAuthorityTableRows([{ id: "s1", type: "TASK", label: "Send PO" }], [], [])[0]!;
+    expect(describeAuthorityRow(row, nameFor)).toEqual([]);
+  });
+});
+
 describe("buildAuthorityTableRows", () => {
-  it("shows a step with no linked Activity and no assignment as an empty, unskipped row", () => {
-    const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Create PO" }];
+  const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Create Purchase Order" }];
+
+  it("shows a step with no assignment as an empty, unskipped row carrying no rules", () => {
     const rows = buildAuthorityTableRows(steps, [], []);
-    expect(rows).toEqual([
-      {
-        id: "s1",
-        kind: "step",
-        stepId: "s1",
-        stepType: "TASK",
-        label: "Create PO",
-        skipped: false,
-        slaDays: null,
-        threshold: null,
-        direction: "GREATER_THAN",
-        approverRoleId: null,
-        approverPersonId: null,
-        coApprovalAboveThreshold: null,
-        coApproverRoleId: null,
-        escalationRoleId: null,
-      },
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: "s1", kind: "step", skipped: false, rules: [] });
+  });
+
+  it("attaches a step's rules and derives its summary from them", () => {
+    const rows = buildAuthorityTableRows(steps, [], [
+      assignment({ stepId: "s1", rules: [money(10000, { whoRoleId: "role-ap" })] }),
     ]);
+    expect(rows[0]!.rules).toHaveLength(1);
+    expect(rows[0]!.threshold).toBe(10000);
+    expect(rows[0]!.approverRoleId).toBe("role-ap");
   });
 
-  it("merges a step-scoped assignment into that step's row by stepId", () => {
-    const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Create PO" }];
-    const assignments = [
-      assignment({ stepId: "s1", threshold: 5000, approverRoleId: "r1" }),
-    ];
-    const rows = buildAuthorityTableRows(steps, [], assignments);
-    expect(rows[0]).toMatchObject({ threshold: 5000, approverRoleId: "r1" });
-  });
-
-  it("uses the linked Activity's name and merges its assignment by activityId", () => {
-    const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Create PO" }];
-    const activities: TableActivity[] = [
-      { id: "a1", name: "Create Purchase Order", relatedStepId: "s1", order: 0 },
-    ];
-    const assignments = [assignment({ activityId: "a1", slaDays: 3, threshold: 5000, approverPersonId: "p1" })];
-    const rows = buildAuthorityTableRows(steps, activities, assignments);
-    expect(rows).toEqual([
-      {
-        id: "a1",
-        kind: "activity",
+  it("sorts a task's rules by order, so the display order is the same on every load", () => {
+    const rows = buildAuthorityTableRows(steps, [], [
+      assignment({
         stepId: "s1",
-        stepType: "TASK",
-        label: "Create Purchase Order",
-        skipped: false,
-        slaDays: 3,
-        threshold: 5000,
-        direction: "GREATER_THAN",
-        approverRoleId: null,
-        approverPersonId: "p1",
-        coApprovalAboveThreshold: null,
-        coApproverRoleId: null,
-        escalationRoleId: null,
-      },
+        rules: [time(2, { order: 2 }), money(10000, { order: 0 }), money(50000, { order: 1 })],
+      }),
     ]);
+    expect(rows[0]!.rules.map((r) => r.order)).toEqual([0, 1, 2]);
+    expect(rows[0]!.threshold).toBe(10000);
   });
 
-  it("shows every Activity linked to the same step as its own row", () => {
-    const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Match & Approve" }];
+  it("gives an Activity its own row, as the RACI table does", () => {
     const activities: TableActivity[] = [
-      { id: "a1", name: "Match Invoice to PO", relatedStepId: "s1", order: 0 },
-      { id: "a2", name: "Approve Payment", relatedStepId: "s1", order: 1 },
+      { id: "a1", name: "Draft the PO", relatedStepId: "s1", order: 0 },
     ];
-    const rows = buildAuthorityTableRows(steps, activities, []);
-    expect(rows.map((r) => r.id)).toEqual(["a1", "a2"]);
+    const rows = buildAuthorityTableRows(steps, activities, [
+      assignment({ activityId: "a1", rules: [money(500)] }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: "a1", kind: "activity", stepId: "s1" });
+    expect(rows[0]!.threshold).toBe(500);
   });
 
-  it("appends a freestanding Activity after every step row, ordered by `order`", () => {
-    const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Create PO" }];
-    const activities: TableActivity[] = [
-      { id: "a2", name: "Approve Payment", relatedStepId: null, order: 1 },
-      { id: "a1", name: "Match Invoice to PO", relatedStepId: null, order: 0 },
-    ];
-    const rows = buildAuthorityTableRows(steps, activities, []);
-    expect(rows.map((r) => r.id)).toEqual(["s1", "a1", "a2"]);
+  it("carries the skipped flag from the task, not from any rule", () => {
+    const rows = buildAuthorityTableRows(steps, [], [assignment({ stepId: "s1", skipped: true })]);
+    expect(rows[0]!.skipped).toBe(true);
   });
 
-  it("carries the skipped flag through for a step row", () => {
-    const steps: TableStep[] = [{ id: "s1", type: "START", label: "Start" }];
-    const assignments = [assignment({ stepId: "s1", skipped: true })];
-    const rows = buildAuthorityTableRows(steps, [], assignments);
-    expect(rows[0]).toMatchObject({ skipped: true });
-  });
-
-  it("handles no steps and no activities", () => {
+  it("returns nothing for a process with no steps and no activities", () => {
     expect(buildAuthorityTableRows([], [], [])).toEqual([]);
   });
 });
 
-function row(overrides: Partial<AuthorityAssignmentData> = {}) {
-  const a = assignment(overrides);
-  return {
-    id: "r1",
-    kind: "activity" as const,
-    stepId: null,
-    stepType: null,
-    label: "Row",
-    skipped: a.skipped,
-    slaDays: a.slaDays,
-    threshold: a.threshold,
-    direction: a.direction,
-    approverRoleId: a.approverRoleId,
-    approverPersonId: a.approverPersonId,
-    coApprovalAboveThreshold: a.coApprovalAboveThreshold,
-    coApproverRoleId: a.coApproverRoleId,
-    escalationRoleId: a.escalationRoleId,
-  };
-}
-
 describe("validateAuthorityTable", () => {
-  it("flags a non-skipped row with no approver", () => {
-    const issues = validateAuthorityTable([row()]);
-    expect(issues).toEqual([{ rowId: "r1", type: "MISSING_APPROVER" }]);
+  const steps: TableStep[] = [{ id: "s1", type: "TASK", label: "Create Purchase Order" }];
+  const rowsFor = (a: AuthorityAssignmentData[]) => buildAuthorityTableRows(steps, [], a);
+
+  it("flags a task that has no rules at all", () => {
+    expect(validateAuthorityTable(rowsFor([]))).toEqual([{ rowId: "s1", type: "MISSING_APPROVER" }]);
   });
 
-  it("does not flag a skipped row even with no approver", () => {
-    expect(validateAuthorityTable([row({ skipped: true })])).toEqual([]);
+  it("says nothing about a skipped task", () => {
+    expect(validateAuthorityTable(rowsFor([assignment({ stepId: "s1", skipped: true })]))).toEqual([]);
   });
 
-  it("does not flag a row with a Role approver assigned", () => {
-    expect(validateAuthorityTable([row({ approverRoleId: "r1" })])).toEqual([]);
-  });
-
-  it("does not flag a row with a Person approver assigned", () => {
-    expect(validateAuthorityTable([row({ approverPersonId: "p1" })])).toEqual([]);
-  });
-
-  it("flags a row with a co-approval threshold but no co-approver", () => {
-    const issues = validateAuthorityTable([row({ approverRoleId: "r1", coApprovalAboveThreshold: 50000 })]);
-    expect(issues).toEqual([{ rowId: "r1", type: "MISSING_CO_APPROVER" }]);
-  });
-
-  it("does not flag a row with a co-approval threshold and a co-approver assigned", () => {
-    const issues = validateAuthorityTable([
-      row({ approverRoleId: "r1", coApprovalAboveThreshold: 50000, coApproverRoleId: "r2" }),
+  it("says nothing about a task that deliberately needs no approval", () => {
+    const rows = rowsFor([
+      assignment({ stepId: "s1", rules: [rule({ measure: "NONE", direction: "EQUAL_NO_APPROVAL" })] }),
     ]);
-    expect(issues).toEqual([]);
+    expect(validateAuthorityTable(rows)).toEqual([]);
   });
 
-  it("can flag both missing approver and missing co-approver on the same row", () => {
-    const issues = validateAuthorityTable([row({ coApprovalAboveThreshold: 50000 })]);
-    expect(issues).toEqual([
-      { rowId: "r1", type: "MISSING_APPROVER" },
-      { rowId: "r1", type: "MISSING_CO_APPROVER" },
+  it("flags a rule that names a consequence but nobody to carry it", () => {
+    const incomplete = money(10000, { id: "r-1" });
+    const rows = rowsFor([assignment({ stepId: "s1", rules: [incomplete] })]);
+    expect(validateAuthorityTable(rows)).toEqual([
+      { rowId: "s1", ruleId: "r-1", type: "INCOMPLETE_RULE_WHO" },
     ]);
   });
-});
 
-describe("requiresApproval", () => {
-  it("is false only for EQUAL_NO_APPROVAL", () => {
-    expect(requiresApproval("GREATER_THAN")).toBe(true);
-    expect(requiresApproval("GREATER_OR_EQUAL")).toBe(true);
-    expect(requiresApproval("LESS_THAN")).toBe(true);
-    expect(requiresApproval("LESS_OR_EQUAL")).toBe(true);
-    expect(requiresApproval("EQUAL_NO_APPROVAL")).toBe(false);
-  });
-});
-
-describe("validateAuthorityTable — no-approval rows", () => {
-  it("does not demand an approver for a row marked as needing no approval", () => {
-    expect(validateAuthorityTable([row({ direction: "EQUAL_NO_APPROVAL" })])).toEqual([]);
-  });
-});
-
-const NO_NAMES = { approver: null, coApprover: null, escalation: null };
-
-describe("describeAuthorityRule", () => {
-  it("states a plain money rule with its approver and SLA", () => {
-    const sentence = describeAuthorityRule(row({ slaDays: 2, threshold: 10000, approverRoleId: "r1" }), {
-      ...NO_NAMES,
-      approver: "AP Clerk",
-    });
-    expect(sentence).toBe("More than $10,000 needs approval from AP Clerk, within 2 days.");
+  it("flags a money rule with no amount and a time rule with no days", () => {
+    const rows = rowsFor([
+      assignment({
+        stepId: "s1",
+        rules: [
+          rule({ id: "r-money", measure: "MONEY", amount: null, whoRoleId: "role-ap" }),
+          rule({ id: "r-time", measure: "TIME", days: null, whoRoleId: "role-ap" }),
+        ],
+      }),
+    ]);
+    expect(validateAuthorityTable(rows)).toEqual([
+      { rowId: "s1", ruleId: "r-money", type: "INCOMPLETE_RULE_FIGURE" },
+      { rowId: "s1", ruleId: "r-time", type: "INCOMPLETE_RULE_FIGURE" },
+    ]);
   });
 
-  it("uses the wording of the chosen direction", () => {
-    const sentence = describeAuthorityRule(
-      row({ threshold: 100000, direction: "GREATER_OR_EQUAL", approverRoleId: "r1" }),
-      { ...NO_NAMES, approver: "Finance Manager" }
-    );
-    expect(sentence).toBe("At or above $100,000 needs approval from Finance Manager.");
+  it("is satisfied by a complete rule", () => {
+    const rows = rowsFor([assignment({ stepId: "s1", rules: [money(10000, { whoRoleId: "role-ap" })] })]);
+    expect(validateAuthorityTable(rows)).toEqual([]);
   });
 
-  it("says a no-approval row proceeds on its own, keeping any SLA", () => {
-    expect(describeAuthorityRule(row({ direction: "EQUAL_NO_APPROVAL", slaDays: 1 }), NO_NAMES)).toBe(
-      "No approval required — this step proceeds on its own. Turnaround expectation: within 1 day."
-    );
-  });
-
-  it("adds the co-approval tier when one is set", () => {
-    const sentence = describeAuthorityRule(
-      row({ threshold: 100000, approverRoleId: "r1", coApprovalAboveThreshold: 50000, coApproverRoleId: "r2" }),
-      { ...NO_NAMES, approver: "Finance Manager", coApprover: "Controller" }
-    );
-    expect(sentence).toContain("A second sign-off from Controller is required above $50,000.");
-  });
-
-  it("calls out an unassigned co-approver rather than implying the control works", () => {
-    const sentence = describeAuthorityRule(
-      row({ threshold: 100000, approverRoleId: "r1", coApprovalAboveThreshold: 50000 }),
-      { ...NO_NAMES, approver: "Controller" }
-    );
-    expect(sentence).toContain("no co-approver is assigned");
-  });
-
-  it("ties escalation to the SLA when both are set", () => {
-    const sentence = describeAuthorityRule(
-      row({ slaDays: 5, threshold: 100000, approverRoleId: "r1", escalationRoleId: "r3" }),
-      { ...NO_NAMES, approver: "Controller", escalation: "CFO" }
-    );
-    expect(sentence).toContain("If 5 days pass with no decision, it escalates to CFO.");
+  it("no longer has a co-approver to complain about", () => {
+    const rows = rowsFor([
+      assignment({
+        stepId: "s1",
+        rules: [
+          money(10000, { whoRoleId: "role-ap" }),
+          money(50000, { whoRoleId: "role-controller" }),
+        ],
+      }),
+    ]);
+    expect(validateAuthorityTable(rows)).toEqual([]);
   });
 });

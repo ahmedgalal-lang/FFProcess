@@ -4,6 +4,7 @@ import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { buildAuthorityTableRows } from "@/lib/domain/authority-table";
 import { buildCombinedMatrixRows, deriveControlPoints } from "@/lib/domain/process-report";
 import { ProcessKpisControls } from "./process-kpis-controls";
+import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 /**
  * Governance across the whole engagement: every process's Key Control Points
@@ -32,7 +33,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           include: { raciAssignments: true },
           orderBy: { order: "asc" },
         }),
-        prisma.authorityAssignment.findMany({ where: { processId: process.id } }),
+        prisma.authorityAssignment.findMany({ where: { processId: process.id }, include: AUTHORITY_ASSIGNMENT_INCLUDE }),
       ]);
 
       const raciRows = buildRaciTableRows(
@@ -48,11 +49,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       const authorityRows = buildAuthorityTableRows(
         steps,
         activities.map((a) => ({ id: a.id, name: a.name, relatedStepId: a.relatedStepId, order: a.order })),
-        authorityAssignments.map((a) => ({
-          ...a,
-          threshold: a.threshold === null ? null : Number(a.threshold),
-          coApprovalAboveThreshold: a.coApprovalAboveThreshold === null ? null : Number(a.coApprovalAboveThreshold),
-        }))
+        authorityAssignments.map(toAuthorityAssignmentData)
       );
 
       return {
