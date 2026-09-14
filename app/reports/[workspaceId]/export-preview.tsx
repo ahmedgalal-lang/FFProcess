@@ -760,9 +760,14 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                           {row.ruleSentences.length === 0 ? (
                             <span className="text-slate-500">No authority rules.</span>
                           ) : (
-                            <ul className="space-y-0.5">
+                            /* Bulleted with a hanging indent, not just stacked:
+                               a rule long enough to wrap was indistinguishable
+                               from the next rule starting, so two rules read as
+                               one paragraph. The marker sits outside the text
+                               column so wrapped lines align under the sentence. */
+                            <ul className="ml-3.5 list-outside list-disc space-y-1 marker:text-slate-500">
                               {row.ruleSentences.map((sentence, i) => (
-                                <li key={i} className="break-inside-avoid leading-snug">
+                                <li key={i} className="break-inside-avoid pl-0.5 leading-snug">
                                   {sentence}
                                 </li>
                               ))}

@@ -728,7 +728,12 @@ function addRaciAuthoritySlide(pptx: PptxGenJS, process: ExportProcessData) {
     // rather than four columns summarising the first of each kind. Same array
     // the report and the spreadsheet print, so the three cannot disagree.
     {
-      text: row.ruleSentences.length === 0 ? "No authority rules." : row.ruleSentences.join("\n"),
+      text:
+        row.ruleSentences.length === 0
+          ? "No authority rules."
+          : // Bulleted for the same reason as the report: a wrapped rule is
+            // otherwise indistinguishable from the next rule beginning.
+            row.ruleSentences.map((sentence) => `• ${sentence}`).join("\n"),
       options: { fontSize: 7.5, color: row.ruleSentences.length === 0 ? INK_MUTED : INK_DARK },
     },
   ]);
