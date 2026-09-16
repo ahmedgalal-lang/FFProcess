@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db/client";
 import { WorkspacePageHeader } from "../workspace-page-header";
 import { CreateProcessForm, CloneProcessButton, EditProcessButton, ArchiveProcessButton } from "./process-forms";
 import { GenerateTemplateForm } from "./template-form";
+import { requireWorkspaceAccess } from "@/lib/auth/workspace";
+import { hasSufficientAccess } from "@/lib/domain/access-control";
 
 export default async function ProcessesPage(props: PageProps<"/workspaces/[workspaceId]/processes">) {
   const { workspaceId } = await props.params;
@@ -12,7 +14,12 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
 
   const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
 
-  const [processes, categories] = await Promise.all([
+  // The layout has already admitted this viewer; this re-reads the level so the
+  // recovery link is offered only to someone who could act on it.
+  const access = await requireWorkspaceAccess(workspaceId, "VIEWER");
+  const canEdit = access.ok && hasSufficientAccess(access.data.accessLevel, "EDITOR");
+
+  const [processes, categories, deletedCount] = await Promise.all([
     prisma.process.findMany({
       where: {
         workspaceId,
@@ -42,6 +49,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
       orderBy: { code: "asc" },
     }),
     prisma.processCategory.findMany({ where: { firmId: workspace.firmId }, orderBy: { name: "asc" } }),
+    prisma.process.count({ where: { workspaceId, archivedAt: { not: null } } }),
   ]);
 
   const processOptions = processes.map((proc) => ({
@@ -93,6 +101,19 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
         )}
       </form>
 
+      {canEdit && (
+        <p className="mt-3 text-xs">
+          <Link
+            href={`/workspaces/${workspaceId}/processes/deleted`}
+            className="font-semibold text-slate-600 underline hover:text-slate-900"
+          >
+            Deleted processes
+            {deletedCount > 0 ? ` (${deletedCount})` : ""}
+          </Link>
+          <span className="ml-2 text-slate-600">Deleting hides a process — it can be brought back.</span>
+        </p>
+      )}
+
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
@@ -119,6 +140,11 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                   {p.parentProcessId && (
                     <span className="ml-2 text-xs font-normal text-slate-500">
                       sub-process of {p.parentProcess?.code}
+                      {/* The parent is loaded regardless of its own deletion, so
+                          without this the row named a code that is nowhere on
+                          the list — the child looked misfiled rather than
+                          orphaned. */}
+                      {p.parentProcess?.archivedAt ? " (deleted)" : ""}
                     </span>
                   )}
                   {p.branchFromStep && (

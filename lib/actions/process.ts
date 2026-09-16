@@ -11,6 +11,10 @@ import {
   wouldCreateCycle,
 } from "@/lib/domain/process-hierarchy";
 import { validateConnections } from "@/lib/domain/process-graph";
+import {
+  summariseDeleteImpact,
+  type ProcessDeleteImpact,
+} from "@/lib/domain/process-delete-impact";
 import { assignSwimlanes, laneY, nextStepX, STEP_X_SPACING } from "@/lib/domain/process-layout";
 import { arrangeByFlow, insertPositionAfter, moveStepInOrder } from "@/lib/domain/step-order";
 import { ok, notFound, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
@@ -464,7 +468,105 @@ export async function archiveProcess(
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/deleted`);
   return ok({ id: process.id });
+}
+
+const restoreProcessSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+});
+
+/**
+ * The exact inverse of `archiveProcess`: clears the timestamp and nothing else.
+ *
+ * Because archiving only ever set `archivedAt`, there is no second piece of
+ * state to reassemble — steps, connections, RACI assignments, authority rules,
+ * KPIs and documentation were never touched and come back because the filters
+ * stop excluding them. That is what makes a restore exact rather than a
+ * reconstruction.
+ *
+ * Idempotent by construction: clearing an already-null timestamp is a no-op, so
+ * a double submit or two editors racing both end with the process restored.
+ */
+export async function restoreProcess(
+  input: z.infer<typeof restoreProcessSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = restoreProcessSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  // loadProcessInWorkspace does not filter on archivedAt, so it finds a deleted
+  // process — and returns null for one belonging to another workspace, which is
+  // how a foreign process id stays indistinguishable from a missing one.
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  await prisma.process.update({
+    where: { id: process.id },
+    data: { archivedAt: null },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes/deleted`);
+  return ok({ id: process.id });
+}
+
+const processDeleteImpactSchema = z.object({
+  workspaceId: z.string().min(1),
+  processId: z.string().min(1),
+});
+
+/**
+ * What a delete would take with it, so the confirmation can say so rather than
+ * ask "Delete?" of a process carrying weeks of mapping.
+ *
+ * Gathered when the dialog opens rather than loaded with the Processes list:
+ * two of these counts do not come from a `_count` on the process row, and
+ * paying for five extra queries per row to serve a dialog most rows never open
+ * is the wrong trade. Read-only, but gated on EDITOR — the same bar as the
+ * delete it precedes, so it cannot be used to enumerate a workspace.
+ */
+export async function getProcessDeleteImpact(
+  input: z.infer<typeof processDeleteImpactSchema>
+): Promise<ActionResult<ProcessDeleteImpact>> {
+  const parsed = processDeleteImpactSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const process = await loadProcessInWorkspace(parsed.data.workspaceId, parsed.data.processId);
+  if (!process) return notFound();
+
+  const [stepCount, raciAssignmentCount, authorityRuleCount, subProcessCount, branchingCount] =
+    await Promise.all([
+      prisma.processStep.count({ where: { processId: process.id } }),
+      prisma.raciAssignment.count({ where: { activity: { processId: process.id } } }),
+      prisma.authorityRule.count({ where: { assignment: { processId: process.id } } }),
+      // Both reference counts exclude already-deleted processes: one that is
+      // itself gone is not something this delete is about to orphan.
+      prisma.process.count({ where: { parentProcessId: process.id, archivedAt: null } }),
+      prisma.process.count({
+        where: { branchFromStep: { processId: process.id }, archivedAt: null },
+      }),
+    ]);
+
+  return ok(
+    summariseDeleteImpact(
+      { code: process.code, name: process.name },
+      {
+        stepCount,
+        raciAssignmentCount,
+        authorityRuleCount,
+        kpiCount: Array.isArray(process.kpis) ? process.kpis.length : 0,
+        subProcessCount,
+        branchingCount,
+      }
+    )
+  );
 }
 
 const stepInputSchema = z.object({

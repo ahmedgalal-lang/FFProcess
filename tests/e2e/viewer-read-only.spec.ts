@@ -184,3 +184,21 @@ test("membership is Admin-gated, so an Editor is offered none of it either", asy
   await expect(page.locator("tbody tr").first()).toBeVisible();
   await expect(page.getByText("Admin", { exact: true }).first()).toBeVisible();
 });
+
+test("a Viewer is offered no way in to the deleted processes, and no way to restore one", async ({
+  page,
+}) => {
+  // Recovery is a mutation, so it follows the same rule as every other control
+  // here. The page gets its own check rather than riding on the surfaces loop
+  // above, because a link is not a button and the loop only reads buttons.
+  await signIn(page, VIEWER);
+
+  await page.goto("/workspaces/workspace-acme/processes");
+  await expect(page.getByRole("link", { name: /Deleted processes/i })).toHaveCount(0);
+
+  // Typing the URL in gets them nowhere either: the page is gated server-side,
+  // not merely unlinked. It also must not leak what a colleague deleted.
+  await page.goto("/workspaces/workspace-acme/processes/deleted");
+  await expect(page.getByRole("button", { name: /^Restore/ })).toHaveCount(0);
+  await expect(page.getByText(/need edit access/i)).toBeVisible();
+});

@@ -2,9 +2,16 @@
 
 import { useCanEdit } from "../workspace-access";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createProcess, cloneProcess, updateProcess, archiveProcess } from "@/lib/actions/process";
+import {
+  createProcess,
+  cloneProcess,
+  updateProcess,
+  archiveProcess,
+  getProcessDeleteImpact,
+} from "@/lib/actions/process";
+import type { ProcessDeleteImpact } from "@/lib/domain/process-delete-impact";
 import { createProcessCategory } from "@/lib/actions/process-category";
 
 type StepOption = { id: string; label: string };
@@ -555,51 +562,164 @@ export function EditProcessButton({
   );
 }
 
-export function ArchiveProcessButton({ workspaceId, processId }: { workspaceId: string; processId: string }) {
+export function ArchiveProcessButton({
+  workspaceId,
+  processId,
+}: {
+  workspaceId: string;
+  processId: string;
+}) {
   const canEdit = useCanEdit();
-  const [confirming, setConfirming] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [impact, setImpact] = useState<ProcessDeleteImpact | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  /**
+   * Loading the summary is tracked apart from running the delete. Sharing one
+   * transition meant Cancel was disabled while the counts were still arriving —
+   * and a disabled button cannot take focus, so opening the dialog by keyboard
+   * left focus on the document body with nothing to tab from.
+   */
+  const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   // Nothing here but a way to change something, so a Viewer is shown none
   // of it rather than controls the server would refuse.
+  const close = useCallback(() => {
+    setOpen(false);
+    setImpact(null);
+    setError(null);
+    setLoading(false);
+  }, []);
+
+  // Focus lands on Cancel, not Delete: the dialog exists to give someone a
+  // chance to stop, so the keyboard should not open it with the destructive
+  // button already under Enter.
+  useEffect(() => {
+    if (open) cancelRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, close]);
+
   if (!canEdit) return null;
 
-  if (confirming) {
+  if (!open) {
     return (
-      <span className="inline-flex items-center gap-1.5">
-        <span className="text-xs text-slate-500">Delete?</span>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              await archiveProcess({ workspaceId, processId });
-              router.refresh();
-            })
-          }
-          className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
-        >
-          Yes
-        </button>
-        <button
-          type="button"
-          onClick={() => setConfirming(false)}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
-        >
-          No
-        </button>
-      </span>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+          setError(null);
+          setLoading(true);
+          // Gathered now rather than shipped with the list: five counts per row
+          // to serve a dialog most rows never open is the wrong trade.
+          void getProcessDeleteImpact({ workspaceId, processId }).then((result) => {
+            if (result.ok) setImpact(result.data);
+            else setError("Could not read what this process holds");
+            setLoading(false);
+          });
+        }}
+        className="text-xs font-semibold text-slate-500 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+      >
+        Delete
+      </button>
     );
   }
 
+  const label = impact ? `${impact.code} \u00b7 ${impact.name}` : "this process";
+
   return (
-    <button
-      type="button"
-      onClick={() => setConfirming(true)}
-      className="text-xs font-semibold text-slate-500 hover:text-red-600"
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Delete ${label}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={close}
     >
-      Delete
-    </button>
+      <div
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 text-left shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-sm font-semibold text-slate-900">Delete &ldquo;{label}&rdquo;?</h2>
+
+        {loading && <p className="mt-2 text-sm text-slate-600">Checking what this process holds…</p>}
+
+        {error && (
+          <p role="alert" className="mt-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
+        {impact && (
+          <div className="mt-3 space-y-2 text-sm text-slate-700">
+            {impact.isEmpty ? (
+              <p>This process is empty — there is nothing recorded against it yet.</p>
+            ) : (
+              <p>
+                It holds <strong className="font-semibold text-slate-900">{listOut(impact.carries)}</strong>,
+                which will stop appearing in reports, exports and the value chain.
+              </p>
+            )}
+
+            {impact.leavesBehind.map((sentence) => (
+              <p key={sentence} className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-900">
+                {sentence}
+              </p>
+            ))}
+
+            <p className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-slate-700">
+              Nothing is destroyed. You can bring this process back, exactly as it is now, from{" "}
+              <strong className="font-semibold text-slate-900">Deleted processes</strong> on the Processes
+              page.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={close}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={pending || loading}
+            onClick={() =>
+              startTransition(async () => {
+                const result = await archiveProcess({ workspaceId, processId });
+                if (!result.ok) {
+                  setError("Could not delete this process");
+                  return;
+                }
+                close();
+                router.refresh();
+              })
+            }
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-900 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? "Deleting…" : "Delete process"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
+}
+
+/** "14 steps, 26 RACI assignments and 4 authority rules" */
+function listOut(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }

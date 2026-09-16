@@ -258,4 +258,26 @@ test.describe("Accessibility", () => {
     expect(focusedLabel).not.toBe(firstLabel);
     await expect(focused).toHaveAttribute("tabindex", "0");
   });
+
+  test("the delete confirmation has no automatically detectable violations", async ({ page }) => {
+    // Scanned with the whole document rather than `main`: the dialog is a fixed
+    // overlay, and the point of checking it is the contrast of the warning text
+    // and the amber sentence about what is left behind.
+    await page.goto("/workspaces/workspace-acme/processes");
+    await page.locator("tr", { hasText: "PUR100" }).first().getByRole("button", { name: /^Delete$/ }).click();
+    const dialog = page.getByRole("dialog", { name: /delete/i });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/Checking what this process holds/)).toHaveCount(0);
+    // PUR100 is the seeded parent, so this scan covers the sub-process warning.
+    await expect(dialog).toContainText(/sub-processes/);
+
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("the deleted processes page has no automatically detectable violations", async ({ page }) => {
+    await page.goto("/workspaces/workspace-acme/processes/deleted");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
 });
