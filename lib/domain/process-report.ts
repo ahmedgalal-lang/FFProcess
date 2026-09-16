@@ -249,7 +249,7 @@ export function deriveDocumentationGaps(input: DocumentationGapsInput): string[]
   );
   if (undocumentedSteps.length > 0) {
     gaps.push(
-      `${undocumentedSteps.length} of ${input.steps.length} step(s) missing Detailed Action / Exception Handling`
+      `${undocumentedSteps.length} of ${input.steps.length} step(s) missing Detailed Action / Risk if Mishandled`
     );
   }
 

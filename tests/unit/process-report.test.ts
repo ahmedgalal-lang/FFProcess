@@ -284,7 +284,7 @@ describe("deriveDocumentationGaps", () => {
     expect(deriveDocumentationGaps({ ...full, kpis: [] })).toContain("No KPIs added");
   });
 
-  it("counts steps missing both Detailed Action and Exception Handling", () => {
+  it("counts steps missing both Detailed Action and Risk if Mishandled", () => {
     const gaps = deriveDocumentationGaps({
       ...full,
       steps: [
@@ -293,10 +293,10 @@ describe("deriveDocumentationGaps", () => {
         { detailedAction: [], exceptionHandling: "   " },
       ],
     });
-    expect(gaps).toContain("2 of 3 step(s) missing Detailed Action / Exception Handling");
+    expect(gaps).toContain("2 of 3 step(s) missing Detailed Action / Risk if Mishandled");
   });
 
-  it("treats a step with only Exception Handling as documented", () => {
+  it("treats a step with only Risk if Mishandled as documented", () => {
     const gaps = deriveDocumentationGaps({
       ...full,
       steps: [{ detailedAction: [], exceptionHandling: "Escalate to the manager." }],

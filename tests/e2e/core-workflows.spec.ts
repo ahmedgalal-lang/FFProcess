@@ -324,11 +324,11 @@ test.describe("Core workflows", () => {
     // Process-level documentation (Purpose, Scope, External Entities) lives here.
     await expect(page.getByText("Process Documentation")).toBeVisible();
 
-    // Per-step Detailed Action / Exception Handling are edited in the Steps List view.
+    // Per-step Detailed Action / Risk if Mishandled are edited in the Steps List view.
     await page.click('button:has-text("Steps List")');
     await page.getByLabel("Edit Create Purchase Order").click();
     await expect(page.getByLabel(/Detailed Action/)).toBeVisible();
-    await expect(page.getByLabel(/Exception Handling/)).toBeVisible();
+    await expect(page.getByLabel(/Risk if Mishandled/)).toBeVisible();
   });
 
   test("Governance is a workspace page listing every process's control points and KPIs", async ({ page }) => {

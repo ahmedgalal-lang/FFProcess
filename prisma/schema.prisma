@@ -196,12 +196,12 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles          PersonRole[]
-  processSteps         ProcessStep[]         @relation("StepAssignedRole")
-  swimlaneSteps        ProcessStep[]         @relation("StepSwimlaneRole")
-  supportedSteps       ProcessStep[]         @relation("StepSupportingRoles")
-  raciAssignments      RaciAssignment[]
-  authorityRules AuthorityRule[] @relation("AuthorityRuleRole")
+  personRoles     PersonRole[]
+  processSteps    ProcessStep[]    @relation("StepAssignedRole")
+  swimlaneSteps   ProcessStep[]    @relation("StepSwimlaneRole")
+  supportedSteps  ProcessStep[]    @relation("StepSupportingRoles")
+  raciAssignments RaciAssignment[]
+  authorityRules  AuthorityRule[]  @relation("AuthorityRuleRole")
 
   createdAt DateTime @default(now())
 
@@ -221,7 +221,7 @@ model Person {
   manager   Person?   @relation("PersonManager", fields: [managerId], references: [id])
   reports   Person[]  @relation("PersonManager")
 
-  personRoles        PersonRole[]
+  personRoles    PersonRole[]
   authorityRules AuthorityRule[] @relation("AuthorityRulePerson")
 
   createdAt DateTime @default(now())
@@ -283,13 +283,13 @@ model Process {
   /// { metric, target, frequency }[] — operational KPIs/SLAs for this process.
   kpis             Json     @default("[]")
 
-  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  category      ProcessCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  parentProcess Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
-  subProcesses  Process[]        @relation("ProcessHierarchy")
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category       ProcessCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  parentProcess  Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
+  subProcesses   Process[]        @relation("ProcessHierarchy")
   /// SetNull rather than Cascade: deleting the source step must not delete a
   /// process someone else owns — the branch link is simply dropped.
-  branchFromStep ProcessStep?    @relation("ProcessBranchOrigin", fields: [branchFromStepId], references: [id], onDelete: SetNull)
+  branchFromStep ProcessStep?     @relation("ProcessBranchOrigin", fields: [branchFromStepId], references: [id], onDelete: SetNull)
 
   steps                ProcessStep[]
   activities           Activity[]
@@ -342,10 +342,10 @@ enum StepType {
 /// a Phase groups individual steps, and steps from different Processes share
 /// one — which is what makes a cross-process value-chain board possible.
 model Phase {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   workspaceId String
   name        String
-  order       Int    @default(0)
+  order       Int     @default(0)
   /// Hex colour for the board's column dot, chosen when the Phase is created.
   color       String?
 
@@ -396,7 +396,13 @@ model ProcessStep {
   /// This step's procedure for the Export Report — edited inline in the
   /// Process Map's Steps List view, one action per line; the report just
   /// displays it read-only.
-  detailedAction    String[] @default([])
+  detailedAction String[] @default([])
+
+  /// What goes wrong if the step is missed or done incorrectly. Shown as
+  /// "Risk if Mishandled" — the column keeps its original name because
+  /// renaming it would cost a migration on delivered client data for a purely
+  /// cosmetic gain. The old label promised a handling *procedure*, which is
+  /// not what anyone was writing in it.
   exceptionHandling String?
 
   process      Process @relation(fields: [processId], references: [id], onDelete: Cascade)

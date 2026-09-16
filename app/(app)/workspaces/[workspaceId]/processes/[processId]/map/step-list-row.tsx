@@ -268,12 +268,12 @@ export function StepListRow({
               className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
             />
           </Field>
-          <Field label="Exception Handling (Export Report)">
+          <Field label="Risk if Mishandled (Export Report)">
             <textarea
               value={exceptionHandling}
               onChange={(e) => setExceptionHandling(e.target.value)}
               rows={2}
-              placeholder="What happens if this step doesn't go as planned"
+              placeholder="What goes wrong if this step is missed or done incorrectly"
               className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
             />
           </Field>

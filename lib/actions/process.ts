@@ -663,7 +663,7 @@ const updateStepSchema = z.object({
 /**
  * Edits an existing step's name, type, assigned/swimlane role, its
  * Export Report documentation (Detailed Action, one entry per line, and
- * Exception Handling), and which other processes it hands off to — the
+ * Risk if Mishandled), and which other processes it hands off to — the
  * report reads the documentation fields directly rather than offering its
  * own editing UI, so this is their only home. Cross-process links used to be
  * settable only when a step was first created; a step built before its

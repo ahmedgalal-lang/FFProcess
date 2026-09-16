@@ -702,7 +702,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
                       {step.exceptionHandling && (
                         <div>
                           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                            Exception Handling
+                            Risk if Mishandled
                           </div>
                           <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{step.exceptionHandling}</p>
                         </div>
