@@ -148,6 +148,18 @@ model Workspace {
   accentColorSecondary String?
   accentColorTertiary  String?
 
+  /// How this client's Export Report pack is arranged: which pack sections,
+  /// per-process sections and blocks are included, in what order, and which
+  /// section each block sits under.
+  ///
+  /// Null means nobody has arranged this workspace, and is not a gap to be
+  /// backfilled — it is what makes an un-arranged client render exactly the
+  /// report it rendered before this column existed. The catalogue of what
+  /// *exists* lives in lib/domain/report-arrangement.ts, not here, so a
+  /// section added to the product later appears for every client instead of
+  /// being silently hidden from the ones already arranged.
+  reportArrangement Json?
+
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 
   members   Member[]
