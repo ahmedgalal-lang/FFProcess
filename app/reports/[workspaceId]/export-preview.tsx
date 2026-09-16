@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { Source_Serif_4 } from "next/font/google";
 import { StaticOrgChart } from "../../(app)/workspaces/[workspaceId]/org/chart/static-org-chart";
@@ -10,6 +10,11 @@ import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
 import type { RaciCode, StepType } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
+import {
+  isBlockEmpty,
+  isSectionEmpty,
+  type ResolvedArrangement,
+} from "@/lib/domain/report-arrangement";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
@@ -145,6 +150,7 @@ export function ExportPreview({
   valueChain,
   unphasedActivityCount,
   railProcesses,
+  arrangement,
 }: {
   workspaceId: string;
   companyName: string;
@@ -159,6 +165,7 @@ export function ExportPreview({
   valueChain: ValueChainColumn[];
   unphasedActivityCount: number;
   railProcesses: RailProcess[];
+  arrangement: ResolvedArrangement;
 }) {
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
   const pptxHref = `/api/export/report/${workspaceId}?${processes.map((p) => `ids=${p.id}`).join("&")}`;
@@ -356,37 +363,68 @@ export function ExportPreview({
       )}
 
       <main className="report-paper">
-        <CoverPage
-          companyName={companyName}
-          firmName={firmName}
-          industry={industry}
-          description={description}
-          processes={processes}
-        />
-
-        {people.length > 0 && (
-          <section className="print-page">
-            <h2 className="text-xl font-semibold text-slate-900">Org Structure</h2>
-            <p className="mt-1 mb-4 text-sm text-slate-500">Reporting lines across {companyName}.</p>
-            <StaticOrgChart people={people} />
-          </section>
-        )}
-
-        {railProcesses.length > 0 && (
-          <HelicopterViewPage processes={railProcesses} companyName={companyName} />
-        )}
-
-        {valueChain.length > 0 && (
-          <ValueChainPage columns={valueChain} companyName={companyName} />
-        )}
-
-        {processes.length > 0 && <ProcessIndexPage processes={processes} />}
-
-        {processes.map((process) => (
-          <ProcessReportSection key={process.id} workspaceId={workspaceId} process={process} />
-        ))}
-
-        <ClosingPage />
+        {/* The pack's front and back matter, in the order this client arranged
+            it. "index" is where the processes themselves go, so moving it
+            moves the whole body of the pack rather than just its contents
+            list. */}
+        {arrangement.pack.map((section) => {
+          if (!section.on) return null;
+          switch (section.id) {
+            case "cover":
+              return (
+                <CoverPage
+                  key={section.id}
+                  companyName={companyName}
+                  firmName={firmName}
+                  industry={industry}
+                  description={description}
+                  processes={processes}
+                />
+              );
+            case "org":
+              return (
+                <section key={section.id} className="print-page">
+                  <h2 className="text-xl font-semibold text-slate-900">Org Structure</h2>
+                  <p className="mt-1 mb-4 text-sm text-slate-500">Reporting lines across {companyName}.</p>
+                  {people.length > 0 ? <StaticOrgChart people={people} /> : <NothingRecorded />}
+                </section>
+              );
+            case "heli":
+              return railProcesses.length > 0 ? (
+                <HelicopterViewPage key={section.id} processes={railProcesses} companyName={companyName} />
+              ) : (
+                <EmptyPackSection key={section.id} title="Helicopter View" />
+              );
+            case "chain":
+              return valueChain.length > 0 ? (
+                <ValueChainPage key={section.id} columns={valueChain} companyName={companyName} />
+              ) : (
+                <EmptyPackSection key={section.id} title={`${companyName} Value Chain`} />
+              );
+            case "index":
+              return (
+                <Fragment key={section.id}>
+                  {processes.length > 0 ? (
+                    <ProcessIndexPage processes={processes} />
+                  ) : (
+                    <EmptyPackSection title="Processes in This Report" />
+                  )}
+                  {processes.map((process) => (
+                    <ProcessReportSection
+                      key={process.id}
+                      workspaceId={workspaceId}
+                      process={process}
+                      arrangement={arrangement}
+                    />
+                  ))}
+                </Fragment>
+              );
+            case "closing":
+              return <ClosingPage key={section.id} />;
+            default:
+              return null;
+          }
+        })}
       </main>
     </div>
   );
@@ -550,7 +588,15 @@ function SubHeading({ children }: { children: React.ReactNode }) {
   return <h4 className="mt-4 mb-1.5 text-sm font-bold text-slate-800">{children}</h4>;
 }
 
-function ProcessReportSection({ workspaceId, process }: { workspaceId: string; process: ExportProcessData }) {
+function ProcessReportSection({
+  workspaceId,
+  process,
+  arrangement,
+}: {
+  workspaceId: string;
+  process: ExportProcessData;
+  arrangement: ResolvedArrangement;
+}) {
   const matrixRoleNameById = new Map(process.matrixRoles.map((r) => [r.id, r.name]));
 
   function stepOwnerLabel(row: ExportProcessData["combinedRows"][number]): string {
@@ -565,16 +611,7 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
   const documentedSteps = process.steps.filter(
     (s) => s.detailedAction.length > 0 || s.exceptionHandling?.trim()
   );
-  const hasScope = process.inScope.length > 0 || process.outOfScope.length > 0;
 
-  const hasExecutiveSummary =
-    process.processPurpose ||
-    process.triggerLabel ||
-    process.outputLabel ||
-    process.involvedRoles.length > 0 ||
-    process.externalEntities.length > 0;
-  const hasProcessMap = process.steps.length > 0 || hasScope;
-  const hasRaciAuthority = process.combinedRows.length > 0 || process.controlPoints.length > 0 || process.kpis.length > 0;
 
   return (
     // Every process starts on its own fresh page, whether or not it has a
@@ -612,236 +649,339 @@ function ProcessReportSection({ workspaceId, process }: { workspaceId: string; p
         </dl>
       </div>
 
-      {hasExecutiveSummary && (
-        <>
-          <SectionHeading num="1.0" title="Executive Summary" />
-          {process.processPurpose && (
-            <>
-              <SubHeading>Process Purpose</SubHeading>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{process.processPurpose}</p>
-            </>
-          )}
-          {(process.triggerLabel || process.outputLabel) && (
-            <div className="mt-3 grid grid-cols-2 gap-4">
-              {process.triggerLabel && <ScopeBox label="Process Trigger" value={process.triggerLabel} />}
-              {process.outputLabel && <ScopeBox label="Process Output" value={process.outputLabel} />}
-            </div>
-          )}
-          {process.involvedRoles.length > 0 && (
-            <>
-              <SubHeading>Internal Roles</SubHeading>
-              <div className="print-stack flex flex-col gap-2.5">
-                {process.involvedRoles.map((role) => (
-                  <RoleCard key={role.id} name={role.name} duties={role.duties} />
-                ))}
-              </div>
-            </>
-          )}
-          {process.externalEntities.length > 0 && (
-            <>
-              <SubHeading>External Entities</SubHeading>
-              <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-                {process.externalEntities.map((entity, i) => (
-                  <li key={i} className="break-inside-avoid">
-                    <strong className="text-slate-900">{entity.name}</strong> — {entity.description}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </>
-      )}
-
-      {hasProcessMap && (
-        <>
-          <SectionHeading num="2.0" title="Process Map & Narrative" />
-          {hasScope && (
-            <>
-              <SubHeading>Scope</SubHeading>
-              <div className="grid grid-cols-2 gap-4">
-                {process.inScope.length > 0 && <BulletBox label="In-Scope" items={process.inScope} />}
-                {process.outOfScope.length > 0 && <BulletBox label="Out-of-Scope" items={process.outOfScope} />}
-              </div>
-            </>
-          )}
-          {process.steps.length > 0 && (
-            <>
-              {hasScope && <SubHeading>Workflow</SubHeading>}
-              <StaticProcessMapDiagram
-                workspaceId={workspaceId}
-                steps={process.steps}
-                connections={process.connections}
-              />
-              {documentedSteps.map((step) => {
-                const row = process.combinedRows.find((r) => r.rowId === step.id);
-                return (
-                  // A rule between entries rather than a card around each one:
-                  // the box's border and its four sides of padding cost real
-                  // vertical space on every step, and a long process pays that
-                  // cost once per step.
-                  <div key={step.id} className="mt-2.5 break-inside-avoid border-t border-slate-200 pt-2">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="font-semibold text-slate-900">{step.label}</span>
-                      <span className="text-xs text-slate-500">
-                        Step Owner: {row ? stepOwnerLabel(row) : (step.assignedRole?.name ?? "—")}
-                      </span>
-                    </div>
-                    <div className="mt-1 grid grid-cols-2 gap-4">
-                      {step.detailedAction.length > 0 && (
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                            Detailed Action
-                          </div>
-                          <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-sm text-slate-700">
-                            {step.detailedAction.map((action, i) => (
-                              <li key={i}>{action}</li>
-                            ))}
-                          </ol>
-                        </div>
-                      )}
-                      {step.exceptionHandling && (
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                            Risk if Mishandled
-                          </div>
-                          <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{step.exceptionHandling}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </>
-      )}
-
-      {hasRaciAuthority && (
-        <>
-          <SectionHeading num="3.0" title="RACI & Authority Matrix" />
-          {process.combinedRows.length > 0 && (
-            <>
-              <p className="text-sm text-slate-500">
-                Each task&rsquo;s responsibility assignment and its approval limits, combined into one table.
-              </p>
-              <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Process Step</th>
-                      {process.matrixRoles.map((r) => (
-                        <th key={r.id} className="px-3 py-2 text-center">
-                          {r.name}
-                        </th>
-                      ))}
-                      <th className="px-3 py-2">Authority rules</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {process.combinedRows.map((row) => (
-                      <tr key={row.rowId} className="border-t border-slate-100">
-                        <td className="px-3 py-2 font-medium text-slate-900">{row.label}</td>
-                        {process.matrixRoles.map((r) => {
-                          const code = row.raci[r.id] as RaciCode | undefined;
-                          return (
-                            <td
-                              key={r.id}
-                              className="px-3 py-2 text-center font-mono text-xs font-bold text-slate-600"
-                            >
-                              {code ? CODE_LETTER[code] : ""}
-                            </td>
-                          );
-                        })}
-                        {/* Every rule the task carries, in its own order —
-                            six summarising columns replaced by the statements
-                            themselves, which is what the matrix on screen
-                            shows and what a reader actually needs. */}
-                        <td className="px-3 py-2 text-xs text-slate-600">
-                          {row.ruleSentences.length === 0 ? (
-                            <span className="text-slate-500">No authority rules.</span>
-                          ) : (
-                            /* Bulleted with a hanging indent, not just stacked:
-                               a rule long enough to wrap was indistinguishable
-                               from the next rule starting, so two rules read as
-                               one paragraph. The marker sits outside the text
-                               column so wrapped lines align under the sentence. */
-                            <ul className="ml-3.5 list-outside list-disc space-y-1 marker:text-slate-500">
-                              {row.ruleSentences.map((sentence, i) => (
-                                <li key={i} className="break-inside-avoid pl-0.5 leading-snug">
-                                  {sentence}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-
-          {(process.controlPoints.length > 0 || process.kpis.length > 0) && (
-            <>
-              <MinorSectionHeading num="3.1" title="Governance, Controls & Metrics" />
-              {process.controlPoints.length > 0 && (
-                <>
-                  <SubHeading>Key Control Points</SubHeading>
-                  <ul className="space-y-1.5 text-sm">
-                    {process.controlPoints.map((cp) => (
-                      <li
-                        key={cp.rowId}
-                        className={
-                          cp.flagged
-                            ? "break-inside-avoid rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800"
-                            : "break-inside-avoid text-slate-700"
-                        }
-                      >
-                        {cp.flagged && <strong>⚠ </strong>}
-                        {cp.statement}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              {process.kpis.length > 0 && (
-                <>
-                  <SubHeading>Operational KPIs &amp; SLAs</SubHeading>
-                  {/* A KPI table is a handful of rows, so it moves to the next
-                      page whole rather than splitting — the split left one
-                      metric stranded under a repeated header on an otherwise
-                      blank page, and a torn-off box edge at the bottom of the
-                      page it came from. A table taller than a page still has
-                      to fragment; the tr rule keeps that from cutting a row. */}
-                  <div className="break-inside-avoid overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2">Metric</th>
-                          <th className="px-3 py-2">Target</th>
-                          <th className="px-3 py-2">Frequency</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {process.kpis.map((kpi, i) => (
-                          <tr key={i} className="border-t border-slate-100">
-                            <td className="px-3 py-2 text-slate-800">{kpi.metric}</td>
-                            <td className="px-3 py-2 text-slate-800">{kpi.target}</td>
-                            <td className="px-3 py-2 text-slate-800">{kpi.frequency}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </>
-      )}
+      {/* The arrangement decides what prints and in what order. Before this,
+          the four sections were a fixed sequence of JSX guarded by hasX &&,
+          which is why an empty section vanished without trace — the guard
+          could only say "yes" or "nothing at all". Splitting each part into a
+          block with an emptiness predicate makes "leave it out" and "print it,
+          marked empty" two separate decisions, which is what the arrangement
+          needs them to be. */}
+      {arrangement.sections.map((section) => {
+        if (!section.on) return null;
+        const printed = section.blocks.filter((b) => b.on);
+        const empty = isSectionEmpty(section, process);
+        return (
+          <Fragment key={section.id}>
+            <SectionHeading num={section.number ?? ""} title={section.title} />
+            {empty ? (
+              <NothingRecorded />
+            ) : (
+              printed.map((block) =>
+                // A block included but empty says so, in its own place. Before
+                // this the whole section was the unit, so an empty block inside
+                // a full section printed its heading over nothing.
+                isBlockEmpty(block.id, process) ? (
+                  <Fragment key={block.id}>
+                    <SubHeading>{block.title}</SubHeading>
+                    <NothingRecorded />
+                  </Fragment>
+                ) : (
+                <Fragment key={block.id}>
+                  {renderProcessBlock(block.id, {
+                    process,
+                    workspaceId,
+                    documentedSteps,
+                    stepOwnerLabel,
+                    // Excluding either half of the RACI table drops columns
+                    // rather than splitting it, which is why the pair is
+                    // pinned: there is only ever one table shape.
+                    withRules: printed.some((b) => b.id === "rules"),
+                    // The Workflow sub-heading only earns its place when Scope
+                    // printed above it; on its own the diagram needs no label.
+                    labelWorkflow: printed.some((b) => b.id === "scope") && !isBlockEmpty("scope", process),
+                  })}
+                </Fragment>
+                )
+              )
+            )}
+          </Fragment>
+        );
+      })}
     </section>
   );
+}
+
+/**
+ * The RACI grid and the authority rules: one table, a variable set of columns.
+ *
+ * The rules were always a column of this table rather than a table of their
+ * own, which is why the catalogue pins the two together. Excluding either drops
+ * columns; it never produces a second table for a reader to reconcile.
+ */
+function RaciAuthorityTable({
+  process,
+  withRules,
+}: {
+  process: ExportProcessData;
+  withRules?: boolean;
+}) {
+  return (
+    <>
+      <p className="text-sm text-slate-500">
+        Each task&rsquo;s responsibility assignment{withRules === false ? "" : " and its approval limits"}, combined
+        into one table.
+      </p>
+      <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2">Process Step</th>
+              {process.matrixRoles.map((r) => (
+                <th key={r.id} className="px-3 py-2 text-center">
+                  {r.name}
+                </th>
+              ))}
+              {withRules !== false && <th className="px-3 py-2">Authority rules</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {process.combinedRows.map((row) => (
+              <tr key={row.rowId} className="border-t border-slate-100">
+                <td className="px-3 py-2 font-medium text-slate-900">{row.label}</td>
+                {process.matrixRoles.map((r) => {
+                  const code = row.raci[r.id] as RaciCode | undefined;
+                  return (
+                    <td key={r.id} className="px-3 py-2 text-center font-mono text-xs font-bold text-slate-600">
+                      {code ? CODE_LETTER[code] : ""}
+                    </td>
+                  );
+                })}
+                {/* Every rule the task carries, in its own order —
+                    six summarising columns replaced by the statements
+                    themselves, which is what the matrix on screen
+                    shows and what a reader actually needs. */}
+                {withRules !== false && (
+                  <td className="px-3 py-2 text-xs text-slate-600">
+                    {row.ruleSentences.length === 0 ? (
+                      <span className="text-slate-500">No authority rules.</span>
+                    ) : (
+                      /* Bulleted with a hanging indent, not just stacked:
+                         a rule long enough to wrap was indistinguishable
+                         from the next rule starting, so two rules read as
+                         one paragraph. The marker sits outside the text
+                         column so wrapped lines align under the sentence. */
+                      <ul className="ml-3.5 list-outside list-disc space-y-1 marker:text-slate-500">
+                        {row.ruleSentences.map((sentence, i) => (
+                          <li key={i} className="break-inside-avoid pl-0.5 leading-snug">
+                            {sentence}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+/** A pack section that is included but has nothing recorded behind it. */
+function EmptyPackSection({ title }: { title: string }) {
+  return (
+    <section className="print-page">
+      <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+      <NothingRecorded />
+    </section>
+  );
+}
+
+/** What an included section or block prints when there is nothing to show. */
+function NothingRecorded() {
+  return (
+    <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+      No data yet &mdash; nothing has been recorded for this section.
+    </p>
+  );
+}
+
+type BlockContext = {
+  process: ExportProcessData;
+  workspaceId: string;
+  documentedSteps: ExportProcessData["steps"];
+  labelWorkflow: boolean;
+  stepOwnerLabel: (row: ExportProcessData["combinedRows"][number]) => string;
+  withRules?: boolean;
+};
+
+/**
+ * One renderer per block, keyed by the id the catalogue uses.
+ *
+ * These are the same markup the fixed sequence produced; what changed is that
+ * each one can now be asked for individually, in any order, and its emptiness
+ * asked about separately from whether it is wanted.
+ */
+const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
+  purpose: ({ process }) => (
+    <>
+      <SubHeading>Process Purpose</SubHeading>
+      <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{process.processPurpose}</p>
+    </>
+  ),
+
+  trigger: ({ process }) => (
+    <div className="mt-3 grid grid-cols-2 gap-4">
+      {process.triggerLabel && <ScopeBox label="Process Trigger" value={process.triggerLabel} />}
+      {process.outputLabel && <ScopeBox label="Process Output" value={process.outputLabel} />}
+    </div>
+  ),
+
+  roles: ({ process }) => (
+    <>
+      <SubHeading>Internal Roles</SubHeading>
+      <div className="print-stack flex flex-col gap-2.5">
+        {process.involvedRoles.map((role) => (
+          <RoleCard key={role.id} name={role.name} duties={role.duties} />
+        ))}
+      </div>
+    </>
+  ),
+
+  ext: ({ process }) => (
+    <>
+      <SubHeading>External Entities</SubHeading>
+      <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+        {process.externalEntities.map((entity, i) => (
+          <li key={i} className="break-inside-avoid">
+            <strong className="text-slate-900">{entity.name}</strong> &mdash; {entity.description}
+          </li>
+        ))}
+      </ul>
+    </>
+  ),
+
+  scope: ({ process }) => (
+    <>
+      <SubHeading>Scope</SubHeading>
+      <div className="grid grid-cols-2 gap-4">
+        {process.inScope.length > 0 && <BulletBox label="In-Scope" items={process.inScope} />}
+        {process.outOfScope.length > 0 && <BulletBox label="Out-of-Scope" items={process.outOfScope} />}
+      </div>
+    </>
+  ),
+
+  diagram: ({ process, workspaceId, labelWorkflow }) => (
+    <>
+      {labelWorkflow && <SubHeading>Workflow</SubHeading>}
+      <StaticProcessMapDiagram
+        workspaceId={workspaceId}
+        steps={process.steps}
+        connections={process.connections}
+      />
+    </>
+  ),
+
+  narr: ({ process, documentedSteps, stepOwnerLabel }) => (
+    <>
+      {documentedSteps.map((step) => {
+        const row = process.combinedRows.find((r) => r.rowId === step.id);
+        return (
+          // A rule between entries rather than a card around each one:
+          // the box's border and its four sides of padding cost real
+          // vertical space on every step, and a long process pays that
+          // cost once per step.
+          <div key={step.id} className="mt-2.5 break-inside-avoid border-t border-slate-200 pt-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-semibold text-slate-900">{step.label}</span>
+              <span className="text-xs text-slate-500">
+                Step Owner: {row ? stepOwnerLabel(row) : (step.assignedRole?.name ?? "—")}
+              </span>
+            </div>
+            <div className="mt-1 grid grid-cols-2 gap-4">
+              {step.detailedAction.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    Detailed Action
+                  </div>
+                  <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-sm text-slate-700">
+                    {step.detailedAction.map((action, i) => (
+                      <li key={i}>{action}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {step.exceptionHandling && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    Risk if Mishandled
+                  </div>
+                  <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{step.exceptionHandling}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  ),
+
+  // The RACI grid and the authority rules are one table with a variable set of
+  // columns, which is why they are pinned together in the catalogue: excluding
+  // either drops columns, never splits the table in two. The grid owns the
+  // markup and asks whether the rules column is wanted.
+  raciGrid: (ctx) => <RaciAuthorityTable {...ctx} />,
+  rules: () => null,
+
+  controls: ({ process }) => (
+    <>
+      <SubHeading>Key Control Points</SubHeading>
+      <ul className="space-y-1.5 text-sm">
+        {process.controlPoints.map((cp) => (
+          <li
+            key={cp.rowId}
+            className={
+              cp.flagged
+                ? "break-inside-avoid rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800"
+                : "break-inside-avoid text-slate-700"
+            }
+          >
+            {cp.flagged && <strong>⚠ </strong>}
+            {cp.statement}
+          </li>
+        ))}
+      </ul>
+    </>
+  ),
+
+  kpis: ({ process }) => (
+    <>
+      <SubHeading>Operational KPIs &amp; SLAs</SubHeading>
+      {/* A KPI table is a handful of rows, so it moves to the next
+          page whole rather than splitting — the split left one
+          metric stranded under a repeated header on an otherwise
+          blank page, and a torn-off box edge at the bottom of the
+          page it came from. A table taller than a page still has
+          to fragment; the tr rule keeps that from cutting a row. */}
+      <div className="break-inside-avoid overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2">Metric</th>
+              <th className="px-3 py-2">Target</th>
+              <th className="px-3 py-2">Frequency</th>
+            </tr>
+          </thead>
+          <tbody>
+            {process.kpis.map((kpi, i) => (
+              <tr key={i} className="border-t border-slate-100">
+                <td className="px-3 py-2 text-slate-800">{kpi.metric}</td>
+                <td className="px-3 py-2 text-slate-800">{kpi.target}</td>
+                <td className="px-3 py-2 text-slate-800">{kpi.frequency}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  ),
+};
+
+function renderProcessBlock(id: string, ctx: BlockContext): React.ReactNode {
+  const render = PROCESS_BLOCKS[id];
+  return render ? render(ctx) : null;
 }
 
 /**

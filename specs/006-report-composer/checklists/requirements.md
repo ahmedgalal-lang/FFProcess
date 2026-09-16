@@ -60,3 +60,20 @@ requirement was inverted to say they must stay unaffected, which is the behaviou
 actually needs protecting — arranging a pack should not change what a colleague gets when
 they export one matrix. SC-003 and one acceptance scenario were corrected to name the two
 real report formats.
+
+### SC-007 corrected during implementation
+
+SC-007 originally said an un-arranged workspace must produce "byte-comparable content to
+what it produces today". That is incompatible with a decision the user had already made:
+User Story 4 exists precisely to change what an un-arranged workspace prints, because a
+section with no data stops vanishing and starts printing marked. The seeded `PUR100`
+renders as a bare title block today and will render four marked-empty sections after.
+
+A second intended difference surfaced at the same time: Governance prints as `3.1`, a
+sub-heading of the RACI section. Making it independently orderable makes it a section in
+its own right, numbered `4.0`.
+
+SC-007 now names both differences and says every other one is a regression — which is the
+guard that was actually wanted. The snapshot test still exists and still runs against a
+baseline captured from the pre-feature renderer; the diff between the two is read by eye
+and recorded rather than accepted silently.

@@ -166,7 +166,12 @@ A section the consultant has deliberately kept appears in the pack even when the
 - **SC-004**: An arrangement made for one client has no effect on any other client's pack.
 - **SC-005**: A consultant can tell, from the pack alone, the difference between a section they excluded and a section the client has not yet filled in.
 - **SC-006**: No user without edit access encounters an arranging control, and no arrangement change submitted without edit access succeeds.
-- **SC-007**: A workspace nobody has arranged produces byte-comparable content to what it produces today.
+- **SC-007**: A workspace nobody has arranged produces the same pack it produces today,
+  section for section and in the same order, with exactly two intended differences: a
+  section that was previously hidden for having no data now prints marked (the point of
+  User Story 4), and Governance is numbered as a section in its own right rather than as a
+  sub-heading of the RACI section (the consequence of making it independently orderable).
+  Every other difference is a regression.
 
 ## Assumptions
 

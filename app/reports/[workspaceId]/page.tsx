@@ -1,6 +1,8 @@
 import { notFound as nextNotFound, redirect } from "next/navigation";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { loadReportData } from "@/lib/reports/load-report-data";
+import { prisma } from "@/lib/db/client";
+import { resolveArrangement } from "@/lib/domain/report-arrangement";
 import { ExportPreview } from "./export-preview";
 
 /**
@@ -24,5 +26,13 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
   const data = await loadReportData(workspaceId, processIds);
   if (!data) nextNotFound();
 
-  return <ExportPreview {...data} />;
+  // Read alongside the report data rather than through it: the deck reads the
+  // same two values independently, and neither should become a parameter of
+  // the other.
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { reportArrangement: true },
+  });
+
+  return <ExportPreview {...data} arrangement={resolveArrangement(workspace?.reportArrangement)} />;
 }

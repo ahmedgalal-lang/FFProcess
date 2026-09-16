@@ -1,0 +1,305 @@
+Acme Industrial
+BUSINESS PROCESS DOCUMENTATION & PROCEDURE STANDARD
+Acme Industrial
+Document ID
+ACME-BPD-<year>
+Version
+1.0
+Effective Date
+<date>
+Classification
+Internal — Confidential
+Prepared By
+Forefront Consulting
+CONTENTS — 4 PROCESSES
+PUR100
+Procure-to-Pay Program
+top-level
+PUR101
+Purchase-to-Pay
+under PUR100
+PUR102
+Vendor Onboarding
+under PUR100
+SAL101
+Sales Order Fulfillment
+top-level
+Org Structure
+Reporting lines across Acme Industrial.
+E2E Person One
+AP CLERK
+E2E Person Three
+PROCUREMENT LEAD
+E2E Person Two
+FINANCE MANAGER
+Helicopter View
+How Acme Industrial’s processes in this report connect, at a glance.
+No milestones marked yet.
+PUR100
+Procure-to-Pay Program
+0 steps
+No steps mapped
+PUR101
+Purchase-to-Pay
+9 steps
+Send PO to Vendor
+step 5
+🔗 PUR102
+🔗 SAL101
+PUR102
+Vendor Onboarding
+0 steps
+No steps mapped
+SAL101
+Sales Order Fulfillment
+0 steps
+No steps mapped
+Acme Industrial Value Chain
+No data yet — nothing has been recorded for this section.
+Processes in This Report
+4 processes, in the order they follow.
+1
+PUR100
+Procure-to-Pay Program
+top-level
+2
+PUR101
+Purchase-to-Pay
+under PUR100
+3
+PUR102
+Vendor Onboarding
+under PUR100
+4
+SAL101
+Sales Order Fulfillment
+top-level
+PUR100
+Procure-to-Pay Program
+Umbrella program grouping procurement sub-processes.
+Document ID
+PUR100-<year>
+Version
+1.0
+Effective Date
+<date>
+Review Cycle
+Annual
+Process Owner
+—
+Process Code
+PUR100
+1.0
+Executive Summary
+No data yet — nothing has been recorded for this section.
+2.0
+Process Map & Narrative
+No data yet — nothing has been recorded for this section.
+3.0
+RACI & Authority Matrix
+No data yet — nothing has been recorded for this section.
+4.0
+Governance, Controls & Metrics
+No data yet — nothing has been recorded for this section.
+PUR101
+under PUR100 · Procure-to-Pay Program
+Purchase-to-Pay
+From purchase requisition through vendor payment.
+Document ID
+PUR101-<year>
+Version
+1.0
+Effective Date
+<date>
+Review Cycle
+Annual
+Process Owner
+Finance Manager
+Process Code
+PUR101
+1.0
+Executive Summary
+Process Purpose
+No data yet — nothing has been recorded for this section.
+PROCESS TRIGGER
+Start
+PROCESS OUTPUT
+End
+Internal Roles
+AP Clerk
+3 Responsible
+2 Informed
+1 Approves
+RESPONSIBLE
+Create Purchase Order · Match Invoice to PO · Pay Vendor
+INFORMED
+Approve Purchase Order · Approve Payment
+APPROVES
+Create Purchase Order
+Finance Manager
+5 Accountable
+3 Approves
+1 Escalation point
+ACCOUNTABLE
+Create Purchase Order · Approve Purchase Order · Match Invoice to PO · Approve Payment · Pay Vendor
+APPROVES
+Approve Purchase Order · Match Invoice to PO · Pay Vendor
+ESCALATION POINT
+Approve Payment
+Procurement Lead
+2 Consulted
+1 Escalation point
+CONSULTED
+Create Purchase Order · Approve Purchase Order
+ESCALATION POINT
+Create Purchase Order
+Controller
+1 Responsible
+1 Consulted
+1 Informed
+1 Approves
+1 Co-approves
+2 Escalation point
+RESPONSIBLE
+Approve Payment
+CONSULTED
+Match Invoice to PO
+INFORMED
+Pay Vendor
+APPROVES
+Approve Payment
+CO-APPROVES
+Approve Purchase Order
+ESCALATION POINT
+Approve Purchase Order · Pay Vendor
+External Entities
+No data yet — nothing has been recorded for this section.
+2.0
+Process Map & Narrative
+Scope
+No data yet — nothing has been recorded for this section.
+No
+Yes
+AP CLERK
+FINANCE MANAGER
+PROCUREMENT LEAD
+UNASSIGNED
+Start
+2
+Create Purchase Order
+AP CLERK
+SLA 2d
+Approve PO?
+FINANCE MANAGER
+At or above $100,000
+4
+Revise Purchase Order
+AP CLERK
+SLA 3d
+5
+Send PO to Vendor
+AP CLERK
+→ PUR102
+→ SAL101
+6
+Receive Goods
+PROCUREMENT LEAD
+no SLA set
+7
+Match Invoice & Approve Payment
+FINANCE MANAGER
+SLA 2d
+8
+Pay Vendor
+AP CLERK
+SLA 1d
+End
+Step narrative
+No data yet — nothing has been recorded for this section.
+3.0
+RACI & Authority Matrix
+Each task’s responsibility assignment and its approval limits, combined into one table.
+PROCESS STEP	AP CLERK	FINANCE MANAGER	PROCUREMENT LEAD	CONTROLLER	AUTHORITY RULES
+Create Purchase Order	R	A	C
+More than $10,000 needs approval from AP Clerk.
+More than 2 days without a decision escalates to Procurement Lead.
+Approve Purchase Order	I	A	C
+At or above $100,000 needs approval from Finance Manager.
+More than $50,000 needs approval from Controller.
+More than 3 days without a decision escalates to Controller.
+Revise Purchase Order
+No approval required — this step proceeds on its own.
+More than 3 days without a decision escalates, but nobody is assigned.
+Send PO to Vendor					No authority rules.
+Match Invoice to PO	R	A		C
+More than $20,000 needs approval from Finance Manager.
+More than 2 days without a decision escalates, but nobody is assigned.
+Approve Payment	I	A		R
+More than $100,000 needs approval from Controller.
+More than $50,000 needs approval.
+More than 5 days without a decision escalates to Finance Manager.
+Pay Vendor	R	A		I
+More than $100,000 needs approval from Finance Manager.
+More than 1 day without a decision escalates to Controller.
+4.0
+Governance, Controls & Metrics
+Key Control Points
+"Approve Purchase Order" above $50,000 requires separate sign-off from Controller in addition to the primary approver.
+⚠ "Approve Payment" requires a second sign-off above $50,000, but nobody is assigned to it — this needs to be resolved in the Authority Matrix.
+Operational KPIs & SLAs
+No data yet — nothing has been recorded for this section.
+PUR102
+under PUR100 · Procure-to-Pay Program
+Vendor Onboarding
+Document ID
+PUR102-<year>
+Version
+1.0
+Effective Date
+<date>
+Review Cycle
+Annual
+Process Owner
+—
+Process Code
+PUR102
+1.0
+Executive Summary
+No data yet — nothing has been recorded for this section.
+2.0
+Process Map & Narrative
+No data yet — nothing has been recorded for this section.
+3.0
+RACI & Authority Matrix
+No data yet — nothing has been recorded for this section.
+4.0
+Governance, Controls & Metrics
+No data yet — nothing has been recorded for this section.
+SAL101
+Sales Order Fulfillment
+Document ID
+SAL101-<year>
+Version
+1.0
+Effective Date
+<date>
+Review Cycle
+Annual
+Process Owner
+—
+Process Code
+SAL101
+1.0
+Executive Summary
+No data yet — nothing has been recorded for this section.
+2.0
+Process Map & Narrative
+No data yet — nothing has been recorded for this section.
+3.0
+RACI & Authority Matrix
+No data yet — nothing has been recorded for this section.
+4.0
+Governance, Controls & Metrics
+No data yet — nothing has been recorded for this section.
+Thank you
+Please refer back to the process team for any inputs or comments needed.

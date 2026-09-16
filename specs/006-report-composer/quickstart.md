@@ -67,9 +67,10 @@ read-only user must never see.
 ## The regression that matters most
 
 17. On a workspace **nobody has arranged**, preview the report and compare it against the
-    same report before this feature. It must be the same document. SC-007 is the guard
-    against a 1,092-line restructuring quietly changing every existing client pack, and it
-    is worth checking by eye as well as by test.
+    same report before this feature. Two differences are expected and are the feature
+    working: previously-hidden empty sections now print marked, and Governance is numbered
+    `4.0` rather than `3.1`. **Any third difference is a regression** — that is what
+    SC-007 guards, and it is worth reading the diff by eye as well as running the test.
 
 ## Keyboard check (Principle IV)
 

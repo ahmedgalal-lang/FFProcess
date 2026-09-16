@@ -57,15 +57,15 @@ numbered without gaps.
 
 ### Tests for User Story 1
 
-- [ ] T009 [US1] **Write the SC-007 regression test first**, before any renderer change: capture the rendered report for the seeded workspace with no arrangement stored, and assert the restructured renderer produces the same content. This is the safety net for T011 and must exist before it
+- [X] T009 [US1] **Write the SC-007 regression test first**, before any renderer change: capture the rendered report for the seeded workspace with no arrangement stored, and assert the restructured renderer produces the same content. This is the safety net for T011 and must exist before it
 - [ ] T010 [P] [US1] Write failing e2e `tests/e2e/report-composer.spec.ts`: untick Executive Summary, preview, assert no process has one and Process Map is now `1.0`; untick a block, assert it is absent and its siblings renumber
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Restructure `app/reports/[workspaceId]/export-preview.tsx`: split `ProcessReportSection` so each of the eleven blocks is its own component in one lookup keyed by block id, and each of the six pack sections likewise. Replace every `hasX &&` guard with the catalogue's emptiness predicate. **Behaviour must not change yet** — T009 is the proof
-- [ ] T012 [US1] Load the workspace's `reportArrangement` in `app/reports/[workspaceId]/page.tsx`, resolve it, and have the renderer walk the resolved order instead of the fixed sequence
-- [ ] T013 [US1] Render section and block headings from the resolved numbering rather than the hard-coded `1.0`/`2.0`/`3.0`/`3.1` strings
-- [ ] T014 [US1] Handle the nothing-included case (FR-025): a pack with no sections ticked renders a document stating it is empty, not a blank page or an error
+- [X] T011 [US1] Restructure `app/reports/[workspaceId]/export-preview.tsx`: split `ProcessReportSection` so each of the eleven blocks is its own component in one lookup keyed by block id, and each of the six pack sections likewise. Replace every `hasX &&` guard with the catalogue's emptiness predicate. **Behaviour must not change yet** — T009 is the proof
+- [X] T012 [US1] Load the workspace's `reportArrangement` in `app/reports/[workspaceId]/page.tsx`, resolve it, and have the renderer walk the resolved order instead of the fixed sequence
+- [X] T013 [US1] Render section and block headings from the resolved numbering rather than the hard-coded `1.0`/`2.0`/`3.0`/`3.1` strings
+- [X] T014 [US1] Handle the nothing-included case (FR-025): a pack with no sections ticked renders a document stating it is empty, not a blank page or an error
 
 **Checkpoint**: the report honours an arrangement, and an un-arranged workspace is unchanged.
 
