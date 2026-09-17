@@ -202,3 +202,30 @@ test("a Viewer is offered no way in to the deleted processes, and no way to rest
   await expect(page.getByRole("button", { name: /^Restore/ })).toHaveCount(0);
   await expect(page.getByText(/need edit access/i)).toBeVisible();
 });
+
+test("a Viewer cannot arrange the report pack, but can still export it", async ({ page }) => {
+  // The second half is the assertion that matters. Hiding the arranging
+  // controls must not take the export controls beside them: reading and
+  // exporting is most of why a client is given an account at all.
+  await signIn(page, VIEWER);
+  await page.goto("/workspaces/workspace-acme/export");
+
+  await expect(page.getByText("Inside each process")).toHaveCount(0);
+  await expect(page.getByText("Pack sections")).toHaveCount(0);
+  // No tick for any section or block — those are the stored arrangement.
+  await expect(page.getByRole("checkbox", { name: /^Include (Executive Summary|Cover page)/ })).toHaveCount(
+    0
+  );
+  await expect(page.getByRole("button", { name: /Move Executive Summary/ })).toHaveCount(0);
+
+  // The process picker itself stays. Choosing which processes to export, and
+  // in what order, stores nothing — it only shapes this viewer's own link, so
+  // taking it away would remove a read-only capability rather than protect
+  // anything.
+  await expect(page.getByRole("checkbox", { name: /^Include PUR101/ })).toBeVisible();
+
+  await expect(page.getByRole("button", { name: /Preview report/i })).toBeVisible();
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+  await expect(page.locator("main.report-paper")).toBeVisible();
+});

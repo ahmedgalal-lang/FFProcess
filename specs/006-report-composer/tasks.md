@@ -58,7 +58,7 @@ numbered without gaps.
 ### Tests for User Story 1
 
 - [X] T009 [US1] **Write the SC-007 regression test first**, before any renderer change: capture the rendered report for the seeded workspace with no arrangement stored, and assert the restructured renderer produces the same content. This is the safety net for T011 and must exist before it
-- [ ] T010 [P] [US1] Write failing e2e `tests/e2e/report-composer.spec.ts`: untick Executive Summary, preview, assert no process has one and Process Map is now `1.0`; untick a block, assert it is absent and its siblings renumber
+- [X] T010 [P] [US1] Write failing e2e `tests/e2e/report-composer.spec.ts`: untick Executive Summary, preview, assert no process has one and Process Map is now `1.0`; untick a block, assert it is absent and its siblings renumber
 
 ### Implementation for User Story 1
 
@@ -81,13 +81,13 @@ editor.
 
 ### Tests for User Story 3
 
-- [ ] T015 [P] [US3] Extend `tests/e2e/report-composer.spec.ts`: arrange one workspace, assert a second workspace still shows the default, return and assert the arrangement survived, and assert a second editor sees it
-- [ ] T016 [P] [US3] Extend `tests/e2e/viewer-read-only.spec.ts`: a viewer sees no tick and no arrow on the Export Report page, **and** can still use Preview report and the deck download — the second half is the assertion that matters
+- [X] T015 [P] [US3] Extend `tests/e2e/report-composer.spec.ts`: arrange one workspace, assert a second workspace still shows the default, return and assert the arrangement survived, and assert a second editor sees it
+- [X] T016 [P] [US3] Extend `tests/e2e/viewer-read-only.spec.ts`: a viewer sees no tick and no arrow on the Export Report page, **and** can still use Preview report and the deck download — the second half is the assertion that matters
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Write `saveReportArrangement` in `lib/actions/report-arrangement.ts` per `contracts/server-actions.md`: Zod-validated input, `EDITOR` access, reject ids the catalogue does not know and `sec` values that are not process sections, force `on: true` on locked sections, store with `version: 1`, revalidate the export page and the report
-- [ ] T018 [US3] Load and resolve the arrangement in `app/(app)/workspaces/[workspaceId]/export/page.tsx` and pass it to the picker
+- [X] T017 [US3] Write `saveReportArrangement` in `lib/actions/report-arrangement.ts` per `contracts/server-actions.md`: Zod-validated input, `EDITOR` access, reject ids the catalogue does not know and `sec` values that are not process sections, force `on: true` on locked sections, store with `version: 1`, revalidate the export page and the report
+- [X] T018 [US3] Load and resolve the arrangement in `app/(app)/workspaces/[workspaceId]/export/page.tsx` and pass it to the picker
 
 **Checkpoint**: arrangements persist per client and cannot leak between them.
 
@@ -103,15 +103,15 @@ followed.
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Extend the e2e spec: move RACI above Process Map, assert on-screen numbering becomes `1.0`/`1.1`/`1.2`, preview and assert the document matches
-- [ ] T020 [P] [US2] Extend the e2e spec: press ↓ on RACI grid and assert the authority rules moved with it and remain adjacent; assert the authority rules row offers no arrows and says why
+- [X] T019 [P] [US2] Extend the e2e spec: move RACI above Process Map, assert on-screen numbering becomes `1.0`/`1.1`/`1.2`, preview and assert the document matches
+- [X] T020 [P] [US2] Extend the e2e spec: press ↓ on RACI grid and assert the authority rules moved with it and remain adjacent; assert the authority rules row offers no arrows and says why
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Add the two arranging panels to `app/(app)/workspaces/[workspaceId]/export/export-picker-form.tsx`: pack sections, and process sections with their blocks indented, each row a tick plus ↑/↓, rendering nothing when `useCanEdit()` is false
-- [ ] T022 [US2] Implement moving: a section carries its blocks; a block steps past a section boundary and adopts that section; a pinned pair moves as one unit and the junior member shows why it has no arrows
-- [ ] T023 [US2] Show the live resolved numbering on each row, and save through `saveReportArrangement` on every change, reading rows straight from props rather than seeding them into state — `useState` takes only its initial value, which froze the authority matrix once already
-- [ ] T024 [US2] Give the panels a visible focus ring and `aria-label`s on every arrow, and add an axe check for the extended Export Report page to `tests/e2e/accessibility.spec.ts`
+- [X] T021 [US2] Add the two arranging panels to `app/(app)/workspaces/[workspaceId]/export/export-picker-form.tsx`: pack sections, and process sections with their blocks indented, each row a tick plus ↑/↓, rendering nothing when `useCanEdit()` is false
+- [X] T022 [US2] Implement moving: a section carries its blocks; a block steps past a section boundary and adopts that section; a pinned pair moves as one unit and the junior member shows why it has no arrows
+- [X] T023 [US2] Show the live resolved numbering on each row, and save through `saveReportArrangement` on every change, reading rows straight from props rather than seeding them into state — `useState` takes only its initial value, which froze the authority matrix once already
+- [X] T024 [US2] Give the panels a visible focus ring and `aria-label`s on every arrow, and add an axe check for the extended Export Report page to `tests/e2e/accessibility.spec.ts`
 
 **Checkpoint**: the page is the mockup, wired to real data.
 
@@ -127,13 +127,13 @@ numbered, marked empty. Untick it; it is gone.
 
 ### Tests for User Story 4
 
-- [ ] T025 [P] [US4] Extend the e2e spec: with the KPI block ticked and a process that has no KPIs, assert the block appears with its number and an empty marker; untick it and assert it is absent and the numbers close up
+- [X] T025 [P] [US4] Extend the e2e spec: with the KPI block ticked and a process that has no KPIs, assert the block appears with its number and an empty marker; untick it and assert it is absent and the numbers close up
 
 ### Implementation for User Story 4
 
-- [ ] T026 [US4] Render the "no data yet" marker for an included but empty section or block in `export-preview.tsx`, at the project's contrast bar — `text-slate-400` fails on white and has caused two regressions here already
+- [X] T026 [US4] Render the "no data yet" marker for an included but empty section or block in `export-preview.tsx`, at the project's contrast bar — `text-slate-400` fails on white and has caused two regressions here already
 - [ ] T027 [US4] Rewrite the preview-only banner that currently says *"Some sections are missing content and are left out of this report"*. After this feature they are not left out, so the sentence is false: it becomes a list of what is empty and still printed, pointing at where to fill it in
-- [ ] T028 [US4] Show on the Export Report page which ticked sections will come out empty, so a consultant does not have to export to find out (FR-023, SC-005)
+- [X] T028 [US4] Show on the Export Report page which ticked sections will come out empty, so a consultant does not have to export to find out (FR-023, SC-005)
 
 ---
 

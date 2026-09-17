@@ -322,3 +322,26 @@ export function isSectionEmpty(section: ResolvedSection, process: EmptinessInput
   if (printed.length === 0) return true;
   return printed.every((b) => isBlockEmpty(b.id, process));
 }
+
+/* ------------------------------------------------------------------ */
+/* Round-tripping                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A resolved arrangement flattened back into the shape that gets stored.
+ *
+ * The arranging controls hold this shape and hand it to `resolveArrangement`
+ * to work out the live numbering, so the numbers on screen come from the same
+ * function that numbers the document. There is no second implementation to
+ * drift.
+ */
+export function toStored(resolved: ResolvedArrangement): StoredArrangement {
+  return {
+    version: ARRANGEMENT_VERSION,
+    pack: resolved.pack.map((s) => ({ id: s.id, on: s.on })),
+    sections: resolved.sections.map((s) => ({ id: s.id, on: s.on })),
+    blocks: resolved.sections.flatMap((s) =>
+      s.blocks.map((b) => ({ id: b.id, on: b.on, sec: s.id }))
+    ),
+  };
+}

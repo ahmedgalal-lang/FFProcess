@@ -575,14 +575,6 @@ function SectionHeading({ num, title }: { num: string; title: string }) {
   );
 }
 
-/** A numbered heading one size down from SectionHeading, for a section folded in as a closing subsection rather than a heading of its own. */
-function MinorSectionHeading({ num, title }: { num: string; title: string }) {
-  return (
-    <h4 className="mt-6 mb-1.5 flex items-baseline gap-2 border-b border-slate-100 pb-1.5 text-sm font-bold text-slate-800">
-      <span className="text-[var(--accent-secondary)]">{num}</span> {title}
-    </h4>
-  );
-}
 
 function SubHeading({ children }: { children: React.ReactNode }) {
   return <h4 className="mt-4 mb-1.5 text-sm font-bold text-slate-800">{children}</h4>;

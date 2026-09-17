@@ -280,4 +280,13 @@ test.describe("Accessibility", () => {
     const results = await new AxeBuilder({ page }).include("main").analyze();
     expect(results.violations).toEqual([]);
   });
+
+  test("the Export Report arranging panels have no automatically detectable violations", async ({
+    page,
+  }) => {
+    await page.goto("/workspaces/workspace-acme/export");
+    await page.waitForSelector("text=Inside each process");
+    const results = await new AxeBuilder({ page }).include("main").analyze();
+    expect(results.violations).toEqual([]);
+  });
 });
