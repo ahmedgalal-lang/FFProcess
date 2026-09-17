@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { Client } from "pg";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
 
@@ -47,24 +50,71 @@ test.beforeEach(clearArrangement);
 test.afterAll(clearArrangement);
 
 /**
- * The report's text, with the calendar normalised out.
+ * The pack's structure: its processes, its section numbers and titles, its
+ * block titles and its empty markers — and nothing else.
+ *
+ * The first version of this captured the report's whole text, which made it
+ * order-dependent on the rest of the suite: another spec adds a KPI to a
+ * seeded process, and the snapshot then failed depending on what had run
+ * before it. What this test is for is the *shape* of the default pack — that
+ * restructuring the renderer did not drop, reorder or renumber a section — so
+ * body content is exactly the part it should not be asserting.
  *
  * Reached through the picker rather than by typing the report URL, because the
  * report takes its processes from `?ids=` — going straight to `/reports/<id>`
- * produces a pack of nothing, which is a different document and would make
- * this snapshot assert the wrong thing.
+ * produces a pack of nothing, which is a different document.
  */
+const SECTION_TITLES = [
+  "Cover page",
+  "Org Structure",
+  "Helicopter View",
+  "Processes in This Report",
+  "Executive Summary",
+  "Process Map & Narrative",
+  "RACI & Authority Matrix",
+  "Governance, Controls & Metrics",
+  "Process Purpose",
+  "Trigger & Output",
+  "Internal Roles",
+  "External Entities",
+  "Scope",
+  "Workflow diagram",
+  "Step narrative",
+  "RACI grid",
+  "Authority rules",
+  "Key Control Points",
+  "Operational KPIs & SLAs",
+];
+
 async function reportText(page: import("@playwright/test").Page) {
   await page.goto(`/workspaces/${WORKSPACE}/export`);
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await page.waitForSelector(".report-paper");
   await page.waitForTimeout(2000);
-  return (await page.locator("main.report-paper").innerText())
-    .replace(/\d{4}-\d{2}-\d{2}/g, "<date>")
-    .replace(/-20\d\d\b/g, "-<year>")
-    .replace(/\s+\n/g, "\n")
-    .trim();
+  return page.locator("main.report-paper").innerText();
+}
+
+async function reportOutline(page: import("@playwright/test").Page) {
+  await page.goto(`/workspaces/${WORKSPACE}/export`);
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+  await page.waitForSelector(".report-paper");
+  await page.waitForTimeout(2000);
+
+  const text = await page.locator("main.report-paper").innerText();
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        /^[A-Z]{3}\d{3}$/.test(l) || // a process code
+        /^\d+\.\d+$/.test(l) || // a section or block number
+        /^No data yet/.test(l) ||
+        /Value Chain$/.test(l) ||
+        SECTION_TITLES.includes(l)
+    )
+    .join("\n");
 }
 
 test("an un-arranged client renders the report it rendered before this feature", async ({
@@ -72,7 +122,7 @@ test("an un-arranged client renders the report it rendered before this feature",
 }) => {
   const expected = readFileSync("tests/fixtures/report-default.snapshot.txt", "utf8").trim();
   await signIn(page);
-  expect(await reportText(page)).toBe(expected);
+  expect(await reportOutline(page)).toBe(expected);
 });
 
 /** The arranging panel's rows, as "number title" in print order. */
@@ -193,4 +243,41 @@ test("a ticked block with no data prints marked, and unticking removes it", asyn
   await openPicker(page);
   await page.getByRole("checkbox", { name: "Include Operational KPIs & SLAs" }).uncheck();
   await expect.poll(async () => await reportText(page)).not.toContain("Operational KPIs & SLAs");
+});
+
+/** Every text run in a .pptx, flattened — pptxgenjs splits text per word. */
+async function deckText(page: import("@playwright/test").Page): Promise<string> {
+  await page.goto(`/workspaces/${WORKSPACE}/export`);
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+  const href = await page.locator('a:has-text("Download PPTX")').getAttribute("href");
+  const body = await (await page.request.get(href!)).body();
+
+  // Unzipped with the system tool rather than a library: a .pptx is a zip,
+  // and adding a dependency to read one in a test is more than the test is
+  // worth.
+  const file = join(tmpdir(), `ffprocess-deck-${Date.now()}.pptx`);
+  writeFileSync(file, body);
+  try {
+    const xml = execFileSync("unzip", ["-p", file, "ppt/slides/slide*.xml"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    // <a:t> runs are per-word, so whole-phrase greps fail unless the tags go.
+    return xml.replace(/<[^>]+>/g, " ");
+  } finally {
+    rmSync(file, { force: true });
+  }
+}
+
+test("the deck follows the arrangement too", async ({ page }) => {
+  await signIn(page);
+
+  expect(await deckText(page)).toContain("Governance");
+
+  await openPicker(page);
+  await page.getByRole("checkbox", { name: "Include Governance, Controls & Metrics" }).uncheck();
+  await expect.poll(() => arrangeRows(page)).not.toContainEqual("4.0 Governance, Controls & Metrics");
+
+  expect(await deckText(page)).not.toContain("Governance");
 });

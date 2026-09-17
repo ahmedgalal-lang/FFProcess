@@ -347,7 +347,11 @@ export function ExportPreview({
       {allGaps.length > 0 && (
         <div className="no-print report-notice rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
           <div className="text-sm font-semibold text-amber-900">
-            ⚠ Some sections are missing content and are left out of this report
+            {/* This used to say the sections were "left out of this report",
+                which stopped being true when an included section started
+                printing marked instead of vanishing — the banner would have
+                sat directly above the very section it claimed was missing. */}
+            ⚠ Some sections have nothing recorded yet and print as empty
           </div>
           <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-amber-900">
             {allGaps.map(({ process, gap }, i) => (
@@ -357,7 +361,8 @@ export function ExportPreview({
             ))}
           </ul>
           <p className="mt-1.5 text-xs text-amber-800">
-            Fill these in on each process&rsquo;s Process Map page, then reload this report.
+            Fill these in on each process&rsquo;s Process Map page, or untick them on the Export Report
+            page to leave them out of this pack.
           </p>
         </div>
       )}

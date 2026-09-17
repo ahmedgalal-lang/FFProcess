@@ -9,8 +9,14 @@ How to prove the feature works. Assumes `pnpm dev` and a seeded demo workspace
 pnpm test                                             # domain rules, incl. merge + numbering
 pnpm exec playwright test tests/e2e/report-composer.spec.ts
 pnpm exec playwright test tests/e2e/report-order.spec.ts tests/e2e/export.spec.ts
+pnpm exec playwright test tests/e2e/report-print.spec.ts tests/e2e/core-workflows.spec.ts
 pnpm exec playwright test tests/e2e/viewer-read-only.spec.ts
 ```
+
+`report-print.spec.ts` and `core-workflows.spec.ts` are in the list because both
+asserted behaviour this feature deliberately changed — the banner's wording, and
+"1.0 Executive Summary" being unique to one process. Both were updated rather than
+worked around.
 
 The last two are regression guards, not new work: `export.spec.ts` and `report-order.spec.ts`
 cover the behaviour this feature must not disturb, and the viewer spec covers controls a
@@ -33,7 +39,9 @@ read-only user must never see.
 5. Move **RACI & Authority Matrix** above Process Map. It becomes `1.0`; its blocks become
    `1.1` and `1.2`.
 6. Press ↓ on **RACI grid**. The authority rules travel with it — they have no arrows of
-   their own, and the row says so.
+   their own, and the row says "moves with RACI grid". One press steps the pair over the
+   Governance heading and seats it at `4.1`/`4.2`; a second press takes it past Key Control
+   Points to `4.2`/`4.3`.
 7. Preview again: the document order and every number match the screen.
 8. Download the slide deck. The deck's sections follow the same order.
 
@@ -71,6 +79,12 @@ read-only user must never see.
     working: previously-hidden empty sections now print marked, and Governance is numbered
     `4.0` rather than `3.1`. **Any third difference is a regression** — that is what
     SC-007 guards, and it is worth reading the diff by eye as well as running the test.
+
+    The committed snapshot records the pack's *structure* — process codes, section and
+    block numbers, titles and empty markers — not its body text. The first version
+    captured everything, which made it fail depending on which other spec had run first:
+    another spec adds a KPI to a seeded process. Body content is exactly the part this
+    test should not assert.
 
 ## Keyboard check (Principle IV)
 

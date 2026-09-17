@@ -283,8 +283,9 @@ test.describe("Core workflows", () => {
     await expect(page.getByText("Key Control Points").first()).toBeVisible();
     await expect(page.getByText(/requires a second sign-off/).first()).toBeVisible();
 
-    // Undocumented sections are skipped in the report, but named in a preview-only banner.
-    const banner = page.getByText(/Some sections are missing content/);
+    // Undocumented sections now print marked rather than being skipped, so the
+    // preview-only banner names what is empty instead of what was left out.
+    const banner = page.getByText(/Some sections have nothing recorded yet/);
     await expect(banner).toBeVisible();
     await expect(page.getByText(/Process Purpose not written/).first()).toBeVisible();
 

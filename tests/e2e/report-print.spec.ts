@@ -44,7 +44,14 @@ test.describe("Export Report print layout", () => {
     await expect(pur100Section).toHaveClass(/print-page/);
 
     // Purchase-to-Pay (PUR101) has real content and keeps its own page break too.
-    const pur101Section = page.locator("main > section").filter({ hasText: "1.0 Executive Summary" });
+    // Filtered by its own description rather than by "1.0 Executive Summary":
+    // every process prints that heading now, including the empty ones, so the
+    // old filter matched four sections and the class assertion had nothing
+    // single to assert against.
+    const pur101Section = page
+      .locator("main > section")
+      .filter({ hasText: "From purchase requisition through vendor payment" });
+    await expect(pur101Section).toHaveCount(1);
     await expect(pur101Section).toHaveClass(/print-page/);
   });
 

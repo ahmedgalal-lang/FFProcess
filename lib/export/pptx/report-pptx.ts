@@ -3,6 +3,7 @@ import { assignSwimlanes, DECISION_TEXT_INSET, LANE_HEIGHT, LANE_TOP_OFFSET, NOD
 import { layoutOrgChart, CHART_NODE_SPACING, CHART_LEVEL_HEIGHT, type ChartPerson } from "@/lib/domain/org-chart";
 import { readableInkOn } from "@/lib/domain/color-contrast";
 import { gateLine } from "@/lib/domain/authority-table";
+import { isSectionEmpty, type ResolvedArrangement } from "@/lib/domain/report-arrangement";
 import type { RaciCode } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ReportData } from "@/lib/reports/load-report-data";
@@ -36,7 +37,10 @@ function hexOf(color: string | null | undefined, fallback: string): string {
 }
 
 /** Builds the whole Export Report as a slide deck — one PPTX mirroring the same pack the PDF prints. */
-export async function buildReportPptx(data: ReportData): Promise<Buffer> {
+export async function buildReportPptx(
+  data: ReportData,
+  arrangement: ResolvedArrangement
+): Promise<Buffer> {
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "REPORT_WIDE", width: SLIDE_W, height: SLIDE_H });
   pptx.layout = "REPORT_WIDE";
@@ -44,16 +48,38 @@ export async function buildReportPptx(data: ReportData): Promise<Buffer> {
   const accent = hexOf(data.accentColor, DEFAULT_ACCENT);
   const ink = hexOf(readableInkOn(`#${accent}`), "ffffff");
 
-  addCoverSlide(pptx, data, accent, ink);
-
-  if (data.people.length > 0) addOrgChartSlide(pptx, data.people, data.companyName);
-  if (data.railProcesses.length > 0) addHelicopterSlide(pptx, data.railProcesses, data.companyName);
-  if (data.valueChain.length > 0) addValueChainSlides(pptx, data.valueChain, data.companyName, accent, ink);
-  if (data.processes.length > 0) addProcessIndexSlide(pptx, data.processes, accent);
-
-  for (const process of data.processes) addProcessSlides(pptx, process, accent, ink);
-
-  addClosingSlide(pptx, accent, ink);
+  // The deck follows the same arrangement as the report, so a pack arranged
+  // once comes out the same shape whichever format the client is sent.
+  //
+  // One deliberate difference: the deck *skips* empty sections rather than
+  // printing them marked. A slide that says "no data yet" is noise in a
+  // summary document, where the printed report has the room to show a client
+  // what is still outstanding.
+  for (const section of arrangement.pack) {
+    if (!section.on) continue;
+    switch (section.id) {
+      case "cover":
+        addCoverSlide(pptx, data, accent, ink);
+        break;
+      case "org":
+        if (data.people.length > 0) addOrgChartSlide(pptx, data.people, data.companyName);
+        break;
+      case "heli":
+        if (data.railProcesses.length > 0) addHelicopterSlide(pptx, data.railProcesses, data.companyName);
+        break;
+      case "chain":
+        if (data.valueChain.length > 0)
+          addValueChainSlides(pptx, data.valueChain, data.companyName, accent, ink);
+        break;
+      case "index":
+        if (data.processes.length > 0) addProcessIndexSlide(pptx, data.processes, accent);
+        for (const process of data.processes) addProcessSlides(pptx, process, accent, ink, arrangement);
+        break;
+      case "closing":
+        addClosingSlide(pptx, accent, ink);
+        break;
+    }
+  }
 
   const out = await pptx.write({ outputType: "nodebuffer" });
   return out as Buffer;
@@ -411,23 +437,34 @@ function addProcessIndexSlide(pptx: PptxGenJS, processes: ExportProcessData[], a
   });
 }
 
-function addProcessSlides(pptx: PptxGenJS, process: ExportProcessData, accent: string, ink: string) {
+function addProcessSlides(
+  pptx: PptxGenJS,
+  process: ExportProcessData,
+  accent: string,
+  ink: string,
+  arrangement: ResolvedArrangement
+) {
   addProcessTitleSlide(pptx, process, accent, ink);
 
-  const hasExecutiveSummary =
-    !!process.processPurpose ||
-    !!process.triggerLabel ||
-    !!process.outputLabel ||
-    process.involvedRoles.length > 0 ||
-    process.externalEntities.length > 0;
-  if (hasExecutiveSummary) addExecutiveSummarySlide(pptx, process);
-
-  const hasScope = process.inScope.length > 0 || process.outOfScope.length > 0;
-  if (hasScope || process.steps.length > 0) addProcessMapSlide(pptx, process);
-
-  if (process.combinedRows.length > 0) addRaciAuthoritySlide(pptx, process);
-
-  if (process.controlPoints.length > 0 || process.kpis.length > 0) addGovernanceSlide(pptx, process);
+  for (const section of arrangement.sections) {
+    // Excluded, or nothing to say: either way no slide. The report
+    // distinguishes the two; a deck has no room to.
+    if (!section.on || isSectionEmpty(section, process)) continue;
+    switch (section.id) {
+      case "exec":
+        addExecutiveSummarySlide(pptx, process);
+        break;
+      case "map":
+        addProcessMapSlide(pptx, process);
+        break;
+      case "raci":
+        addRaciAuthoritySlide(pptx, process);
+        break;
+      case "gov":
+        addGovernanceSlide(pptx, process);
+        break;
+    }
+  }
 }
 
 function addProcessTitleSlide(pptx: PptxGenJS, process: ExportProcessData, accent: string, ink: string) {

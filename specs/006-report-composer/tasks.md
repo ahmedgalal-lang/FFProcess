@@ -132,25 +132,25 @@ numbered, marked empty. Untick it; it is gone.
 ### Implementation for User Story 4
 
 - [X] T026 [US4] Render the "no data yet" marker for an included but empty section or block in `export-preview.tsx`, at the project's contrast bar — `text-slate-400` fails on white and has caused two regressions here already
-- [ ] T027 [US4] Rewrite the preview-only banner that currently says *"Some sections are missing content and are left out of this report"*. After this feature they are not left out, so the sentence is false: it becomes a list of what is empty and still printed, pointing at where to fill it in
+- [X] T027 [US4] Rewrite the preview-only banner that currently says *"Some sections are missing content and are left out of this report"*. After this feature they are not left out, so the sentence is false: it becomes a list of what is empty and still printed, pointing at where to fill it in
 - [X] T028 [US4] Show on the Export Report page which ticked sections will come out empty, so a consultant does not have to export to find out (FR-023, SC-005)
 
 ---
 
 ## Phase 7: The deck
 
-- [ ] T029 Make `lib/export/pptx/report-pptx.ts` walk the resolved arrangement instead of its fixed sequence: excluded sections produce no slides, and section order follows the arrangement
-- [ ] T030 Skip empty sections in the deck rather than printing an empty marker — a slide saying "no data yet" is noise in a summary. Record the difference from the report in a comment, since it is deliberate
-- [ ] T031 [P] Extend `tests/e2e/export.spec.ts`: download the deck with a section excluded and assert its content is absent, and that section order follows the arrangement
+- [X] T029 Make `lib/export/pptx/report-pptx.ts` walk the resolved arrangement instead of its fixed sequence: excluded sections produce no slides, and section order follows the arrangement
+- [X] T030 Skip empty sections in the deck rather than printing an empty marker — a slide saying "no data yet" is noise in a summary. Record the difference from the report in a comment, since it is deliberate
+- [X] T031 [P] Extend `tests/e2e/export.spec.ts`: download the deck with a section excluded and assert its content is absent, and that section order follows the arrangement
 
 ---
 
 ## Phase 8: Polish & Cross-Cutting
 
-- [ ] T032 [P] Run `pnpm test` and the full Playwright suite; confirm `report-order.spec.ts`, `export.spec.ts` and `report-print.spec.ts` all still pass — they cover the behaviour this feature must not disturb
-- [ ] T033 [P] Confirm the per-process RACI and Authority spreadsheet downloads are unaffected by any arrangement (FR-022)
-- [ ] T034 [P] Check contrast on every new control and marker against WCAG 2.1 AA
-- [ ] T035 Walk `specs/006-report-composer/quickstart.md` by hand end to end, including step 17 — comparing an un-arranged workspace's report against what it produced before — and correct the quickstart wherever the built behaviour differs
+- [X] T032 [P] Run `pnpm test` and the full Playwright suite; confirm `report-order.spec.ts`, `export.spec.ts` and `report-print.spec.ts` all still pass — they cover the behaviour this feature must not disturb
+- [X] T033 [P] Confirm the per-process RACI and Authority spreadsheet downloads are unaffected by any arrangement (FR-022)
+- [X] T034 [P] Check contrast on every new control and marker against WCAG 2.1 AA
+- [X] T035 Walk `specs/006-report-composer/quickstart.md` by hand end to end, including step 17 — comparing an un-arranged workspace's report against what it produced before — and correct the quickstart wherever the built behaviour differs
 
 ---
 
