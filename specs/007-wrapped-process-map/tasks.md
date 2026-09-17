@@ -102,8 +102,8 @@ the interactive map unwrapped.
 
 ## Phase 6: The deck
 
-- [ ] T021 Have the deck's process-map slide in `lib/export/pptx/report-pptx.ts` use `wrapProcessMap` with the slide's own width, so a long process is legible on a slide by the same standard as in the report (FR-018)
-- [ ] T022 [P] Extend `tests/e2e/report-composer.spec.ts`'s deck reader: a long process's deck contains every step's label
+- [X] T021 Have the deck's process-map slide in `lib/export/pptx/report-pptx.ts` use `wrapProcessMap` with the slide's own width, so a long process is legible on a slide by the same standard as in the report (FR-018)
+- [X] T022 [P] Extend `tests/e2e/report-composer.spec.ts`'s deck reader: a long process's deck contains every step's label
 
 ---
 

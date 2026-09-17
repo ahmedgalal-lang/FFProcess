@@ -170,3 +170,39 @@ test("the interactive Process Map is not wrapped", async ({ page }) => {
   expect(laneIds.every((id) => !/^lane-\d+-/.test(id))).toBe(true);
   await expect(page.getByText(/continues on row/)).toHaveCount(0);
 });
+
+test("the slide deck carries every step of a long process too", async ({ page }) => {
+  // The deck lays out its own slide rather than reusing the report's diagram,
+  // so it gets the same wrap but its own drawing. A slide is a different shape
+  // from a page and wants a different number of rows: one row of 22 steps is
+  // six or seven times wider than the box, so fitting it shrinks the steps to
+  // nothing.
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  await signIn(page);
+  await page.goto(`/reports/${WORKSPACE}?ids=${LONG_PROCESS_ID}`);
+  await page.waitForSelector(".report-paper");
+  const href = await page.locator('a:has-text("Download PPTX")').getAttribute("href");
+  const body = await (await page.request.get(href!)).body();
+
+  const file = join(tmpdir(), `ffprocess-wrap-${Date.now()}.pptx`);
+  writeFileSync(file, body);
+  try {
+    const xml = execFileSync("unzip", ["-p", file, "ppt/slides/slide*.xml"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    // <a:t> runs are per-word, so the tags have to go before a phrase matches.
+    const text = xml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    for (const label of ["RFQ received", "Board meeting", "Change control", "Close-out"]) {
+      expect(text, `deck is missing "${label}"`).toContain(label);
+    }
+    // Lanes are drawn per row, so a role appears more than once.
+    expect((text.match(/PROCUREMENT LEAD|Procurement Lead/g) ?? []).length).toBeGreaterThan(1);
+  } finally {
+    rmSync(file, { force: true });
+  }
+});

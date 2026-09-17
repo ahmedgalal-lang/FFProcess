@@ -4,6 +4,12 @@ import { layoutOrgChart, CHART_NODE_SPACING, CHART_LEVEL_HEIGHT, type ChartPerso
 import { readableInkOn } from "@/lib/domain/color-contrast";
 import { gateLine } from "@/lib/domain/authority-table";
 import { isSectionEmpty, type ResolvedArrangement } from "@/lib/domain/report-arrangement";
+import {
+  wrapProcessMap,
+  PRINT_LANE_HEIGHT,
+  PRINT_STEP_X_SPACING,
+  PRINT_NODE_HALF_SIZE as PRINT_NODE_HALF,
+} from "@/lib/domain/process-layout";
 import type { RaciCode } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ReportData } from "@/lib/reports/load-report-data";
@@ -597,18 +603,61 @@ function drawProcessDiagram(
     if (role) laneLabel.set(role.id, role.name);
   }
 
-  const xs = steps.map((s) => s.positionX);
-  const ys = steps.map((s) => layout.yOf.get(s.id) ?? s.positionY);
+  /**
+   * A slide is a different shape from a page, so it wants a different number
+   * of rows.
+   *
+   * A 22-step process laid out in one row is about 5,700 units wide against a
+   * box a few hundred tall — six or seven to one — so fitting it to the box is
+   * width-limited and shrinks the steps to nothing. Wrapping it to roughly the
+   * box's own proportions is what stops that. The divisor is how many units of
+   * slide width a compact step needs to stay readable at this font size;
+   * eleven or so fit a 12-inch slide.
+   */
+  const SLIDE_UNITS_PER_INCH = 130;
+  const wrap = wrapProcessMap(
+    steps.map((s) => ({
+      id: s.id,
+      assignedRoleId: s.assignedRole?.id ?? null,
+      swimlaneRoleId: s.swimlaneRole?.id ?? null,
+      positionX: s.positionX,
+      positionY: s.positionY,
+    })),
+    {
+      boxWidth: boxW * SLIDE_UNITS_PER_INCH,
+      laneLabel: (roleId) => (roleId === null ? "Unassigned" : (laneLabel.get(roleId) ?? "")),
+      stepSpacing: PRINT_STEP_X_SPACING,
+      laneHeight: PRINT_LANE_HEIGHT,
+    }
+  );
+  const placed = new Map(wrap.rows.flatMap((r) => r.steps.map((st) => [st.id, st])));
+
+  // Where a step sits, wrapped or not — the rest of this function asks through
+  // here rather than reading positionX directly, so both paths draw the same
+  // way and only the coordinates differ.
+  const at = (stepId: string, fallbackX: number, fallbackY: number) => {
+    const p = placed.get(stepId);
+    return wrap.wrapped && p ? { x: p.x, y: p.y } : { x: fallbackX, y: fallbackY };
+  };
+
+  const xs = steps.map((s) => at(s.id, s.positionX, 0).x);
+  const ys = steps.map((s) => at(s.id, 0, layout.yOf.get(s.id) ?? s.positionY).y);
   const map = fitMapper(xs, ys, boxX, boxY, boxW, boxH);
 
   // Lane bands, back to front, so the step boxes drawn afterwards sit on top.
   slide.addShape("rect", { x: boxX, y: boxY, w: boxW, h: boxH, fill: { color: "ffffff" }, line: { color: BORDER, width: 1 } });
-  const laneNames = [...layout.laneOrder.map((id) => laneLabel.get(id) ?? ""), ...(layout.hasUnassignedLane ? ["Unassigned"] : [])];
-  laneNames.forEach((name, i) => {
-    const laneTopUnits = i * LANE_HEIGHT + LANE_TOP_OFFSET;
+  const laneBands = wrap.wrapped
+    ? wrap.rows.flatMap((row) =>
+        row.lanes.map((lane, i) => ({ name: lane.label, topUnits: row.y + lane.y, tinted: i % 2 === 1 }))
+      )
+    : [...layout.laneOrder.map((id) => laneLabel.get(id) ?? ""), ...(layout.hasUnassignedLane ? ["Unassigned"] : [])].map(
+        (name, i) => ({ name, topUnits: i * LANE_HEIGHT + LANE_TOP_OFFSET, tinted: i % 2 === 1 })
+      );
+  laneBands.forEach(({ name, topUnits, tinted }) => {
+    const laneTopUnits = topUnits;
     const laneY = map.y(laneTopUnits);
-    const laneH = LANE_HEIGHT * map.scale;
-    if (i % 2 === 1) {
+    const laneH = (wrap.wrapped ? PRINT_LANE_HEIGHT : LANE_HEIGHT) * map.scale;
+    if (tinted) {
       slide.addShape("rect", { x: boxX, y: Math.max(laneY, boxY), w: boxW, h: Math.min(laneH, boxY + boxH - laneY), fill: { color: "f8fafc" } });
     }
     slide.addText(name, {
@@ -631,10 +680,15 @@ function drawProcessDiagram(
     const to = stepById.get(c.toStepId);
     if (!from || !to) continue;
     const isLoop = to.positionX < from.positionX;
-    const x1 = map.x(from.positionX);
-    const y1 = map.y(layout.yOf.get(from.id) ?? from.positionY);
-    const x2 = map.x(to.positionX);
-    const y2 = map.y(layout.yOf.get(to.id) ?? to.positionY);
+    const a = at(from.id, from.positionX, layout.yOf.get(from.id) ?? from.positionY);
+    const b = at(to.id, to.positionX, layout.yOf.get(to.id) ?? to.positionY);
+    // A connection whose ends landed on different rows is not drawn: on a
+    // wrapped map the line would cross the next row's lanes to get there.
+    if (wrap.wrapped && placed.get(from.id)?.row !== placed.get(to.id)?.row) continue;
+    const x1 = map.x(a.x);
+    const y1 = map.y(a.y);
+    const x2 = map.x(b.x);
+    const y2 = map.y(b.y);
     slide.addShape("line", {
       x: Math.min(x1, x2),
       y: Math.min(y1, y2),
@@ -654,11 +708,14 @@ function drawProcessDiagram(
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i]!;
     const kind = nodeKindFor(s.type);
-    const half = NODE_HALF[kind]!;
+    // The compact half-size on a wrapped map, so the boxes match the tighter
+    // spacing the wrap laid them out at rather than overlapping each other.
+    const half = (wrap.wrapped ? PRINT_NODE_HALF[kind] : NODE_HALF[kind])!;
     const w = half.x * 2 * map.scale;
     const h = half.y * 2 * map.scale;
-    const cx = map.x(s.positionX);
-    const cy = map.y(layout.yOf.get(s.id) ?? s.positionY);
+    const pos = at(s.id, s.positionX, layout.yOf.get(s.id) ?? s.positionY);
+    const cx = map.x(pos.x);
+    const cy = map.y(pos.y);
     const left = cx - w / 2;
     const top = cy - h / 2;
 
