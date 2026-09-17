@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assignSwimlanes,
+  crossRowMarkers,
+  MIN_ROW_CAPACITY,
+  wrapProcessMap,
   laneIndexAtY,
   laneY,
   nextStepX,
@@ -127,5 +130,249 @@ describe("roleIdForLane", () => {
 
   it("returns null for the unassigned lane past the end", () => {
     expect(roleIdForLane(2, ["geo", "auditing"])).toBeNull();
+  });
+});
+
+/**
+ * Wrapping a long process map.
+ *
+ * The report draws a process as one row of steps and shrinks it to fit. At 22
+ * steps that is about a centimetre per step on A4 — complete, and unreadable.
+ * These cover the arithmetic that deals the steps into rows instead: how many
+ * fit, which row each lands on, which lanes a row needs, and which connections
+ * end up crossing a boundary.
+ */
+describe("wrapProcessMap — capacity and rows", () => {
+  const steps = (n: number, role: string | null = "r1") =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `s${i + 1}`,
+      assignedRoleId: role,
+      swimlaneRoleId: null,
+      positionX: FIRST_STEP_X + i * STEP_X_SPACING,
+      positionY: 0,
+    }));
+
+  const opts = (boxWidth: number) => ({ boxWidth, laneLabel: (id: string | null) => id ?? "Unassigned" });
+
+  it("fits as many steps per row as the box width allows", () => {
+    // 262px a step; a 1400px box takes five.
+    expect(wrapProcessMap(steps(20), opts(1400)).capacity).toBe(5);
+    expect(wrapProcessMap(steps(20), opts(800)).capacity).toBe(3);
+  });
+
+  it("never drops below two steps a row, however narrow the box", () => {
+    // One step per row is a column, not a map.
+    expect(wrapProcessMap(steps(10), opts(100)).capacity).toBe(2);
+    expect(wrapProcessMap(steps(10), opts(0)).capacity).toBe(2);
+    expect(wrapProcessMap(steps(10), opts(-500)).capacity).toBe(2);
+  });
+
+  it("does not wrap a process that fits one row", () => {
+    const layout = wrapProcessMap(steps(5), opts(1400));
+    expect(layout.wrapped).toBe(false);
+    expect(layout.rows).toHaveLength(1);
+  });
+
+  it("wraps as soon as there is one step too many", () => {
+    expect(wrapProcessMap(steps(5), opts(1400)).wrapped).toBe(false);
+    expect(wrapProcessMap(steps(6), opts(1400)).wrapped).toBe(true);
+  });
+
+  it("deals steps into full rows with the remainder last", () => {
+    const layout = wrapProcessMap(steps(12), opts(1400)); // capacity 5
+    expect(layout.rows.map((r) => r.steps.length)).toEqual([5, 5, 2]);
+  });
+
+  it("draws every step exactly once", () => {
+    const layout = wrapProcessMap(steps(22), opts(1400));
+    const ids = layout.rows.flatMap((r) => r.steps.map((s) => s.id));
+    expect(ids).toHaveLength(22);
+    expect(new Set(ids).size).toBe(22);
+  });
+
+  it("takes the order the steps are already in, not the order they arrived", () => {
+    // Shuffled input, deliberate positions: the map must read left to right.
+    const shuffled = [
+      { id: "third", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 900, positionY: 0 },
+      { id: "first", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 100, positionY: 0 },
+      { id: "second", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 500, positionY: 0 },
+    ];
+    const layout = wrapProcessMap(shuffled, opts(1400));
+    expect(layout.rows[0]!.steps.map((s) => s.id)).toEqual(["first", "second", "third"]);
+  });
+
+  it("breaks a tie on position with the id, so the layout is stable", () => {
+    const tied = ["b", "a"].map((id) => ({
+      id, assignedRoleId: "r1", swimlaneRoleId: null, positionX: 100, positionY: 0,
+    }));
+    expect(wrapProcessMap(tied, opts(1400)).rows[0]!.steps.map((s) => s.id)).toEqual(["a", "b"]);
+  });
+
+  it("spaces a row's steps the same way an unwrapped map does", () => {
+    const layout = wrapProcessMap(steps(12), opts(1400));
+    const row = layout.rows[1]!;
+    expect(row.steps.map((s) => s.x)).toEqual([0, 1, 2, 3, 4].map((c) => FIRST_STEP_X + c * STEP_X_SPACING));
+  });
+});
+
+describe("wrapProcessMap — a row's own lanes", () => {
+  const opts = { boxWidth: 1400, laneLabel: (id: string | null) => id ?? "Unassigned" };
+  const step = (id: string, role: string | null, x: number) => ({
+    id, assignedRoleId: role, swimlaneRoleId: null, positionX: x, positionY: 0,
+  });
+
+  it("gives a row only the lanes its own steps need", () => {
+    // Capacity 5: first row all r1, second row all r2.
+    const steps = [
+      ...["a", "b", "c", "d", "e"].map((id, i) => step(id, "r1", i * 100)),
+      ...["f", "g", "h"].map((id, i) => step(id, "r2", 500 + i * 100)),
+    ];
+    const layout = wrapProcessMap(steps, opts);
+    expect(layout.rows[0]!.lanes.map((l) => l.roleId)).toEqual(["r1"]);
+    expect(layout.rows[1]!.lanes.map((l) => l.roleId)).toEqual(["r2"]);
+  });
+
+  it("keeps lanes in the same relative order on every row they appear on", () => {
+    const steps = [
+      step("a", "r2", 0), step("b", "r1", 100), step("c", "r2", 200),
+      step("d", "r1", 300), step("e", "r2", 400),
+      step("f", "r1", 500), step("g", "r2", 600),
+    ];
+    const layout = wrapProcessMap(steps, opts);
+    // r2 is seen first across the process, so it is the upper lane everywhere.
+    for (const row of layout.rows) {
+      expect(row.lanes.map((l) => l.roleId)).toEqual(["r2", "r1"].filter((r) => row.lanes.some((l) => l.roleId === r)));
+    }
+  });
+
+  it("puts the Unassigned lane only on rows that have a roleless step", () => {
+    const steps = [
+      ...["a", "b", "c", "d", "e"].map((id, i) => step(id, "r1", i * 100)),
+      step("f", null, 500), step("g", "r1", 600),
+    ];
+    const layout = wrapProcessMap(steps, opts);
+    expect(layout.rows[0]!.lanes.some((l) => l.roleId === null)).toBe(false);
+    expect(layout.rows[1]!.lanes.some((l) => l.roleId === null)).toBe(true);
+  });
+
+  it("gives a row the height of the lanes it actually carries", () => {
+    const steps = [
+      ...["a", "b", "c", "d", "e"].map((id, i) => step(id, "r1", i * 100)),
+      step("f", "r1", 500), step("g", "r2", 600),
+    ];
+    const layout = wrapProcessMap(steps, opts);
+    expect(layout.rows[0]!.height).toBe(LANE_HEIGHT);
+    expect(layout.rows[1]!.height).toBe(LANE_HEIGHT * 2);
+  });
+
+  it("places a step in its own lane within its own row", () => {
+    const steps = [
+      ...["a", "b", "c", "d", "e"].map((id, i) => step(id, "r1", i * 100)),
+      step("f", "r2", 500), step("g", "r1", 600),
+    ];
+    const layout = wrapProcessMap(steps, opts);
+    const row = layout.rows[1]!;
+    const f = row.steps.find((s) => s.id === "f")!;
+    const g = row.steps.find((s) => s.id === "g")!;
+    expect(row.lanes[f.laneIndex]!.roleId).toBe("r2");
+    expect(row.lanes[g.laneIndex]!.roleId).toBe("r1");
+  });
+});
+
+describe("crossRowMarkers", () => {
+  const opts = { boxWidth: 1400, laneLabel: (id: string | null) => id ?? "Unassigned" };
+  const steps = Array.from({ length: 12 }, (_, i) => ({
+    id: `s${i + 1}`, assignedRoleId: "r1", swimlaneRoleId: null,
+    positionX: i * 100, positionY: 0,
+  }));
+  const layout = () => wrapProcessMap(steps, opts); // capacity 5 → rows of 5, 5, 2
+
+  it("says nothing about a connection inside one row", () => {
+    expect(crossRowMarkers(layout(), [{ fromStepId: "s1", toStepId: "s2" }])).toEqual([]);
+  });
+
+  it("marks both ends of a connection that crosses a row", () => {
+    const markers = crossRowMarkers(layout(), [{ fromStepId: "s5", toStepId: "s6" }]);
+    expect(markers).toHaveLength(2);
+    expect(markers).toContainEqual({ stepId: "s5", kind: "continues", otherRow: 2 });
+    expect(markers).toContainEqual({ stepId: "s6", kind: "from", otherRow: 1 });
+  });
+
+  it("counts rows the way a reader does, from one", () => {
+    const [marker] = crossRowMarkers(layout(), [{ fromStepId: "s10", toStepId: "s11" }]);
+    expect(marker!.otherRow).toBe(3);
+  });
+
+  it("marks both outgoing paths of a decision that lands on different rows", () => {
+    const markers = crossRowMarkers(layout(), [
+      { fromStepId: "s5", toStepId: "s6" },
+      { fromStepId: "s5", toStepId: "s11" },
+    ]);
+    expect(markers.filter((m) => m.stepId === "s5")).toHaveLength(2);
+  });
+
+  it("ignores a connection naming a step that is not on the map", () => {
+    expect(crossRowMarkers(layout(), [{ fromStepId: "s1", toStepId: "ghost" }])).toEqual([]);
+  });
+});
+
+describe("wrapProcessMap — never throws", () => {
+  const opts = { boxWidth: 1400, laneLabel: () => "" };
+
+  it("handles an empty process", () => {
+    const layout = wrapProcessMap([], opts);
+    expect(layout.rows).toEqual([]);
+    expect(layout.wrapped).toBe(false);
+  });
+
+  it("handles a single step without wrapping it", () => {
+    const layout = wrapProcessMap(
+      [{ id: "only", assignedRoleId: null, swimlaneRoleId: null, positionX: 0, positionY: 0 }],
+      opts
+    );
+    expect(layout.wrapped).toBe(false);
+    expect(layout.rows[0]!.steps).toHaveLength(1);
+  });
+
+  it("survives nonsense box widths", () => {
+    for (const boxWidth of [0, -1, NaN, Infinity]) {
+      expect(() =>
+        wrapProcessMap(
+          [{ id: "a", assignedRoleId: null, swimlaneRoleId: null, positionX: 0, positionY: 0 }],
+          { boxWidth, laneLabel: () => "" }
+        )
+      ).not.toThrow();
+    }
+  });
+});
+
+describe("wrapProcessMap — the capacity floor is load-bearing", () => {
+  /**
+   * Row count is derived by dividing by capacity, so a capacity of zero does
+   * not produce a bad layout — it produces an infinite one. A mutation that
+   * removed the clamp hung the test runner rather than failing it, which on a
+   * report page would be a hung request rather than an error anybody sees.
+   * The invariant is asserted directly rather than at three sample widths.
+   */
+  it("never returns a capacity below the floor, at any box width", () => {
+    const widths = [-10000, -1, 0, 1, 50, 261, 262, 263, 1000, 1e9, NaN, Infinity, -Infinity];
+    for (const boxWidth of widths) {
+      const layout = wrapProcessMap(
+        [{ id: "a", assignedRoleId: null, swimlaneRoleId: null, positionX: 0, positionY: 0 }],
+        { boxWidth, laneLabel: () => "" }
+      );
+      expect(layout.capacity, `boxWidth ${boxWidth}`).toBeGreaterThanOrEqual(MIN_ROW_CAPACITY);
+    }
+  });
+
+  it("produces a finite number of rows for every one of those widths", () => {
+    const steps = Array.from({ length: 30 }, (_, i) => ({
+      id: `s${i}`, assignedRoleId: null, swimlaneRoleId: null, positionX: i, positionY: 0,
+    }));
+    for (const boxWidth of [-1, 0, 1, NaN, Infinity]) {
+      const layout = wrapProcessMap(steps, { boxWidth, laneLabel: () => "" });
+      expect(layout.rows.length).toBeLessThanOrEqual(steps.length);
+      expect(layout.rows.flatMap((r) => r.steps)).toHaveLength(steps.length);
+    }
   });
 });

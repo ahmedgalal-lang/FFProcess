@@ -123,3 +123,211 @@ export function nextStepX(existingPositionsX: number[]): number {
   if (existingPositionsX.length === 0) return FIRST_STEP_X;
   return Math.max(...existingPositionsX) + STEP_X_SPACING;
 }
+
+/* ------------------------------------------------------------------ */
+/* Wrapping a long map                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Laying a long process out across several rows instead of one.
+ *
+ * The printed report draws a process as one horizontal row and shrinks the
+ * whole drawing until it fits the page. Nothing is lost, but a 22-step process
+ * comes out at about a centimetre a step — complete and unreadable. Dealing the
+ * steps into rows keeps every step at the size the interactive map already
+ * draws them at, which is the size nobody complains about.
+ *
+ * Two things make this more than a `chunk()`:
+ *
+ *  - It is a **swimlane** diagram, so each row needs its own lanes — and only
+ *    the ones its own steps use, or a row wastes a third of the page on an
+ *    empty band.
+ *  - A connection whose ends land on different rows cannot be routed around
+ *    the steps, because the space it would route through is the next row's
+ *    lanes. It breaks into a marked pair instead, which is what printed
+ *    flowcharts have always done and for exactly this reason.
+ *
+ * Pure: no DOM, no Prisma. Only the report's static diagram and the deck call
+ * it — the interactive Process Map goes on reading stored positions, because
+ * that is where a consultant arranges steps by hand and wrapping would fight
+ * them.
+ */
+export type WrapStep = {
+  id: string;
+  assignedRoleId: string | null;
+  swimlaneRoleId: string | null;
+  positionX: number;
+  positionY: number;
+};
+
+export type WrappedLane = {
+  /** null is the Unassigned lane. */
+  roleId: string | null;
+  label: string;
+  /** Top of this lane, relative to its row. */
+  y: number;
+};
+
+export type PlacedStep = {
+  id: string;
+  /** Along the row, in the same units an unwrapped map uses. */
+  x: number;
+  /** Absolute, across the whole layout. */
+  y: number;
+  row: number;
+  laneIndex: number;
+};
+
+export type WrappedRow = {
+  index: number;
+  lanes: WrappedLane[];
+  steps: PlacedStep[];
+  y: number;
+  height: number;
+  /** 1-based, as a reader counts. Null on the last row. */
+  continuesOnto: number | null;
+  /** 1-based. Null on the first row. */
+  continuesFrom: number | null;
+};
+
+export type WrappedMapLayout = {
+  /** False when everything fitted one row — the caller renders as it always did. */
+  wrapped: boolean;
+  rows: WrappedRow[];
+  width: number;
+  height: number;
+  /** Steps per row. Exposed so a caller can size its box and a test can assert it. */
+  capacity: number;
+};
+
+export type CrossRowMarker = {
+  stepId: string;
+  kind: "continues" | "from";
+  /** 1-based, as a reader counts. */
+  otherRow: number;
+};
+
+/**
+ * Steps per row for a box this wide. Never fewer than two — one step a row is
+ * a column, not a map.
+ *
+ * The lower bound is load-bearing in a way worth naming: the row count is
+ * derived by dividing by this, so a capacity of zero does not produce a bad
+ * layout, it produces an infinite one. Removing the clamp during a mutation
+ * check hung the test runner rather than failing it, which on a report page
+ * would be a hung request. It is clamped again at the point of use below, so
+ * the hazard cannot come back by editing this one expression.
+ */
+export const MIN_ROW_CAPACITY = 2;
+
+function rowCapacity(boxWidth: number): number {
+  if (!Number.isFinite(boxWidth) || boxWidth <= 0) return MIN_ROW_CAPACITY;
+  return Math.max(MIN_ROW_CAPACITY, Math.floor(boxWidth / STEP_X_SPACING));
+}
+
+export function wrapProcessMap(
+  steps: WrapStep[],
+  options: { boxWidth: number; laneLabel: (roleId: string | null) => string }
+): WrappedMapLayout {
+  // Clamped a second time deliberately: everything below divides by this, so
+  // a zero would be an infinite layout rather than a wrong one.
+  const capacity = Math.max(MIN_ROW_CAPACITY, rowCapacity(options.boxWidth));
+
+  // The order the interactive map and the Steps List already show. This
+  // re-flows that order; it does not re-derive one from the connection graph,
+  // which would make the printed map disagree with the screen. The id breaks
+  // a tie so two steps at the same coordinates lay out the same way twice.
+  const ordered = [...steps].sort(
+    (a, b) => a.positionX - b.positionX || a.positionY - b.positionY || a.id.localeCompare(b.id)
+  );
+
+  if (ordered.length === 0) {
+    return { wrapped: false, rows: [], width: 0, height: 0, capacity };
+  }
+
+  // Lane order across the whole process, so a role sits in the same relative
+  // place on every row it appears on rather than jumping about.
+  const laneOrder = assignSwimlanes(
+    ordered.map((s) => ({
+      id: s.id,
+      assignedRoleId: s.assignedRoleId,
+      swimlaneRoleId: s.swimlaneRoleId,
+    }))
+  ).laneOrder;
+  const roleRank = (roleId: string | null) =>
+    roleId === null ? laneOrder.length : laneOrder.indexOf(roleId);
+
+  const rowCount = Math.ceil(ordered.length / capacity);
+  const rows: WrappedRow[] = [];
+  let y = 0;
+
+  for (let index = 0; index < rowCount; index++) {
+    const slice = ordered.slice(index * capacity, (index + 1) * capacity);
+
+    // Only the lanes this row's own steps need (FR-009), in whole-process order.
+    const roleIds = [...new Set(slice.map((s) => s.swimlaneRoleId ?? s.assignedRoleId))].sort(
+      (a, b) => roleRank(a) - roleRank(b)
+    );
+    const lanes: WrappedLane[] = roleIds.map((roleId, i) => ({
+      roleId,
+      label: roleId === null ? "Unassigned" : options.laneLabel(roleId),
+      y: i * LANE_HEIGHT,
+    }));
+
+    const placed: PlacedStep[] = slice.map((step, column) => {
+      const roleId = step.swimlaneRoleId ?? step.assignedRoleId;
+      const laneIndex = roleIds.indexOf(roleId);
+      return {
+        id: step.id,
+        x: FIRST_STEP_X + column * STEP_X_SPACING,
+        y: y + laneIndex * LANE_HEIGHT + LANE_NODE_Y_OFFSET,
+        row: index,
+        laneIndex,
+      };
+    });
+
+    const height = lanes.length * LANE_HEIGHT;
+    rows.push({
+      index,
+      lanes,
+      steps: placed,
+      y,
+      height,
+      continuesOnto: index < rowCount - 1 ? index + 2 : null,
+      continuesFrom: index > 0 ? index : null,
+    });
+    y += height;
+  }
+
+  return {
+    wrapped: rowCount > 1,
+    rows,
+    width: FIRST_STEP_X + (Math.min(capacity, ordered.length) - 1) * STEP_X_SPACING + FIRST_STEP_X,
+    height: y,
+    capacity,
+  };
+}
+
+/**
+ * The connections that had to be broken, and what to write at each end.
+ *
+ * A same-row connection is still an ordinary edge; only one crossing a row
+ * boundary becomes a pair of markers.
+ */
+export function crossRowMarkers(
+  layout: WrappedMapLayout,
+  connections: { fromStepId: string; toStepId: string }[]
+): CrossRowMarker[] {
+  const rowOf = new Map<string, number>();
+  for (const row of layout.rows) for (const step of row.steps) rowOf.set(step.id, row.index);
+
+  const markers: CrossRowMarker[] = [];
+  for (const connection of connections) {
+    const from = rowOf.get(connection.fromStepId);
+    const to = rowOf.get(connection.toStepId);
+    if (from === undefined || to === undefined || from === to) continue;
+    markers.push({ stepId: connection.fromStepId, kind: "continues", otherRow: to + 1 });
+    markers.push({ stepId: connection.toStepId, kind: "from", otherRow: from + 1 });
+  }
+  return markers;
+}
