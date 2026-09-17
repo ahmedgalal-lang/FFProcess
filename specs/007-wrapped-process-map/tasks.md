@@ -60,9 +60,9 @@ step size with all 22 steps present, each in its role's lane on its own row.
 
 ### Implementation
 
-- [ ] T011 [US1] Have `static-process-map-diagram.tsx` call `wrapProcessMap` with the box width it is rendering into, and build its nodes from the returned rows instead of from stored positions — taking the existing path unchanged when `wrapped` is false
-- [ ] T012 [US2] Build one set of lane nodes per row, from that row's own lanes, so lane labels repeat down the page and no row reserves space for a lane it does not use
-- [ ] T013 [US1] Grow the diagram box with the number of rows instead of clamping it at 320–640px, up to a cap, and fall back to today's single shrunk row past the cap (FR-017). **The riskiest task in the feature**: getting the cap wrong shrinks maps that should have wrapped, which looks exactly like the bug being fixed
+- [X] T011 [US1] Have `static-process-map-diagram.tsx` call `wrapProcessMap` with the box width it is rendering into, and build its nodes from the returned rows instead of from stored positions — taking the existing path unchanged when `wrapped` is false
+- [X] T012 [US2] Build one set of lane nodes per row, from that row's own lanes, so lane labels repeat down the page and no row reserves space for a lane it does not use
+- [X] T013 [US1] Grow the diagram box with the number of rows instead of clamping it at 320–640px, up to a cap, and fall back to today's single shrunk row past the cap (FR-017). **The riskiest task in the feature**: getting the cap wrong shrinks maps that should have wrapped, which looks exactly like the bug being fixed
 
 **Checkpoint**: a long process is readable in the report; a short one is untouched.
 
@@ -82,8 +82,8 @@ boundary; both paths are drawn and the crossing is marked at both ends.
 
 ### Implementation
 
-- [ ] T016 [US3] Draw same-row connections as edges exactly as now, and render `crossRowMarkers` as text at the two ends instead of an edge, at the project's contrast bar — `text-slate-400` fails on white and has caused three regressions in this codebase
-- [ ] T017 [US3] Keep a cross-row connection's label attached to its marker rather than dropping it (FR-012)
+- [X] T016 [US3] Draw same-row connections as edges exactly as now, and render `crossRowMarkers` as text at the two ends instead of an edge, at the project's contrast bar — `text-slate-400` fails on white and has caused three regressions in this codebase
+- [X] T017 [US3] Keep a cross-row connection's label attached to its marker rather than dropping it (FR-012)
 
 ---
 

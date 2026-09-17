@@ -235,3 +235,41 @@ export function LaneNode({ data }: NodeProps & { data: LaneNodeData }) {
     </div>
   );
 }
+
+export type ContinuationNodeData = {
+  /** "continues" sits after the last step of a row; "from" before the first. */
+  kind: "continues" | "from";
+  /** 1-based, as a reader counts rows. */
+  otherRow: number;
+  /** The connection's own label, kept with the marker rather than dropped. */
+  connectionLabel?: string;
+};
+
+/**
+ * Where a connection had to be broken because its two steps landed on
+ * different rows of a wrapped map.
+ *
+ * Not a routed line, because in a swimlane diagram the space a line would have
+ * to travel through to get around the steps is the next row's lanes — routing
+ * around the steps means crossing the lanes instead. Printed flowcharts have
+ * always solved this with a marked pair, for exactly this reason.
+ */
+export function ContinuationNode({ data }: NodeProps & { data: ContinuationNodeData }) {
+  const goes = data.kind === "continues";
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm">
+      <Handle type="target" position={Position.Left} className="!opacity-0" />
+      <span aria-hidden>{goes ? "↳" : "↱"}</span>
+      <span>
+        {goes ? "continues on row " : "from row "}
+        {data.otherRow}
+      </span>
+      {data.connectionLabel && (
+        <span className="rounded bg-slate-100 px-1.5 py-px font-normal text-slate-700">
+          {data.connectionLabel}
+        </span>
+      )}
+      <Handle type="source" position={Position.Right} className="!opacity-0" />
+    </div>
+  );
+}
