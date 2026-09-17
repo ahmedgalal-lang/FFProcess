@@ -26,6 +26,11 @@ It creates `TES100 · End to end high-level` in the Acme workspace with 22 steps
 three roles, a decision that branches and rejoins, and one roleless step — enough to
 exercise every story at once. Delete it with the same script's `--clean` flag.
 
+The builder itself lives in `tests/fixtures/long-process.ts`, because the end-to-end spec
+imports it and a module that runs work on import cannot be imported. It uses raw SQL
+rather than Prisma, like every other fixture here: Playwright cannot import the generated
+client.
+
 ## Walk it by hand
 
 **Wrapping (User Story 1)**
@@ -35,8 +40,11 @@ exercise every story at once. Delete it with the same script's `--clean` flag.
    process's steps are drawn at — not shrunk.
 3. Count the steps on the page: 22, each once.
 4. Print to PDF and read the step labels at 100%. They should be legible.
-5. Preview a pack containing only `PUR101` (9 steps). It should **not** wrap, and should
-   look exactly as it did before this feature.
+5. Preview a pack containing only the four-step `TES200` fixture. It should **not** wrap.
+   Note that `PUR101` — nine steps — *does* wrap: the compact print card fits six to a row,
+   so every seeded process with steps in it is now long enough. That is an improvement for
+   it rather than a regression, but it is why "short enough not to wrap" needs a fixture of
+   its own.
 
 **Swimlanes (User Story 2)**
 
@@ -64,6 +72,23 @@ exercise every story at once. Delete it with the same script's `--clean` flag.
 13. Make a process long enough that even wrapping cannot keep it readable in the space the
     report gives it. It should render as one shrunk row — complete — rather than overflow
     the page or drop a row.
+
+    In practice a tall wrapped map paginates across printed pages rather than hitting that
+    cap: the 22-step fixture runs onto a second page, which the browser's own page
+    breaking handles. Verified in a real PDF, not assumed.
+
+## Read a real PDF
+
+Not optional, and not replaceable by a test. Printing the 22-step fixture and reading it
+is what caught the decision diamonds clipping their labels — "Evaluate the opportunity"
+came out as "the opportunity", with the first word not merely hidden but absent from the
+PDF's text layer. A step's name being wrong in a client's document is a correctness bug,
+and nothing short of reading the output would have found it.
+
+```bash
+pdftotext -f 6 -l 9 report.pdf - | grep -iE "evaluate|CEO scenario"
+pdftoppm -f 7 -l 7 -r 150 -png report.pdf page   # then look at it
+```
 
 ## The regression that matters most
 

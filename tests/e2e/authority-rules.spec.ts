@@ -103,3 +103,48 @@ test.afterAll(async () => {
     await client.end();
   }
 });
+
+test("a finished rule reads as its sentence, and Edit reopens it", async ({ page }) => {
+  /**
+   * Reported: "there is no edit or done action for this". Every rule was a
+   * permanently live set of dropdowns, so a matrix of twenty tasks was a wall
+   * of controls with no way to tell a finished rule from one still being
+   * written — and no way to say you had finished one.
+   */
+  await signIn(page);
+  const processId = await processIdByCode("PUR101");
+  await page.goto(`/workspaces/workspace-acme/processes/${processId}/authority`);
+  await page.waitForSelector("table");
+
+  // Finished rules are collapsed to their sentence.
+  const edits = page.getByRole("button", { name: /^Edit rule:/ });
+  await expect(edits.first()).toBeVisible();
+  const collapsed = await edits.count();
+  expect(collapsed).toBeGreaterThan(0);
+  await expect(page.getByText("More than $10,000 needs approval from AP Clerk.")).toBeVisible();
+
+  // Edit opens that rule's controls and offers Done.
+  await edits.first().click();
+  const done = page.getByRole("button", { name: /^Done editing rule:/ });
+  await expect(done.first()).toBeVisible();
+  await expect(edits).toHaveCount(collapsed - 1);
+
+  // Done closes it again, with nothing lost.
+  await done.first().click();
+  await expect(edits).toHaveCount(collapsed);
+  await expect(page.getByText("More than $10,000 needs approval from AP Clerk.")).toBeVisible();
+});
+
+test("an unfinished rule stays open and cannot be marked done", async ({ page }) => {
+  // The banner asks the consultant to give each rule a figure and somebody to
+  // carry it. A rule missing either opens by itself rather than hiding behind
+  // an Edit button, and its Done is refused until it says something whole.
+  await signIn(page);
+  const processId = await processIdByCode("PUR101");
+  await page.goto(`/workspaces/workspace-acme/processes/${processId}/authority`);
+  await page.waitForSelector("table");
+
+  const unfinished = page.getByRole("button", { name: /before finishing it$/ });
+  await expect(unfinished.first()).toBeVisible();
+  await expect(unfinished.first()).toBeDisabled();
+});

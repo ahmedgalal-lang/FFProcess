@@ -111,8 +111,8 @@ the interactive map unwrapped.
 
 - [X] T023 [P] Run `pnpm test` and the full Playwright suite; confirm `report-print.spec.ts`, `core-workflows.spec.ts` and `report-composer.spec.ts` all still pass — they cover the page-break and section behaviour this change is most likely to disturb
 - [X] T024 [P] Check contrast on the cross-row markers against WCAG 2.1 AA, and re-run the report page's axe check
-- [ ] T025 Export a long process to PDF and read it: every step legible at 100%, the reading order clear without being explained, and every lane labelled on every row. This is SC-001 and SC-003, and neither can be asserted by a test
-- [ ] T026 Walk `specs/007-wrapped-process-map/quickstart.md` end to end and correct it wherever the built behaviour differs
+- [X] T025 Export a long process to PDF and read it: every step legible at 100%, the reading order clear without being explained, and every lane labelled on every row. This is SC-001 and SC-003, and neither can be asserted by a test
+- [X] T026 Walk `specs/007-wrapped-process-map/quickstart.md` end to end and correct it wherever the built behaviour differs
 
 ---
 

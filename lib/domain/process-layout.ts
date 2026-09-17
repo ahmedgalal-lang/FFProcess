@@ -183,7 +183,14 @@ export const WRAPPED_ROW_GAP = 30;
 /** Half-width/half-height of a compact print card, mirroring NODE_HALF_SIZE. */
 export const PRINT_NODE_HALF_SIZE: Record<"task" | "decision" | "terminal", { x: number; y: number }> = {
   task: { x: 65, y: 32 },
-  decision: { x: 70, y: 40 },
+  // Bigger than a task despite saying less, and by more than the full-size
+  // pair are: only the middle of a diamond is writable (DECISION_TEXT_INSET),
+  // so the box has to be about twice the text it holds. Printing the report
+  // and reading it caught this — "Evaluate the opportunity" came out as "the
+  // opportunity", with the first word not merely hidden but absent from the
+  // PDF's text layer. A step's name being wrong in a client's document is a
+  // correctness bug, not a cosmetic one.
+  decision: { x: 88, y: 52 },
   terminal: { x: 44, y: 18 },
 };
 

@@ -21,6 +21,23 @@ import {
   type AuthorityTableRow,
 } from "@/lib/domain/authority-table";
 
+/**
+ * A rule is finished when it says everything it needs to say: what it turns
+ * on, the figure it turns on at, and who carries it. "No approval required" is
+ * finished the moment it is chosen — there is nothing else to fill in.
+ *
+ * This is what decides whether a row shows its sentence with an Edit button or
+ * opens its controls. Before it, every rule was permanently a live set of
+ * dropdowns, so a matrix of twenty tasks was a wall of controls with no way to
+ * tell a finished rule from one still being written.
+ */
+function isRuleComplete(rule: AuthorityRuleData): boolean {
+  if (rule.measure === "NONE") return true;
+  const hasFigure = rule.measure === "MONEY" ? rule.amount != null : rule.days != null;
+  const hasWho = Boolean(rule.whoRoleId || rule.whoPersonId);
+  return hasFigure && hasWho;
+}
+
 type RoleT = { id: string; name: string };
 type PersonT = { id: string; name: string };
 
@@ -342,6 +359,55 @@ function RuleRow({
   onRemove: () => void;
 }) {
   const dimmed = !requiresApproval(rule.direction);
+  const complete = isRuleComplete(rule);
+
+  // A finished rule reads as its sentence with an Edit button; an unfinished
+  // one opens its controls, because that is exactly what the banner at the top
+  // of the page is asking the consultant to go and fix.
+  const [editing, setEditing] = useState(!complete);
+  const [wasComplete, setWasComplete] = useState(complete);
+  if (wasComplete !== complete) {
+    setWasComplete(complete);
+    // Becoming incomplete — a figure cleared, a person removed — reopens the
+    // rule rather than leaving a half-written sentence sitting there closed.
+    if (!complete) setEditing(true);
+  }
+
+  const open = canEdit && editing;
+
+  if (canEdit && !editing) {
+    return (
+      <tr className={`border-t border-slate-100 ${dimmed ? "bg-slate-50" : ""}`}>
+        <td className="sticky left-0 z-10 bg-white px-4 py-2" />
+        <td colSpan={columns - 1} className="px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Rule
+            </span>
+            <span className="flex-1 text-xs text-slate-700">{describeAuthorityRule(rule, whoName)}</span>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Edit rule: ${describeAuthorityRule(rule, whoName)}`}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onRemove}
+              aria-label="Delete this rule"
+              title="Delete this rule"
+              className="rounded-md px-1.5 py-1 text-xs font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
+            >
+              ✕
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <>
@@ -511,8 +577,30 @@ function RuleRow({
       <tr className="bg-slate-50/40">
         <td className="sticky left-0 z-10 bg-slate-50/40" />
         <td colSpan={columns - 1} className="px-3 pb-2 text-xs text-slate-600">
-          <span className="mr-2 font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-500">Rule</span>
-          {describeAuthorityRule(rule, whoName)}
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Rule
+            </span>
+            <span className="flex-1">{describeAuthorityRule(rule, whoName)}</span>
+            {open && (
+              <button
+                type="button"
+                disabled={pending || !complete}
+                onClick={() => setEditing(false)}
+                aria-label={
+                  complete
+                    ? `Done editing rule: ${describeAuthorityRule(rule, whoName)}`
+                    : "Give this rule a figure and somebody to carry it before finishing it"
+                }
+                title={
+                  complete ? undefined : "Give this rule a figure and somebody to carry it first"
+                }
+                className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Done
+              </button>
+            )}
+          </div>
         </td>
       </tr>
     </>

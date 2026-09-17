@@ -313,6 +313,9 @@ export function CompactStepNode({ data }: NodeProps & { data: CompactStepData })
     ...(data.links ?? []).map((l) => `\u2192 ${l.code}`),
   ].filter(Boolean) as string[];
 
+  // A diamond has the least usable room of the three shapes, so it carries the
+  // number and the name and nothing else: the lane already says whose it is,
+  // and an SLA on a decision is rare. Crowding it is what clipped the name.
   const body = (
     <>
       <div className="flex items-center justify-center gap-1">
@@ -358,11 +361,33 @@ export function CompactStepNode({ data }: NodeProps & { data: CompactStepData })
           />
         </svg>
         <div
-          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center overflow-hidden text-center"
-          style={{ width: w * DECISION_TEXT_INSET, maxHeight: h * DECISION_TEXT_INSET }}
+          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center text-center"
+          style={{ width: w * DECISION_TEXT_INSET }}
         >
-          {body}
+          <div className="flex items-center justify-center gap-1">
+            {data.stepNumber != null && (
+              <span className="flex h-3.5 w-3.5 flex-none items-center justify-center rounded bg-indigo-600 font-mono text-[8px] font-bold text-white">
+                {data.stepNumber}
+              </span>
+            )}
+            <span className="text-[9.5px] font-semibold leading-tight text-slate-900">{data.label}</span>
+          </div>
         </div>
+        {/* The gate goes under the diamond, not inside it.
+            Only the middle of a diamond is writable, and a first attempt at
+            fitting the name and the figure in there clipped the name. A second
+            attempt kept the name by dropping the figure — which on a decision
+            is the more important half, since it is what the authority rule
+            actually says. Outside the shape, both fit and neither is cut, and
+            it is where a flowchart puts a condition anyway. */}
+        {detail.length > 0 && (
+          <span
+            className="absolute left-1/2 w-max max-w-[150px] -translate-x-1/2 rounded bg-amber-50/90 px-1 text-center text-[8px] font-semibold leading-tight text-amber-900"
+            style={{ top: h - 4 }}
+          >
+            {detail.join(" \u00b7 ")}
+          </span>
+        )}
       </div>
     );
   }
