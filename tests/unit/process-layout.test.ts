@@ -3,6 +3,9 @@ import {
   assignSwimlanes,
   crossRowMarkers,
   MIN_ROW_CAPACITY,
+  PRINT_LANE_HEIGHT,
+  PRINT_STEP_X_SPACING,
+  WRAPPED_ROW_GAP,
   wrapProcessMap,
   laneIndexAtY,
   laneY,
@@ -208,10 +211,28 @@ describe("wrapProcessMap — capacity and rows", () => {
     expect(wrapProcessMap(tied, opts(1400)).rows[0]!.steps.map((s) => s.id)).toEqual(["a", "b"]);
   });
 
-  it("spaces a row's steps the same way an unwrapped map does", () => {
+  it("puts one step per column, centred, at whatever spacing it was given", () => {
+    // The inset is half a column rather than the interactive map's fixed
+    // FIRST_STEP_X: that constant is sized for a 214px card, and print draws a
+    // 130px one. Half a column centres the card whatever size it is.
     const layout = wrapProcessMap(steps(12), opts(1400));
-    const row = layout.rows[1]!;
-    expect(row.steps.map((s) => s.x)).toEqual([0, 1, 2, 3, 4].map((c) => FIRST_STEP_X + c * STEP_X_SPACING));
+    expect(layout.rows[1]!.steps.map((s) => s.x)).toEqual(
+      [0, 1, 2, 3, 4].map((c) => STEP_X_SPACING / 2 + c * STEP_X_SPACING)
+    );
+  });
+
+  it("uses the compact print geometry when it is given it", () => {
+    const layout = wrapProcessMap(steps(22), {
+      boxWidth: 1030,
+      laneLabel: () => "",
+      stepSpacing: PRINT_STEP_X_SPACING,
+      laneHeight: PRINT_LANE_HEIGHT,
+    });
+    // Six a row instead of three, so four rows instead of eight — which is the
+    // whole reason the compact card exists.
+    expect(layout.capacity).toBe(6);
+    expect(layout.rows).toHaveLength(4);
+    expect(layout.rows[0]!.height).toBe(PRINT_LANE_HEIGHT);
   });
 });
 
@@ -374,5 +395,28 @@ describe("wrapProcessMap — the capacity floor is load-bearing", () => {
       expect(layout.rows.length).toBeLessThanOrEqual(steps.length);
       expect(layout.rows.flatMap((r) => r.steps)).toHaveLength(steps.length);
     }
+  });
+});
+
+describe("wrapProcessMap — rows do not sit flush", () => {
+  /**
+   * A lane's label is drawn above its band, so rows stacked flush put the
+   * first label of one row on top of the last lane of the row before it — it
+   * came out clipped in half on a real export.
+   */
+  const steps = Array.from({ length: 12 }, (_, i) => ({
+    id: `s${i}`, assignedRoleId: "r1", swimlaneRoleId: null, positionX: i, positionY: 0,
+  }));
+
+  it("leaves a gap between one row and the next", () => {
+    const layout = wrapProcessMap(steps, { boxWidth: 1400, laneLabel: () => "" });
+    const [first, second] = layout.rows;
+    expect(second!.y).toBe(first!.y + first!.height + WRAPPED_ROW_GAP);
+  });
+
+  it("does not leave a gap hanging off the bottom", () => {
+    const layout = wrapProcessMap(steps, { boxWidth: 1400, laneLabel: () => "" });
+    const last = layout.rows[layout.rows.length - 1]!;
+    expect(layout.height).toBe(last.y + last.height);
   });
 });

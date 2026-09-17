@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { gateLine, type AuthorityDirection } from "@/lib/domain/authority-table";
-import { DECISION_TEXT_INSET, NODE_HALF_SIZE } from "@/lib/domain/process-layout";
+import { DECISION_TEXT_INSET, NODE_HALF_SIZE, PRINT_NODE_HALF_SIZE } from "@/lib/domain/process-layout";
 
 // One handle per side, doing double duty as both a source and a target — the
 // canvas picks which id to wire an edge to based on the geometric relationship
@@ -270,6 +270,114 @@ export function ContinuationNode({ data }: NodeProps & { data: ContinuationNodeD
         </span>
       )}
       <Handle type="source" position={Position.Right} className="!opacity-0" />
+    </div>
+  );
+}
+
+export type CompactStepData = {
+  label: string;
+  roleName?: string;
+  stepNumber?: number;
+  kind: "task" | "decision" | "terminal";
+  slaDays?: number | null;
+  threshold?: number | null;
+  direction?: AuthorityDirection;
+  links?: StepLinkData[];
+};
+
+/**
+ * A step as the printed report draws it on a wrapped map.
+ *
+ * Not the full card scaled down — a smaller card. Wrapping alone left a
+ * 22-step process at about 5.7px of label text, because eight rows of
+ * full-size cards do not fit a page's height however neatly they are arranged.
+ * At this size six steps fit a row instead of three, four rows instead of
+ * eight, and the drawing barely has to be scaled at all.
+ *
+ * What it keeps is everything that carries meaning: the number, the label, the
+ * role, the decision's diamond, the approval gate, the SLA and the links to
+ * other processes. A first draft dropped the last four as "chrome that does
+ * not survive the shrink" — and an existing spec caught it, because a previous
+ * feature had deliberately decided the printed diagram shows the same
+ * documented content as the live canvas. It was right to. They are condensed
+ * here, not removed.
+ */
+export function CompactStepNode({ data }: NodeProps & { data: CompactStepData }) {
+  const { x, y } = PRINT_NODE_HALF_SIZE[data.kind];
+  const w = x * 2;
+  const h = y * 2;
+  const gate = data.threshold != null ? gateLine(data.threshold, data.direction) : null;
+  const detail = [
+    data.slaDays != null ? `SLA ${data.slaDays}d` : null,
+    gate,
+    ...(data.links ?? []).map((l) => `\u2192 ${l.code}`),
+  ].filter(Boolean) as string[];
+
+  const body = (
+    <>
+      <div className="flex items-center justify-center gap-1">
+        {data.stepNumber != null && (
+          <span className="flex h-3.5 w-3.5 flex-none items-center justify-center rounded bg-indigo-600 font-mono text-[8px] font-bold text-white">
+            {data.stepNumber}
+          </span>
+        )}
+        <span className="text-[10px] font-semibold leading-tight text-slate-900">{data.label}</span>
+      </div>
+      {data.roleName && (
+        <span className="text-[8.5px] font-medium uppercase leading-tight tracking-wide text-slate-600">
+          {data.roleName}
+        </span>
+      )}
+      {detail.length > 0 && (
+        <span className="text-[8px] font-semibold leading-tight text-slate-700">
+          {detail.join(" \u00b7 ")}
+        </span>
+      )}
+      {data.slaDays == null && data.kind === "task" && detail.length === 0 && (
+        <span className="text-[8px] font-medium leading-tight text-slate-600">no SLA set</span>
+      )}
+    </>
+  );
+
+  // A decision is a diamond on paper too, not just on screen — the notation is
+  // what tells a reader the flow forks here, and the project has a test that
+  // says so. Drawn as a polygon like the full-size card, with the label inside
+  // the largest rectangle whose corners still touch the edges.
+  if (data.kind === "decision") {
+    return (
+      <div className="relative" style={{ width: w, height: h }}>
+        <Handles />
+        <svg width={w} height={h} className="absolute inset-0" aria-hidden>
+          <polygon
+            points={`${w / 2},1 ${w - 1},${h / 2} ${w / 2},${h - 1} 1,${h / 2}`}
+            fill="#fffbeb"
+            stroke="#f59e0b"
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+        <div
+          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center overflow-hidden text-center"
+          style={{ width: w * DECISION_TEXT_INSET, maxHeight: h * DECISION_TEXT_INSET }}
+        >
+          {body}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`relative flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-center ${
+        data.kind === "terminal"
+          ? "rounded-full border border-emerald-300 bg-emerald-50"
+          : "rounded-lg border border-slate-300 bg-white"
+      }`}
+      style={{ width: w, minHeight: h }}
+    >
+      <Handles />
+      {body}
     </div>
   );
 }

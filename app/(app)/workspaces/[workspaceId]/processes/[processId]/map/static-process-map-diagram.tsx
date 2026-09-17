@@ -9,6 +9,9 @@ import {
   LANE_HEIGHT,
   LANE_TOP_OFFSET,
   NODE_HALF_SIZE,
+  PRINT_LANE_HEIGHT,
+  PRINT_NODE_HALF_SIZE,
+  PRINT_STEP_X_SPACING,
 } from "@/lib/domain/process-layout";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import {
@@ -17,6 +20,7 @@ import {
   TerminalNode,
   LaneNode,
   ContinuationNode,
+  CompactStepNode,
   type StepLinkData,
 } from "./map-nodes";
 
@@ -26,6 +30,7 @@ const NODE_TYPES = {
   terminal: TerminalNode,
   lane: LaneNode,
   continuation: ContinuationNode,
+  compact: CompactStepNode,
 };
 
 const HALF_SIZE = NODE_HALF_SIZE;
@@ -127,7 +132,15 @@ export function StaticProcessMapDiagram({
           positionX: s.positionX,
           positionY: s.positionY,
         })),
-        { boxWidth: BOX_WIDTH, laneLabel: (roleId) => laneLabel.get(roleId ?? "") ?? "" }
+        {
+          boxWidth: BOX_WIDTH,
+          laneLabel: (roleId) => laneLabel.get(roleId ?? "") ?? "",
+          // The compact geometry: six steps a row instead of three, so a long
+          // process needs four rows rather than eight and the drawing barely
+          // has to be scaled at all.
+          stepSpacing: PRINT_STEP_X_SPACING,
+          laneHeight: PRINT_LANE_HEIGHT,
+        }
       ),
     [steps, laneLabel, BOX_WIDTH]
   );
@@ -152,7 +165,7 @@ export function StaticProcessMapDiagram({
           type: "lane",
           position: { x: 0, y: row.y + lane.y + LANE_TOP_OFFSET },
           data: { label: lane.label, tinted: i % 2 === 1 },
-          style: { width: canvasWidth, height: LANE_HEIGHT },
+          style: { width: canvasWidth, height: PRINT_LANE_HEIGHT },
           draggable: false,
           selectable: false,
           focusable: false,
@@ -164,27 +177,26 @@ export function StaticProcessMapDiagram({
         const placed = placedById.get(s.id);
         if (!placed) return [];
         const kind = nodeKindFor(s.type);
-        const half = HALF_SIZE[kind];
-        const links: StepLinkData[] = s.links.map((l) => ({
-          id: l.id,
-          targetProcessId: l.targetProcessId,
-          code: l.targetProcess.code,
-          name: l.targetProcess.name,
-        }));
+        const half = PRINT_NODE_HALF_SIZE[kind];
         return [
           {
             id: s.id,
-            type: kind,
+            type: "compact",
             position: { x: placed.x - half.x, y: placed.y + LANE_TOP_OFFSET - half.y },
             data: {
               label: s.label,
               roleName: s.assignedRole?.name,
               stepNumber: i + 1,
+              kind,
               slaDays: s.slaDays,
               threshold: s.threshold,
               direction: s.direction,
-              links,
-              workspaceId,
+              links: s.links.map((l) => ({
+                id: l.id,
+                targetProcessId: l.targetProcessId,
+                code: l.targetProcess.code,
+                name: l.targetProcess.name,
+              })),
             },
             draggable: false,
             selectable: false,
@@ -210,8 +222,8 @@ export function StaticProcessMapDiagram({
             id: `marker-${marker.kind}-${marker.stepId}-${i}`,
             type: "continuation",
             position: {
-              x: marker.kind === "continues" ? placed.x + 120 : placed.x - 260,
-              y: placed.y + LANE_TOP_OFFSET + 40,
+              x: marker.kind === "continues" ? placed.x + 70 : placed.x - 150,
+              y: placed.y + LANE_TOP_OFFSET + 22,
             },
             data: { kind: marker.kind, otherRow: marker.otherRow, connectionLabel },
             draggable: false,

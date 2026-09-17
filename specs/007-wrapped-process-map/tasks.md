@@ -54,9 +54,9 @@ step size with all 22 steps present, each in its role's lane on its own row.
 
 ### Tests
 
-- [ ] T008 [P] [US1] Write failing e2e `tests/e2e/wrapped-process-map.spec.ts`: export a pack containing the long process, assert its map renders more than one row of steps, that all 22 steps are present, and that the rendered step size matches an unwrapped process's rather than being shrunk
-- [ ] T009 [P] [US1] Extend the same spec with the regression that matters: a short process (seeded `PUR101`, 9 steps) does **not** wrap and renders as it did before — FR-003 and SC-005
-- [ ] T010 [P] [US2] Extend the spec: on a wrapped map every row shows labelled lanes, a step on the second row sits in its own role's lane, and a row whose steps are all one role shows one lane rather than three
+- [X] T008 [P] [US1] Write failing e2e `tests/e2e/wrapped-process-map.spec.ts`: export a pack containing the long process, assert its map renders more than one row of steps, that all 22 steps are present, and that the rendered step size matches an unwrapped process's rather than being shrunk
+- [X] T009 [P] [US1] Extend the same spec with the regression that matters: a short process (seeded `PUR101`, 9 steps) does **not** wrap and renders as it did before — FR-003 and SC-005
+- [X] T010 [P] [US2] Extend the spec: on a wrapped map every row shows labelled lanes, a step on the second row sits in its own role's lane, and a row whose steps are all one role shows one lane rather than three
 
 ### Implementation
 
@@ -77,8 +77,8 @@ boundary; both paths are drawn and the crossing is marked at both ends.
 
 ### Tests
 
-- [ ] T014 [P] [US3] Extend the e2e spec: a decision's two outgoing connections are both drawn; a connection whose steps land on different rows shows a "continues on row N" marker at one end and "from row N" at the other; no edge is drawn straight across the page
-- [ ] T015 [P] [US3] Extend the e2e spec: a step reached by more than one path appears exactly once
+- [X] T014 [P] [US3] Extend the e2e spec: a decision's two outgoing connections are both drawn; a connection whose steps land on different rows shows a "continues on row N" marker at one end and "from row N" at the other; no edge is drawn straight across the page
+- [X] T015 [P] [US3] Extend the e2e spec: a step reached by more than one path appears exactly once
 
 ### Implementation
 
@@ -94,9 +94,9 @@ boundary; both paths are drawn and the crossing is marked at both ends.
 **Independent test**: Record positions, export the report, confirm positions unchanged and
 the interactive map unwrapped.
 
-- [ ] T018 [P] [US4] Write failing e2e: record every step's stored position, export the report containing that process, and assert no position changed
-- [ ] T019 [P] [US4] Extend it: the interactive Process Map for the long process renders unwrapped and still pans and zooms
-- [ ] T020 [US4] Confirm by inspection that `wrapProcessMap` is called only from the static diagram and the deck, and that nothing in the call path writes a position
+- [X] T018 [P] [US4] Write failing e2e: record every step's stored position, export the report containing that process, and assert no position changed
+- [X] T019 [P] [US4] Extend it: the interactive Process Map for the long process renders unwrapped and still pans and zooms
+- [X] T020 [US4] Confirm by inspection that `wrapProcessMap` is called only from the static diagram and the deck, and that nothing in the call path writes a position
 
 ---
 
@@ -109,8 +109,8 @@ the interactive map unwrapped.
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T023 [P] Run `pnpm test` and the full Playwright suite; confirm `report-print.spec.ts`, `core-workflows.spec.ts` and `report-composer.spec.ts` all still pass — they cover the page-break and section behaviour this change is most likely to disturb
-- [ ] T024 [P] Check contrast on the cross-row markers against WCAG 2.1 AA, and re-run the report page's axe check
+- [X] T023 [P] Run `pnpm test` and the full Playwright suite; confirm `report-print.spec.ts`, `core-workflows.spec.ts` and `report-composer.spec.ts` all still pass — they cover the page-break and section behaviour this change is most likely to disturb
+- [X] T024 [P] Check contrast on the cross-row markers against WCAG 2.1 AA, and re-run the report page's axe check
 - [ ] T025 Export a long process to PDF and read it: every step legible at 100%, the reading order clear without being explained, and every lane labelled on every row. This is SC-001 and SC-003, and neither can be asserted by a test
 - [ ] T026 Walk `specs/007-wrapped-process-map/quickstart.md` end to end and correct it wherever the built behaviour differs
 

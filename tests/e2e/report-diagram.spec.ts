@@ -149,8 +149,18 @@ test("Export Report's static diagram fits a wide process instead of clipping it"
   // nodes carry a stable "lane-<roleId>" id, unlike a step node's uuid, so
   // that's what picks the lane out from every step node that also shows the
   // role name as its own subtitle.
+  // One lane per row: a wide process now wraps onto several rows, and each row
+  // carries its own labelled lanes so a reader never has to look back to an
+  // earlier row to know whose lane a step is in. It used to be exactly one.
   const lane = diagram.locator('.react-flow__node[data-id^="lane-"]').filter({ hasText: roleName });
-  await expect(lane).toHaveCount(1);
+  await expect(lane.first()).toBeVisible();
+  const laneCount = await lane.count();
+  const rows = new Set(
+    await lane.evaluateAll((ns) =>
+      ns.map((n) => /^lane-(\d+)-/.exec((n as HTMLElement).dataset["id"] ?? "")?.[1] ?? "0")
+    )
+  );
+  expect(laneCount).toBe(rows.size);
 });
 
 test("Export Report's static diagram draws an Unassigned lane for steps with no owner", async ({ page }) => {
@@ -174,9 +184,14 @@ test("Export Report's static diagram draws an Unassigned lane for steps with no 
   // built a lane for a step that had a role. It has to be exactly the
   // "lane-unassigned" id — the interactive Process Map's own name for it —
   // proving this draws through the same assignSwimlanes answer.
-  const lane = diagram.locator('.react-flow__node[data-id="lane-unassigned"]');
-  await expect(lane).toHaveCount(1);
-  await expect(lane).toContainText("Unassigned");
+  // "lane-unassigned" unwrapped, "lane-<row>-unassigned" once a map wraps —
+  // either way the lane exists and is named the same thing the interactive
+  // Process Map names it.
+  const lane = diagram.locator(
+    '.react-flow__node[data-id="lane-unassigned"], .react-flow__node[data-id$="-unassigned"]'
+  );
+  await expect(lane.first()).toBeVisible();
+  await expect(lane.first()).toContainText("Unassigned");
 
   const stepNodes = diagram.locator(".react-flow__node").filter({ hasText: /Start|Do the thing|Finish/ });
   await expect(stepNodes).toHaveCount(3);

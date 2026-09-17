@@ -152,6 +152,41 @@ export function nextStepX(existingPositionsX: number[]): number {
  * that is where a consultant arranges steps by hand and wrapping would fight
  * them.
  */
+/**
+ * The compact geometry a wrapped map is drawn at in print.
+ *
+ * Wrapping alone was not enough. A readable step is 262px wide, and A4
+ * landscape gives about 1030x688px of content, so a 22-step process needed
+ * eight rows and 1712px of height — which then had to be scaled to 0.39 to fit
+ * one page, putting the label text at about 5.7px. Wrapping had converted a
+ * width problem into a height problem.
+ *
+ * A smaller card is the way out: at this spacing six steps fit a row instead
+ * of three, so the same process needs four rows rather than eight and barely
+ * has to be scaled at all. The card that goes with it drops the chrome — SLA
+ * chips, cross-process links — and keeps the number, the label and the role,
+ * which is what a reader of a printed overview actually needs. The detail
+ * lives in the step narrative below the diagram, at full size.
+ */
+export const PRINT_STEP_X_SPACING = 150;
+export const PRINT_LANE_HEIGHT = 92;
+
+/**
+ * Vertical space between one row of a wrapped map and the next.
+ *
+ * A lane's label is drawn above its band, so rows stacked flush against each
+ * other put the first label of one row on top of the last lane of the row
+ * before it — which clipped it in half.
+ */
+export const WRAPPED_ROW_GAP = 30;
+
+/** Half-width/half-height of a compact print card, mirroring NODE_HALF_SIZE. */
+export const PRINT_NODE_HALF_SIZE: Record<"task" | "decision" | "terminal", { x: number; y: number }> = {
+  task: { x: 65, y: 32 },
+  decision: { x: 70, y: 40 },
+  terminal: { x: 44, y: 18 },
+};
+
 export type WrapStep = {
   id: string;
   assignedRoleId: string | null;
@@ -220,18 +255,28 @@ export type CrossRowMarker = {
  */
 export const MIN_ROW_CAPACITY = 2;
 
-function rowCapacity(boxWidth: number): number {
-  if (!Number.isFinite(boxWidth) || boxWidth <= 0) return MIN_ROW_CAPACITY;
-  return Math.max(MIN_ROW_CAPACITY, Math.floor(boxWidth / STEP_X_SPACING));
+function rowCapacity(boxWidth: number, spacing: number = STEP_X_SPACING): number {
+  if (!Number.isFinite(boxWidth) || boxWidth <= 0 || !Number.isFinite(spacing) || spacing <= 0) {
+    return MIN_ROW_CAPACITY;
+  }
+  return Math.max(MIN_ROW_CAPACITY, Math.floor(boxWidth / spacing));
 }
 
 export function wrapProcessMap(
   steps: WrapStep[],
-  options: { boxWidth: number; laneLabel: (roleId: string | null) => string }
+  options: {
+    boxWidth: number;
+    laneLabel: (roleId: string | null) => string;
+    /** Defaults to the on-screen geometry; print passes the compact one. */
+    stepSpacing?: number;
+    laneHeight?: number;
+  }
 ): WrappedMapLayout {
+  const spacing = options.stepSpacing ?? STEP_X_SPACING;
+  const laneH = options.laneHeight ?? LANE_HEIGHT;
   // Clamped a second time deliberately: everything below divides by this, so
   // a zero would be an infinite layout rather than a wrong one.
-  const capacity = Math.max(MIN_ROW_CAPACITY, rowCapacity(options.boxWidth));
+  const capacity = Math.max(MIN_ROW_CAPACITY, rowCapacity(options.boxWidth, spacing));
 
   // The order the interactive map and the Steps List already show. This
   // re-flows that order; it does not re-derive one from the connection graph,
@@ -271,7 +316,7 @@ export function wrapProcessMap(
     const lanes: WrappedLane[] = roleIds.map((roleId, i) => ({
       roleId,
       label: roleId === null ? "Unassigned" : options.laneLabel(roleId),
-      y: i * LANE_HEIGHT,
+      y: i * laneH,
     }));
 
     const placed: PlacedStep[] = slice.map((step, column) => {
@@ -279,14 +324,14 @@ export function wrapProcessMap(
       const laneIndex = roleIds.indexOf(roleId);
       return {
         id: step.id,
-        x: FIRST_STEP_X + column * STEP_X_SPACING,
-        y: y + laneIndex * LANE_HEIGHT + LANE_NODE_Y_OFFSET,
+        x: spacing / 2 + column * spacing,
+        y: y + laneIndex * laneH + laneH / 2,
         row: index,
         laneIndex,
       };
     });
 
-    const height = lanes.length * LANE_HEIGHT;
+    const height = lanes.length * laneH;
     rows.push({
       index,
       lanes,
@@ -296,14 +341,15 @@ export function wrapProcessMap(
       continuesOnto: index < rowCount - 1 ? index + 2 : null,
       continuesFrom: index > 0 ? index : null,
     });
-    y += height;
+    y += height + WRAPPED_ROW_GAP;
   }
 
   return {
     wrapped: rowCount > 1,
     rows,
-    width: FIRST_STEP_X + (Math.min(capacity, ordered.length) - 1) * STEP_X_SPACING + FIRST_STEP_X,
-    height: y,
+    width: Math.min(capacity, ordered.length) * spacing,
+    // The trailing gap belongs between rows, not after the last one.
+    height: Math.max(0, y - WRAPPED_ROW_GAP),
     capacity,
   };
 }
