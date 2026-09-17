@@ -5,7 +5,6 @@ import Link from "next/link";
 import { toPng } from "html-to-image";
 import {
   buildMilestoneRails,
-  RAIL_WIDTH,
   type Bead,
   type Rail,
   type RailProcess,
@@ -102,7 +101,7 @@ export function MilestoneRailsView({
 
 function RailRow({ rail, workspaceId }: { rail: Rail; workspaceId: string }) {
   return (
-    <div className="absolute" style={{ left: rail.offsetX, top: rail.y, width: RAIL_WIDTH, height: rail.height }}>
+    <div className="absolute" style={{ left: rail.offsetX, top: rail.y, width: rail.width, height: rail.height }}>
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-[11px] font-bold text-[var(--accent)]">{rail.code}</span>
         <Link

@@ -1,4 +1,4 @@
-import { buildMilestoneRails, RAIL_WIDTH, type Bead, type Rail, type RailProcess } from "@/lib/domain/milestone-rails";
+import { buildMilestoneRails, type Bead, type Rail, type RailProcess } from "@/lib/domain/milestone-rails";
 
 const TRACK_Y = 34;
 const BEAD_SIZE = 13;
@@ -77,7 +77,7 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
 
 function StaticRailRow({ rail }: { rail: Rail }) {
   return (
-    <div className="absolute" style={{ left: rail.offsetX, top: rail.y, width: RAIL_WIDTH, height: rail.height }}>
+    <div className="absolute" style={{ left: rail.offsetX, top: rail.y, width: rail.width, height: rail.height }}>
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-[11px] font-bold text-[var(--accent)]">{rail.code}</span>
         <span className="truncate text-[13px] font-semibold text-slate-900">{rail.name}</span>

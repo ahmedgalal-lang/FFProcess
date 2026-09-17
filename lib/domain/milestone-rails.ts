@@ -70,6 +70,16 @@ export type Rail = {
   code: string;
   name: string;
   stepCount: number;
+  /**
+   * How wide this rail actually is.
+   *
+   * Usually RAIL_WIDTH, but a rail with more beads than fit is wider: beads
+   * are placed proportionally and then pushed apart so their labels cannot
+   * collide, and enough of those pushes carry the last bead past the standard
+   * width. Reporting RAIL_WIDTH regardless is what cut a 22-step process off
+   * mid-label — the container was narrower than the picture drawn inside it.
+   */
+  width: number;
   /** Where this rail starts, so a branching one sits under the bead it leaves. */
   offsetX: number;
   y: number;
@@ -226,11 +236,16 @@ export function buildMilestoneRails(processes: RailProcess[]): MilestoneRailsLay
     }
 
     const isEmpty = beads.length === 0;
+    // The track has to reach its last bead, plus the same inset that keeps the
+    // first bead off the left end.
+    const furthestBead = beads.reduce((furthest, bead) => Math.max(furthest, bead.x), 0);
+    const width = Math.max(RAIL_WIDTH, furthestBead + RAIL_INSET);
     const rail: Rail = {
       processId: process.id,
       code: process.code,
       name: process.name,
       stepCount: process.stepCount,
+      width,
       offsetX,
       y: nextY,
       height: isEmpty ? EMPTY_RAIL_SPACING : RAIL_SPACING,
@@ -268,7 +283,7 @@ export function buildMilestoneRails(processes: RailProcess[]): MilestoneRailsLay
   return {
     rails,
     drops,
-    width: rails.reduce((widest, rail) => Math.max(widest, rail.offsetX + RAIL_WIDTH), RAIL_WIDTH),
+    width: rails.reduce((widest, rail) => Math.max(widest, rail.offsetX + rail.width), RAIL_WIDTH),
     height: nextY,
     milestoneCount: processes.reduce((n, p) => n + p.steps.filter((s) => s.milestone).length, 0),
   };

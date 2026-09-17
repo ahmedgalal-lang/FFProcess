@@ -293,3 +293,62 @@ describe("buildMilestoneRails", () => {
     expect(layout.milestoneCount).toBe(0);
   });
 });
+
+/**
+ * Reported from a live report: a 22-step process marked with ten milestones
+ * had its rail cut off mid-label — the last beads simply were not there.
+ *
+ * Beads are placed proportionally along the rail, then pushed apart when they
+ * would land closer than MIN_BEAD_GAP so their labels cannot collide. That
+ * push is what overflows: ten beads need nine gaps of 108 plus the inset,
+ * which is well past RAIL_WIDTH. The layout's own width was computed from
+ * RAIL_WIDTH alone, so the container it reported was narrower than the
+ * picture it had drawn, and the overflow was clipped.
+ */
+describe("buildMilestoneRails — a rail with more beads than fit", () => {
+  const crowded = process({
+    id: "p-crowded",
+    code: "TES100",
+    name: "End to end high-level",
+    stepCount: 22,
+    steps: Array.from({ length: 10 }, (_, i) =>
+      step({ id: `s${i + 1}`, number: i * 2 + 1, milestone: true, label: `Milestone ${i + 1}` })
+    ),
+  });
+
+  it("draws every bead it was given", () => {
+    const [rail] = buildMilestoneRails([crowded]).rails;
+    expect(rail!.beads).toHaveLength(10);
+  });
+
+  it("reports a width that contains the beads it placed", () => {
+    const layout = buildMilestoneRails([crowded]);
+    const furthest = Math.max(...layout.rails[0]!.beads.map((b) => b.x));
+    expect(layout.width).toBeGreaterThanOrEqual(furthest);
+  });
+
+  it("gives the rail its own width, so the track reaches its last bead", () => {
+    const [rail] = buildMilestoneRails([crowded]).rails;
+    const furthest = Math.max(...rail!.beads.map((b) => b.x));
+    expect(rail!.width).toBeGreaterThanOrEqual(furthest);
+  });
+
+  it("still keeps the labels from colliding", () => {
+    const [rail] = buildMilestoneRails([crowded]).rails;
+    const xs = rail!.beads.map((b) => b.x);
+    for (let i = 1; i < xs.length; i++) {
+      expect(xs[i]! - xs[i - 1]!).toBeGreaterThanOrEqual(MIN_BEAD_GAP);
+    }
+  });
+
+  it("leaves a rail that fits at the standard width, so nothing else moves", () => {
+    const roomy = process({
+      id: "p-roomy",
+      code: "TES200",
+      stepCount: 10,
+      steps: [step({ id: "a", number: 1, milestone: true }), step({ id: "b", number: 10, milestone: true })],
+    });
+    const [rail] = buildMilestoneRails([roomy]).rails;
+    expect(rail!.width).toBe(RAIL_WIDTH);
+  });
+});
