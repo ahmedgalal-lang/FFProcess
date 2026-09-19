@@ -29,6 +29,37 @@ async function countProcesses(): Promise<number> {
   }
 }
 
+/**
+ * The Roles and People the workspace had before any of this ran.
+ *
+ * Cleaning up by name was not enough and left nine Roles and a Person behind
+ * in a shared workspace, which is the sort of debris that makes a *different*
+ * spec fail later for no visible reason — the value-chain board reads every
+ * Role in the workspace, so the leftovers turned its form ambiguous. Anything
+ * not in this snapshot was created by an import here and is this spec's to
+ * remove, whatever it happens to be called.
+ */
+const seeded = { roleIds: [] as string[], personIds: [] as string[] };
+
+test.beforeAll(async () => {
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  try {
+    const roles = await client.query<{ id: string }>(
+      `SELECT id FROM roles WHERE "workspaceId" = $1`,
+      [WORKSPACE]
+    );
+    const people = await client.query<{ id: string }>(
+      `SELECT id FROM people WHERE "workspaceId" = $1`,
+      [WORKSPACE]
+    );
+    seeded.roleIds = roles.rows.map((r) => r.id);
+    seeded.personIds = people.rows.map((r) => r.id);
+  } finally {
+    await client.end();
+  }
+});
+
 async function removeImported(namePrefix: string): Promise<void> {
   const client = new Client({ connectionString: process.env["DATABASE_URL"] });
   await client.connect();
@@ -37,10 +68,15 @@ async function removeImported(namePrefix: string): Promise<void> {
       `DELETE FROM processes WHERE "workspaceId" = $1 AND name LIKE $2`,
       [WORKSPACE, `${namePrefix}%`]
     );
+    // Processes go first: a Role still owning a step cannot be deleted, and
+    // by this point nothing imported here owns one any more.
     await client.query(
-      `DELETE FROM roles WHERE "workspaceId" = $1 AND name IN ('Requester','Director','Buyer')
-         AND id NOT IN (SELECT DISTINCT "assignedRoleId" FROM process_steps WHERE "assignedRoleId" IS NOT NULL)`,
-      [WORKSPACE]
+      `DELETE FROM roles WHERE "workspaceId" = $1 AND NOT (id = ANY($2::text[]))`,
+      [WORKSPACE, seeded.roleIds]
+    );
+    await client.query(
+      `DELETE FROM people WHERE "workspaceId" = $1 AND NOT (id = ANY($2::text[]))`,
+      [WORKSPACE, seeded.personIds]
     );
   } finally {
     await client.end();
