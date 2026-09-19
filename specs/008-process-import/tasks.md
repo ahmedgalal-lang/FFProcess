@@ -44,8 +44,8 @@ depends on both. **No user story can start until this phase is done.**
 
 - [X] T003 Write failing unit tests for the provisional-id round trip in `tests/unit/process-import-source-ref.test.ts`: `toProvisionalId({sheet:"Steps",row:7})` → `"Steps!7"`, `fromProvisionalId` back again, and a sheet name containing `!` surviving the round trip unambiguously
 - [X] T004 Implement `toProvisionalId` / `fromProvisionalId` and the human rendering (`"Steps, row 7"`) in `lib/domain/process-import.ts` per research R3 — this is the mechanism that lets the product's own validators run before anything has a database id
-- [ ] T005 Implement `readWorkbookSheets(file): Promise<Record<string, string[][]>>` in `lib/actions/process-import.ts`, reading every sheet to cell text with ExcelJS, reusing the `Buffer` interop cast and its comment from `readValueChainSheet` in `lib/actions/value-chain.ts:467`
-- [ ] T006 Create `lib/actions/process-import.ts` as a `"use server"` module with the `importProcess(formData)` Zod schema (`workspaceId`, `file`, `dryRun`), the `requireWorkspaceAccess(workspaceId, "EDITOR")` gate, and the 4 MB `MAX_IMPORT_BYTES` refusal — per `contracts/server-interfaces.md` §2
+- [X] T005 Implement `readWorkbookSheets(file): Promise<Record<string, string[][]>>` in `lib/actions/process-import.ts`, reading every sheet to cell text with ExcelJS, reusing the `Buffer` interop cast and its comment from `readValueChainSheet` in `lib/actions/value-chain.ts:467`
+- [X] T006 Create `lib/actions/process-import.ts` as a `"use server"` module with the `importProcess(formData)` Zod schema (`workspaceId`, `file`, `dryRun`), the `requireWorkspaceAccess(workspaceId, "EDITOR")` gate, and the 4 MB `MAX_IMPORT_BYTES` refusal — per `contracts/server-interfaces.md` §2
 - [X] T007 Implement the template-identity check in `lib/domain/process-import.ts`: refuse a workbook missing any sheet in `SHEETS`, or whose `Read Me` format marker is absent or not `FORMAT_VERSION`, with a message naming what was expected (FR-022 and the older-release edge case, research R2)
 
 **Checkpoint**: the action accepts a file, refuses anything that is not this template, and can address any cell by sheet and row.
@@ -62,7 +62,7 @@ depends on both. **No user story can start until this phase is done.**
 
 - [X] T008 [P] [US1] Write failing unit tests in `tests/unit/process-import.test.ts` covering each sheet parsed from synthesized rows: the `Process` key/value sheet, step order and the four types, multi-line `Detailed Actions` and `In Scope` cells, `Milestone` yes/no, connection labels, RACI letters, both authority measures, KPIs and external entities
 - [X] T009 [P] [US1] Write failing unit tests in `tests/unit/process-import.test.ts` for name matching: a role spelled with different casing across sheets resolves to one role; an existing workspace role is matched, not duplicated (FR-012); a person named only in `Who (Person)` is collected (research R10)
-- [ ] T010 [P] [US1] Create the fixture builder `tests/fixtures/process-import-sample.ts` producing a 22-step process across several roles with labelled decision branches, RACI on every step, one money rule and one time rule, a KPI and an external entity — a module that exports the builder and runs no work on import, so specs can import it
+- [X] T010 [P] [US1] Create the fixture builder `tests/fixtures/process-import-sample.ts` producing a 22-step process across several roles with labelled decision branches, RACI on every step, one money rule and one time rule, a KPI and an external entity — a module that exports the builder and runs no work on import, so specs can import it
 
 ### Implementation
 
@@ -71,12 +71,12 @@ depends on both. **No user story can start until this phase is done.**
 - [X] T013 [P] [US1] Implement `parseKpisSheet` and `parseExternalEntitiesSheet` in `lib/domain/process-import.ts`, shaped for the `Process.kpis` and `Process.externalEntities` JSON columns
 - [X] T014 [US1] Implement role and person collection in `lib/domain/process-import.ts`: every distinct name from `Assigned Role`, `Swimlane Role`, RACI `Role` and authority `Who (Role)` / `Who (Person)`, case-insensitive with the first spelling kept, as `buildImportPlan` does in `lib/domain/value-chain-import.ts`
 - [X] T015 [US1] Implement `parseWorkbook(sheets): ImportPlan` in `lib/domain/process-import.ts`, composing the sheet parsers into one plan
-- [ ] T016 [US1] Implement role and person resolution in `lib/actions/process-import.ts`: match existing workspace `Role`/`Person` by name case-insensitively, reusing the `findByName` approach from `lib/actions/value-chain.ts`, and create only what is missing (FR-012, FR-013)
-- [ ] T017 [US1] Implement the process and step write inside one `prisma.$transaction` in `lib/actions/process-import.ts`: `generateProcessCode` for the code (FR-014, never from the file), purpose/scope/KPIs/entities onto `Process`, and each `ProcessStep` positioned with `FIRST_STEP_X`, `STEP_X_SPACING` and `laneY` from `lib/domain/process-layout.ts` (research R11)
-- [ ] T018 [US1] Implement the connection write in `lib/actions/process-import.ts`: one `StepConnection` per parsed connection, labels carried through, resolving labels to the ids created in T017
-- [ ] T019 [US1] Implement the RACI write in `lib/actions/process-import.ts`: create one `Activity` with `relatedStepId` per step carrying a letter — the same lazy creation `setStepRaciCell` does at `lib/actions/raci.ts:87-93` — then one `RaciAssignment` per cell (research R4, SC-005)
-- [ ] T020 [US1] Implement the authority write in `lib/actions/process-import.ts`: one `AuthorityAssignment` keyed on `stepId` per step carrying rules, and its `AuthorityRule` rows in sheet order with measure, figure, direction, consequence and `whoRoleId`/`whoPersonId`
-- [ ] T021 [US1] Wire the commit path in `lib/actions/process-import.ts`: on `dryRun: false` with no problems, run the transaction and `revalidatePath` the workspace's processes page and the new process's pages, returning `created: { processId, code }`
+- [X] T016 [US1] Implement role and person resolution in `lib/actions/process-import.ts`: match existing workspace `Role`/`Person` by name case-insensitively, reusing the `findByName` approach from `lib/actions/value-chain.ts`, and create only what is missing (FR-012, FR-013)
+- [X] T017 [US1] Implement the process and step write inside one `prisma.$transaction` in `lib/actions/process-import.ts`: `generateProcessCode` for the code (FR-014, never from the file), purpose/scope/KPIs/entities onto `Process`, and each `ProcessStep` positioned with `FIRST_STEP_X`, `STEP_X_SPACING` and `laneY` from `lib/domain/process-layout.ts` (research R11)
+- [X] T018 [US1] Implement the connection write in `lib/actions/process-import.ts`: one `StepConnection` per parsed connection, labels carried through, resolving labels to the ids created in T017
+- [X] T019 [US1] Implement the RACI write in `lib/actions/process-import.ts`: create one `Activity` with `relatedStepId` per step carrying a letter — the same lazy creation `setStepRaciCell` does at `lib/actions/raci.ts:87-93` — then one `RaciAssignment` per cell (research R4, SC-005)
+- [X] T020 [US1] Implement the authority write in `lib/actions/process-import.ts`: one `AuthorityAssignment` keyed on `stepId` per step carrying rules, and its `AuthorityRule` rows in sheet order with measure, figure, direction, consequence and `whoRoleId`/`whoPersonId`
+- [X] T021 [US1] Wire the commit path in `lib/actions/process-import.ts`: on `dryRun: false` with no problems, run the transaction and `revalidatePath` the workspace's processes page and the new process's pages, returning `created: { processId, code }`
 
 **Checkpoint**: a synthesized workbook imports to a complete process. Verify by hand against quickstart scenario 2 once T037 has produced a real template to fill in.
 
@@ -92,7 +92,7 @@ depends on both. **No user story can start until this phase is done.**
 
 - [X] T022 [P] [US2] Write failing unit tests in `tests/unit/process-import-problems.test.ts` for each structural problem in `data-model.md` Part 3, every one asserting the sheet and row in the message: a connection naming a missing step, two steps sharing a name, an unrecognised step type, a missing process name, an empty template, a workbook that is not the template, a workbook claiming an older format version, and a file over the 300-step cap
 - [X] T023 [P] [US2] Write failing unit tests in `tests/unit/process-import-problems.test.ts` for the domain rules reached through the real validators: a task with two Accountables, a task with none, a money rule with no figure, a rule naming nobody, and a rule naming both a role and a person — each asserting the reported row is the row the mistake is actually on
-- [ ] T024 [P] [US2] Write a failing unit test in `tests/unit/process-import-transaction.test.ts` that forces a failure part way through the write and asserts the database is exactly as it was: no process, no orphaned roles or people, no steps (FR-019)
+- [X] T024 [P] [US2] Write a failing unit test in `tests/unit/process-import-transaction.test.ts` that forces a failure part way through the write and asserts the database is exactly as it was: no process, no orphaned roles or people, no steps (FR-019)
 
 ### Implementation
 
@@ -101,12 +101,12 @@ depends on both. **No user story can start until this phase is done.**
 - [X] T027 [US2] Implement the authority validator bridge in `lib/domain/process-import.ts`: build `AuthorityTableRow[]` with provisional `rowId`/`ruleId`, call `validateAuthorityTable` from `lib/domain/authority-table.ts` unmodified, and map each `AuthorityIssue` back to its row
 - [X] T028 [US2] Implement the connection validator bridge in `lib/domain/process-import.ts`: build the `Map<provisionalStepId, syntheticProcessId>` and call `validateConnections` from `lib/domain/process-graph.ts` unmodified, mapping each `ProcessGraphIssue` back to its row
 - [X] T029 [US2] Implement the 300-step cap in `lib/domain/process-import.ts` as an ordinary problem naming the count, so an oversized file is refused rather than half-written (research R7)
-- [ ] T030 [US2] Implement `buildImportSummary` in `lib/actions/process-import.ts` producing every field in `data-model.md` Part 1's `ImportSummary`, including `nameAlreadyExists` and the existing-versus-new split for roles and people (FR-016, FR-013)
-- [ ] T031 [US2] Implement the dry-run path in `lib/actions/process-import.ts`: parse, validate, build the summary, return it, and write nothing — and make the commit path refuse outright when problems exist, so a client cannot skip the preview (FR-015, FR-018)
-- [ ] T032 [US2] Create `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx` — a client component with file selection, a dry-run submit, and the summary rendered as counts plus the named new roles and people, following the `ImportPanel` shape in `app/(app)/workspaces/[workspaceId]/value-chain/value-chain-setup.tsx`
-- [ ] T033 [US2] Render the problem list in `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx` as a table of sheet, row and what is wrong, and withhold the confirm control entirely while any problem stands (FR-017, SC-004)
-- [ ] T034 [US2] Implement confirm and decline in `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx`: confirm re-submits the file with `dryRun: false`, decline clears the panel and leaves nothing behind (FR-020, research R5) — give the decline control its own pending state so it stays focusable while the preview request is in flight
-- [ ] T035 [US2] Mount the panel in `app/(app)/workspaces/[workspaceId]/processes/page.tsx` inside the existing `canEdit` branch
+- [X] T030 [US2] Implement `buildImportSummary` in `lib/actions/process-import.ts` producing every field in `data-model.md` Part 1's `ImportSummary`, including `nameAlreadyExists` and the existing-versus-new split for roles and people (FR-016, FR-013)
+- [X] T031 [US2] Implement the dry-run path in `lib/actions/process-import.ts`: parse, validate, build the summary, return it, and write nothing — and make the commit path refuse outright when problems exist, so a client cannot skip the preview (FR-015, FR-018)
+- [X] T032 [US2] Create `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx` — a client component with file selection, a dry-run submit, and the summary rendered as counts plus the named new roles and people, following the `ImportPanel` shape in `app/(app)/workspaces/[workspaceId]/value-chain/value-chain-setup.tsx`
+- [X] T033 [US2] Render the problem list in `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx` as a table of sheet, row and what is wrong, and withhold the confirm control entirely while any problem stands (FR-017, SC-004)
+- [X] T034 [US2] Implement confirm and decline in `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx`: confirm re-submits the file with `dryRun: false`, decline clears the panel and leaves nothing behind (FR-020, research R5) — give the decline control its own pending state so it stays focusable while the preview request is in flight
+- [X] T035 [US2] Mount the panel in `app/(app)/workspaces/[workspaceId]/processes/page.tsx` inside the existing `canEdit` branch
 
 **Checkpoint**: a broken file reports every problem by location and creates nothing; a good file previews and imports only on confirmation.
 
@@ -120,17 +120,17 @@ depends on both. **No user story can start until this phase is done.**
 
 ### Tests (write first, must fail)
 
-- [ ] T036 [P] [US3] Write a failing unit test in `tests/unit/process-import-roundtrip.test.ts` that generates the template in memory, reads it back through `parseWorkbook`, and asserts zero problems and a plan matching the worked example — the standing proof that the generator and the parser have not drifted (FR-006)
+- [X] T036 [P] [US3] Write a failing unit test in `tests/unit/process-import-roundtrip.test.ts` that generates the template in memory, reads it back through `parseWorkbook`, and asserts zero problems and a plan matching the worked example — the standing proof that the generator and the parser have not drifted (FR-006)
 
 ### Implementation
 
-- [ ] T037 [US3] Create `lib/export/process-import-template.ts` generating the workbook from the `SHEETS` declaration in `lib/domain/process-import.ts`, following the ExcelJS style of `lib/export/xlsx.ts` — bold headers, the slate header fill, sensible column widths
-- [ ] T038 [US3] Add the `Read Me` sheet in `lib/export/process-import-template.ts`: the `Template format` / `FORMAT_VERSION` marker, the generated date, and one block per sheet stating what it is for and what each column accepts (FR-004)
-- [ ] T039 [US3] State the permitted values in the template itself in `lib/export/process-import-template.ts` — step types, RACI letters, measures, directions, consequences, `Yes`/`No` — so a consultant never has to remember them (FR-004)
-- [ ] T040 [US3] Add the worked example rows in `lib/export/process-import-template.ts`: a small complete process with a decision and two labelled branches, RACI on every step, one money rule and one time rule, a KPI and an external entity (FR-005)
-- [ ] T041 [US3] Create `app/api/template/process-import/[workspaceId]/route.ts` — `GET`, gated `requireWorkspaceAccess(workspaceId, "EDITOR")`, streaming the workbook with the attachment header, following the route shape of `app/api/export/raci/[processId]/route.ts` per `contracts/server-interfaces.md` §1
-- [ ] T042 [US3] Add the download link to `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx`, inside the same `canEdit` branch as the upload control
-- [ ] T043 [US3] Run `pnpm exec next typegen` after adding the route so the typed-route table includes it
+- [X] T037 [US3] Create `lib/export/process-import-template.ts` generating the workbook from the `SHEETS` declaration in `lib/domain/process-import.ts`, following the ExcelJS style of `lib/export/xlsx.ts` — bold headers, the slate header fill, sensible column widths
+- [X] T038 [US3] Add the `Read Me` sheet in `lib/export/process-import-template.ts`: the `Template format` / `FORMAT_VERSION` marker, the generated date, and one block per sheet stating what it is for and what each column accepts (FR-004)
+- [X] T039 [US3] State the permitted values in the template itself in `lib/export/process-import-template.ts` — step types, RACI letters, measures, directions, consequences, `Yes`/`No` — so a consultant never has to remember them (FR-004)
+- [X] T040 [US3] Add the worked example rows in `lib/export/process-import-template.ts`: a small complete process with a decision and two labelled branches, RACI on every step, one money rule and one time rule, a KPI and an external entity (FR-005)
+- [X] T041 [US3] Create `app/api/template/process-import/[workspaceId]/route.ts` — `GET`, gated `requireWorkspaceAccess(workspaceId, "EDITOR")`, streaming the workbook with the attachment header, following the route shape of `app/api/export/raci/[processId]/route.ts` per `contracts/server-interfaces.md` §1
+- [X] T042 [US3] Add the download link to `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx`, inside the same `canEdit` branch as the upload control
+- [X] T043 [US3] Run `pnpm exec next typegen` after adding the route so the typed-route table includes it
 
 **Checkpoint**: the template downloads, explains itself, and imports untouched.
 
@@ -144,14 +144,14 @@ depends on both. **No user story can start until this phase is done.**
 
 ### Tests (write first, must fail)
 
-- [ ] T044 [P] [US4] Write a failing e2e spec `tests/e2e/process-import-access.spec.ts` asserting, as a `VIEWER`: the Processes page shows neither control; `GET /api/template/process-import/{workspaceId}` returns `403`; and submitting the import action directly is refused **and creates nothing** — the last two are the assertions that matter, the first only proves a button was hidden (SC-007)
-- [ ] T045 [P] [US4] Write a failing e2e assertion in `tests/e2e/process-import.spec.ts` that importing a file naming an existing process's name creates a **separate** process and leaves the existing one byte-for-byte unchanged (FR-025, FR-026)
+- [X] T044 [P] [US4] Write a failing e2e spec `tests/e2e/process-import-access.spec.ts` asserting, as a `VIEWER`: the Processes page shows neither control; `GET /api/template/process-import/{workspaceId}` returns `403`; and submitting the import action directly is refused **and creates nothing** — the last two are the assertions that matter, the first only proves a button was hidden (SC-007)
+- [X] T045 [P] [US4] Write a failing e2e assertion in `tests/e2e/process-import.spec.ts` that importing a file naming an existing process's name creates a **separate** process and leaves the existing one byte-for-byte unchanged (FR-025, FR-026)
 
 ### Implementation
 
-- [ ] T046 [US4] Confirm and, if needed, correct the `EDITOR` gate on both entry points — `lib/actions/process-import.ts` and `app/api/template/process-import/[workspaceId]/route.ts` — so neither relies on the page having hidden anything (FR-023, Constitution Principle V)
-- [ ] T047 [US4] Confirm the write path in `lib/actions/process-import.ts` performs no `update` on any existing `Process`, `Role` or `Person` — existing ones are read and referenced only (FR-025, FR-026)
-- [ ] T048 [US4] Surface the "a process of that name already exists" warning from `summary.nameAlreadyExists` in `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx`, stating that a separate process will be created
+- [X] T046 [US4] Confirm and, if needed, correct the `EDITOR` gate on both entry points — `lib/actions/process-import.ts` and `app/api/template/process-import/[workspaceId]/route.ts` — so neither relies on the page having hidden anything (FR-023, Constitution Principle V)
+- [X] T047 [US4] Confirm the write path in `lib/actions/process-import.ts` performs no `update` on any existing `Process`, `Role` or `Person` — existing ones are read and referenced only (FR-025, FR-026)
+- [X] T048 [US4] Surface the "a process of that name already exists" warning from `summary.nameAlreadyExists` in `app/(app)/workspaces/[workspaceId]/processes/import-panel.tsx`, stating that a separate process will be created
 
 **Checkpoint**: the boundary holds against a direct request, not just a hidden control.
 
@@ -159,12 +159,12 @@ depends on both. **No user story can start until this phase is done.**
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T049 [P] Write `tests/e2e/process-import.spec.ts` for the full flow: download the template, upload it unedited, preview, confirm, and assert the process opens complete on the Process Map, RACI Matrix and Authority Matrix (quickstart scenarios 1 and 2)
-- [ ] T050 [P] Write `tests/e2e/process-import-a11y.spec.ts`: the panel, summary and problem list keyboard-reachable with visible focus, problems announced rather than signalled by colour alone, and axe-clean (Constitution Principle IV, quickstart scenario 6)
-- [ ] T051 Verify SC-005 by hand on an imported process, following scenario 7 in `specs/008-process-import/quickstart.md`: edit a step, add a RACI letter, export the RACI `.xlsx` and the report PDF, run the AI review — each behaving as on a hand-built process
-- [ ] T052 Verify the suite actually holds by mutation: break the provisional-id decoding in `lib/domain/process-import.ts`, remove the two-Accountables check, and make the transaction non-atomic — each must fail a named test. A mutation that passes means the test is decorative and needs rewriting before the task is done
-- [ ] T053 Run `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm vitest run` and `pnpm exec playwright test`, and fix what they find
-- [ ] T054 Read a workbook generated by `lib/export/process-import-template.ts` in a spreadsheet application and confirm the `Read Me` is legible, the columns are wide enough to read, and the worked example is obviously an example rather than data to keep
+- [X] T049 [P] Write `tests/e2e/process-import.spec.ts` for the full flow: download the template, upload it unedited, preview, confirm, and assert the process opens complete on the Process Map, RACI Matrix and Authority Matrix (quickstart scenarios 1 and 2)
+- [X] T050 [P] Write `tests/e2e/process-import-a11y.spec.ts`: the panel, summary and problem list keyboard-reachable with visible focus, problems announced rather than signalled by colour alone, and axe-clean (Constitution Principle IV, quickstart scenario 6)
+- [X] T051 Verify SC-005 by hand on an imported process, following scenario 7 in `specs/008-process-import/quickstart.md`: edit a step, add a RACI letter, export the RACI `.xlsx` and the report PDF, run the AI review — each behaving as on a hand-built process
+- [X] T052 Verify the suite actually holds by mutation: break the provisional-id decoding in `lib/domain/process-import.ts`, remove the two-Accountables check, and make the transaction non-atomic — each must fail a named test. A mutation that passes means the test is decorative and needs rewriting before the task is done
+- [X] T053 Run `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm vitest run` and `pnpm exec playwright test`, and fix what they find
+- [X] T054 Read a workbook generated by `lib/export/process-import-template.ts` in a spreadsheet application and confirm the `Read Me` is legible, the columns are wide enough to read, and the worked example is obviously an example rather than data to keep
 
 ---
 

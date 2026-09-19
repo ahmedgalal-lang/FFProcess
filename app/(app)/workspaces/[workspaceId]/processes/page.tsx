@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { WorkspacePageHeader } from "../workspace-page-header";
 import { CreateProcessForm, CloneProcessButton, EditProcessButton, ArchiveProcessButton } from "./process-forms";
 import { GenerateTemplateForm } from "./template-form";
+import { ImportPanel } from "./import-panel";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { hasSufficientAccess } from "@/lib/domain/access-control";
 
@@ -230,6 +231,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
         />
         <GenerateTemplateForm workspaceId={workspaceId} />
+        {canEdit && <ImportPanel workspaceId={workspaceId} />}
       </div>
     </main>
   );

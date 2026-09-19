@@ -349,22 +349,6 @@ test("Export Report's Helicopter View scales a wide chain to fit instead of scro
  * is the complaint. Asserting a scale or a pixel width would pass just as
  * happily with the drawing marooned in the middle of an empty page.
  */
-async function pageWidthUsed(
-  page: import("@playwright/test").Page,
-  boxSelector: string
-): Promise<number> {
-  return page.evaluate((selector) => {
-    const paper = document.querySelector(".report-paper") as HTMLElement;
-    const style = getComputedStyle(paper);
-    const contentWidth =
-      paper.getBoundingClientRect().width -
-      parseFloat(style.paddingLeft) -
-      parseFloat(style.paddingRight);
-    const box = document.querySelector(selector) as HTMLElement;
-    return (100 * box.getBoundingClientRect().width) / contentWidth;
-  }, boxSelector);
-}
-
 test("Export Report's Helicopter View fills the page width rather than sitting small on it", async ({
   page,
 }) => {
