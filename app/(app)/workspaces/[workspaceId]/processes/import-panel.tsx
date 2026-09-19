@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { importProcess, type ImportSummary } from "@/lib/actions/process-import";
 
 /**
@@ -18,8 +18,8 @@ export function ImportPanel({ workspaceId }: { workspaceId: string }) {
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [done, setDone] = useState<{ code: string; processId: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [previewing, startPreview] = useTransition();
-  const [committing, startCommit] = useTransition();
+  const [previewing, setPreviewing] = useState(false);
+  const [committing, setCommitting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
 
@@ -44,26 +44,56 @@ export function ImportPanel({ workspaceId }: { workspaceId: string }) {
     formData.set("dryRun", String(dryRun));
     formData.set("file", file);
 
-    const run = () => {
-      void importProcess(formData).then((result) => {
+    // Not wrapped in a transition: startTransition's callback has to be
+    // synchronous, so the promise inside one is never actually tracked and the
+    // pending flag flips back before the request has left. Plain state is
+    // honest about when the work is still running.
+    if (dryRun) setPreviewing(true);
+    else setCommitting(true);
+
+    importProcess(formData)
+      .then((result) => {
         if (!result.ok) {
           setError(
             "message" in result && result.message
               ? result.message
               : result.error === "FORBIDDEN"
                 ? "You need edit access to import a process."
-                : "That import could not be completed."
+                : result.error === "UNAUTHORIZED"
+                  ? "Your session has expired. Sign in again and retry."
+                  : "That import could not be completed."
           );
           if (dryRun) setSummary(null);
           return;
         }
         setSummary(result.data.summary);
         if (result.data.created) setDone(result.data.created);
-      });
-    };
+      })
+      .catch((cause: unknown) => {
+        // Without this the button did nothing at all on a rejection — no
+        // message, no spinner, no state change — which reads as a dead
+        // control rather than as a failure, and is exactly how this was
+        // reported.
+        console.error("Process import failed", cause);
+        const detail = cause instanceof Error ? cause.message : String(cause ?? "");
 
-    if (dryRun) startPreview(run);
-    else startCommit(run);
+        // A Server Action is addressed by an id baked into the build. After a
+        // deploy, a page still open from the previous build posts an id the
+        // server no longer knows, and every click fails until the page is
+        // reloaded. Next's own guidance is to offer the reload rather than
+        // present it as a hard failure, because a refresh genuinely fixes it.
+        const staleBuild = /Failed to find Server Action|Invalid Server Actions request/i.test(detail);
+        setError(
+          staleBuild
+            ? "This page was loaded before the last update, so the upload could not reach the server. Reload the page and try again — your file is fine."
+            : `The import could not be run. ${detail || "The server did not respond."}`
+        );
+        if (dryRun) setSummary(null);
+      })
+      .finally(() => {
+        setPreviewing(false);
+        setCommitting(false);
+      });
   }
 
   const importable = summary !== null && summary.problems.length === 0 && summary.stepCount > 0;

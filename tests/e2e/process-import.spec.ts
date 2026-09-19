@@ -359,3 +359,34 @@ test.describe("a full-size process", () => {
     expect(nodes, "every step drawn").toBeGreaterThanOrEqual(22);
   });
 });
+
+/**
+ * The reported symptom: "check file doesn't do anything". Whatever the cause,
+ * a failure must become a message. This forces the action's POST to fail at
+ * the network and asserts the panel says so instead of going quiet.
+ */
+test("a failed upload says so instead of doing nothing", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/workspaces/workspace-acme/processes");
+  await page.getByRole("button", { name: "Import from a file" }).click();
+  await page.locator("#process-import-file").setInputFiles({
+    name: "t.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from("anything"),
+  });
+
+  // Every Server Action POST from this page fails outright.
+  await page.route("**/processes", async (route, request) => {
+    if (request.method() === "POST") return route.abort("failed");
+    return route.continue();
+  });
+
+  await page.getByRole("button", { name: "Check this file" }).click();
+
+  const panel = page.getByRole("region", { name: "Build a process from a spreadsheet" });
+  await expect(panel.getByRole("alert")).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByRole("alert")).toContainText(/could not be run|Reload the page/i);
+
+  // ...and the control comes back, rather than being stuck mid-flight.
+  await expect(page.getByRole("button", { name: "Check this file" })).toBeEnabled();
+});
