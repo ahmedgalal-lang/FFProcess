@@ -2,6 +2,7 @@ import "dotenv/config";
 import { test, expect } from "@playwright/test";
 import { Client } from "pg";
 import { signIn } from "./sign-in";
+import { buildSampleWorkbook, SAMPLE_PROCESS_NAME, SAMPLE_STEPS } from "../fixtures/process-import-sample";
 
 /**
  * The round trip a consultant actually performs: download the template, upload
@@ -303,5 +304,58 @@ test.describe("an imported process is an ordinary process", () => {
     // ordinary rows and not something the editor refuses to touch.
     await page.goto(`/workspaces/${WORKSPACE}/processes/${processId}/map`);
     await expect(page.getByText("Requisition raised").first()).toBeVisible();
+  });
+});
+
+/**
+ * SC-002: a 22-step process with roles, connections, RACI and authority rules
+ * imports in one upload, where building it by hand is a sitting of an hour or
+ * more. The template's own example is six steps; this is the size the feature
+ * actually exists for.
+ */
+test.describe("a full-size process", () => {
+  test.afterEach(async () => {
+    await removeImported("Tendering to closure");
+  });
+
+  test("22 steps across seven roles import in one upload", async ({ page }) => {
+    await signIn(page);
+    const before = await countProcesses();
+
+    await page.goto(`/workspaces/${WORKSPACE}/processes`);
+    await page.getByRole("button", { name: "Import from a file" }).click();
+    await page.locator("#process-import-file").setInputFiles({
+      name: "tendering.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: await buildSampleWorkbook(),
+    });
+    await page.getByRole("button", { name: "Check this file" }).click();
+
+    // The summary states the size before anything is written.
+    await expect(page.getByText("This is what will be created")).toBeVisible();
+    await expect(page.getByText("22", { exact: true })).toBeVisible();
+    expect(await countProcesses(), "nothing written at preview").toBe(before);
+
+    await page.getByRole("button", { name: /^Create / }).click();
+    // The name carries brackets, so it is matched as a string rather than
+    // built into a regex where they would become a group.
+    await expect(page.getByText(`Created ${SAMPLE_PROCESS_NAME}`, { exact: false })).toBeVisible({
+      timeout: 20000,
+    });
+    expect(await countProcesses()).toBe(before + 1);
+
+    // Every step is on the map — the first, the last, and a decision.
+    await page.getByRole("link", { name: "Open the process map" }).click();
+    await page.waitForURL("**/map");
+    await page.waitForSelector(".react-flow__node");
+    for (const label of [
+      SAMPLE_STEPS[0]!.label,
+      SAMPLE_STEPS[9]!.label,
+      SAMPLE_STEPS[SAMPLE_STEPS.length - 1]!.label,
+    ]) {
+      await expect(page.getByText(label).first()).toBeVisible();
+    }
+    const nodes = await page.locator(".react-flow__node").count();
+    expect(nodes, "every step drawn").toBeGreaterThanOrEqual(22);
   });
 });
