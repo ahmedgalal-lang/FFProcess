@@ -29,9 +29,14 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
   // fitted into is the one actually drawn rather than the bare layout size.
   const boxWidth = layout.width + 48;
   const boxHeight = layout.height + 40;
-  // Only ever shrinks: a chain narrower than the page is left at its own size
-  // rather than stretched up to fill the width.
-  const scale = Math.min(1, (PAGE_CONTENT_WIDTH_PX - BOX_BORDER_PX) / boxWidth);
+  // Fills the page width, up or down. It used to only ever shrink, which left
+  // the common case drawn at three-quarters of the page: a chain of one or two
+  // processes never reaches RAIL_WIDTH, so boxWidth sat at 768 against 1015 of
+  // page and the rails were reported as simply too small to read. There is a
+  // natural ceiling here rather than an arbitrary one — buildMilestoneRails
+  // floors its width at RAIL_WIDTH, so the most this can ever magnify is
+  // (PAGE_CONTENT_WIDTH_PX - BOX_BORDER_PX) / (RAIL_WIDTH + 48), about 1.32.
+  const scale = (PAGE_CONTENT_WIDTH_PX - BOX_BORDER_PX) / boxWidth;
 
   return (
     <div>

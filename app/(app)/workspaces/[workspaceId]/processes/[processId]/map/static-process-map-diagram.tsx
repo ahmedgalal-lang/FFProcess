@@ -462,7 +462,13 @@ export function StaticProcessMapDiagram({
           // whatever scale the content actually needs.
           minZoom={0.05}
           fitView
-          fitViewOptions={{ padding: 0.12, minZoom: 0.05 }}
+          // The padding is deliberately small. fitView divides the available
+          // box by (1 + padding), so every point of it is width the drawing
+          // does not get: at 0.12 a map that was otherwise a perfect fit was
+          // drawn at 89% of the page and the rest read as wasted margin. The
+          // frame's own border and the lane gutter already keep the drawing
+          // off the edge, so the breathing room was being paid for twice.
+          fitViewOptions={{ padding: 0.03, minZoom: 0.05 }}
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={20} size={1} color="#e2e8f0" />

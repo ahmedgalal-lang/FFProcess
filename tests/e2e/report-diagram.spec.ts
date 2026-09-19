@@ -332,3 +332,101 @@ test("Export Report's Helicopter View scales a wide chain to fit instead of scro
   await expect(railsBox.getByText(`Rail step ${RAILS_MAIN_STEPS}`)).toBeVisible();
   await expect(railsBox.getByText("Branch step 4")).toBeVisible();
 });
+
+/**
+ * The page width is the whole budget a printed diagram has, and both drawings
+ * on the report page were spending only part of it.
+ *
+ * The Helicopter View was the worse of the two: its scale was clamped with
+ * `Math.min(1, …)`, so it shrank a chain too wide for the page but never grew
+ * one that was too narrow. buildMilestoneRails floors its width at RAIL_WIDTH,
+ * which is comfortably inside an A4 landscape page, so the *common* case — an
+ * engagement of one or two processes — always landed at exactly scale 1 and
+ * was drawn across three-quarters of the sheet with the rest left blank. It
+ * was reported simply as "very small".
+ *
+ * Both assertions are on the fraction of the page actually used, because that
+ * is the complaint. Asserting a scale or a pixel width would pass just as
+ * happily with the drawing marooned in the middle of an empty page.
+ */
+async function pageWidthUsed(
+  page: import("@playwright/test").Page,
+  boxSelector: string
+): Promise<number> {
+  return page.evaluate((selector) => {
+    const paper = document.querySelector(".report-paper") as HTMLElement;
+    const style = getComputedStyle(paper);
+    const contentWidth =
+      paper.getBoundingClientRect().width -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight);
+    const box = document.querySelector(selector) as HTMLElement;
+    return (100 * box.getBoundingClientRect().width) / contentWidth;
+  }, boxSelector);
+}
+
+test("Export Report's Helicopter View fills the page width rather than sitting small on it", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  // One narrow chain on purpose. A wide one is scaled *down* to fit and so
+  // fills the page either way — it cannot tell whether the clamp is there.
+  await page.goto("/workspaces/workspace-acme/export");
+  const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
+  const count = await checkboxes.count();
+  for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
+  await page.getByRole("checkbox", { name: /RAIL101/ }).check();
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+
+  const railsSection = page.locator("main > section").filter({ hasText: "Helicopter View" });
+  await expect(railsSection.locator(".break-inside-avoid").first()).toBeVisible();
+
+  const used = await page.evaluate(() => {
+    const heading = [...document.querySelectorAll("h2")].find((h) =>
+      /Helicopter View/i.test(h.textContent ?? "")
+    );
+    const section = heading!.closest("section")!;
+    const scaled = section.querySelector<HTMLElement>("div[style*='scale(']");
+    if (!scaled) return null;
+    const paper = document.querySelector(".report-paper") as HTMLElement;
+    const style = getComputedStyle(paper);
+    const contentWidth =
+      paper.getBoundingClientRect().width -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight);
+    const drawn = (scaled.parentElement as HTMLElement).getBoundingClientRect().width;
+    return (100 * drawn) / contentWidth;
+  });
+
+  // Was 75.5% — drawn at scale 1 in a page a third wider than it.
+  expect(used).not.toBeNull();
+  expect(used!).toBeGreaterThan(95);
+  expect(used!).toBeLessThanOrEqual(100.5);
+});
+
+test("Export Report's process map fills the page width rather than leaving a band of it empty", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/reports/workspace-acme?ids=" + RAILS_MAIN_ID);
+  await page.waitForSelector(".report-paper");
+  await page.waitForSelector(".react-flow__node");
+
+  const used = await page.evaluate(() => {
+    const flows = [...document.querySelectorAll(".react-flow")];
+    const flow = flows[flows.length - 1] as HTMLElement;
+    const rects = [...flow.querySelectorAll(".react-flow__node")].map((n) =>
+      n.getBoundingClientRect()
+    );
+    if (rects.length === 0) return null;
+    const drawn = Math.max(...rects.map((r) => r.right)) - Math.min(...rects.map((r) => r.left));
+    return (100 * drawn) / flow.getBoundingClientRect().width;
+  });
+
+  // Was 89.4%: fitView divides the box by (1 + padding), so the old 0.12 was
+  // an eleven-percent strip of page the drawing was never allowed to use.
+  expect(used).not.toBeNull();
+  expect(used!).toBeGreaterThan(95);
+});
