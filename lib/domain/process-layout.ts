@@ -253,6 +253,13 @@ export type PlacedStep = {
   y: number;
   row: number;
   laneIndex: number;
+  /**
+   * Which slot along the row this step occupies, counting from the left
+   * whichever way the row runs. Two steps in the same column on adjacent rows
+   * sit directly above one another, which is what makes the seam between rows
+   * drawable as a straight drop.
+   */
+  column: number;
 };
 
 export type WrappedRow = {
@@ -261,6 +268,12 @@ export type WrappedRow = {
   steps: PlacedStep[];
   y: number;
   height: number;
+  /**
+   * Which way the work runs along this row. Rows alternate, so a row begins
+   * directly beneath the step the row above ended on and the join between
+   * them is a short drop rather than a jump back across the page.
+   */
+  direction: "forward" | "backward";
   /** 1-based, as a reader counts. Null on the last row. */
   continuesOnto: number | null;
   /** 1-based. Null on the first row. */
@@ -361,15 +374,25 @@ export function wrapProcessMap(
       y: i * laneH,
     }));
 
-    const placed: PlacedStep[] = slice.map((step, column) => {
+    // Serpentine: every other row runs right to left, so its first step lands
+    // in the same column the previous row's last step occupies. The cost is
+    // that a backward row's numbers descend as you read across it, which is
+    // why the row label says which way it runs.
+    const direction: "forward" | "backward" = index % 2 === 1 ? "backward" : "forward";
+
+    const placed: PlacedStep[] = slice.map((step, position) => {
       const roleId = step.swimlaneRoleId ?? step.assignedRoleId;
       const laneIndex = roleIds.indexOf(roleId);
+      // A backward row starts at the far end of the *capacity*, not of its own
+      // length: a short final row still has to begin under the step above it.
+      const column = direction === "backward" ? capacity - 1 - position : position;
       return {
         id: step.id,
         x: spacing / 2 + column * spacing,
         y: y + laneIndex * laneH + laneH / 2,
         row: index,
         laneIndex,
+        column,
       };
     });
 
@@ -380,6 +403,7 @@ export function wrapProcessMap(
       steps: placed,
       y,
       height,
+      direction,
       continuesOnto: index < rowCount - 1 ? index + 2 : null,
       continuesFrom: index > 0 ? index : null,
     });
@@ -402,6 +426,32 @@ export function wrapProcessMap(
  * A same-row connection is still an ordinary edge; only one crossing a row
  * boundary becomes a pair of markers.
  */
+/**
+ * Whether a connection between two rows can simply be drawn.
+ *
+ * With serpentine rows the step a row ends on and the step the next row begins
+ * on share a column, so the line between them is a short vertical drop that
+ * crosses nothing. That is the seam, and it needs no marker.
+ *
+ * Every other cross-row connection still does: a jump from the middle of one
+ * row to the middle of another would have to travel through the swimlanes in
+ * between, and routing around the steps means crossing the lanes instead.
+ * Non-adjacent rows are excluded for the same reason even when the columns
+ * happen to line up — the line would pass straight through the rows between.
+ */
+export function isSeamConnection(
+  layout: WrappedMapLayout,
+  connection: { fromStepId: string; toStepId: string }
+): boolean {
+  const placed = new Map<string, PlacedStep>();
+  for (const row of layout.rows) for (const step of row.steps) placed.set(step.id, step);
+
+  const from = placed.get(connection.fromStepId);
+  const to = placed.get(connection.toStepId);
+  if (!from || !to) return false;
+  return to.row === from.row + 1 && to.column === from.column;
+}
+
 export function crossRowMarkers(
   layout: WrappedMapLayout,
   connections: { fromStepId: string; toStepId: string }[]
@@ -414,6 +464,9 @@ export function crossRowMarkers(
     const from = rowOf.get(connection.fromStepId);
     const to = rowOf.get(connection.toStepId);
     if (from === undefined || to === undefined || from === to) continue;
+    // The seam is drawn, so marking it as well would say twice, in two
+    // different visual languages, what one short line already says.
+    if (isSeamConnection(layout, connection)) continue;
     markers.push({ stepId: connection.fromStepId, kind: "continues", otherRow: to + 1 });
     markers.push({ stepId: connection.toStepId, kind: "from", otherRow: from + 1 });
   }

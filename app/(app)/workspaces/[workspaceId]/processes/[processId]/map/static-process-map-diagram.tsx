@@ -5,6 +5,7 @@ import { ReactFlow, ReactFlowProvider, Background, MarkerType, type Node, type E
 import {
   assignSwimlanes,
   crossRowMarkers,
+  isSeamConnection,
   wrapProcessMap,
   LANE_HEIGHT,
   LANE_TOP_OFFSET,
@@ -42,6 +43,9 @@ const NODE_TYPES = {
 
 const HALF_SIZE = NODE_HALF_SIZE;
 
+/** Roughly how wide the row label pill draws, so a right-aligned one clears the edge. */
+const ROW_LABEL_WIDTH = 250;
+
 type StepT = {
   id: string;
   type: "START" | "TASK" | "DECISION" | "END";
@@ -62,6 +66,16 @@ function nodeKindFor(type: StepT["type"]): keyof typeof HALF_SIZE {
   if (type === "DECISION") return "decision";
   if (type === "START" || type === "END") return "terminal";
   return "task";
+}
+
+/** chooseHandles, but from where the wrap actually put the two steps. */
+function chooseHandlesAt(from: { x: number; y: number }, to: { x: number; y: number }) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? { sourceHandle: "right", targetHandle: "left-t" } : { sourceHandle: "left", targetHandle: "right-t" };
+  }
+  return dy >= 0 ? { sourceHandle: "bottom", targetHandle: "top-t" } : { sourceHandle: "top", targetHandle: "bottom-t" };
 }
 
 function chooseHandles(from: StepT, to: StepT) {
@@ -192,15 +206,24 @@ export function StaticProcessMapDiagram({
       // the short link to the next row. All teal, so they read as one set.
       const furniture: Node[] = wrap.rows.flatMap((row) => {
         const out: Node[] = [];
+        // The label sits where the row *starts* — left on a forward row, right
+        // on a backward one — so it is the first thing met rather than the
+        // last, which on a right-to-left row is the difference between a
+        // warning and an explanation after the fact.
+        const backward = row.direction === "backward";
+        const rowStartX = backward
+          ? WRAPPED_LANE_GUTTER + canvasWidth - ROW_LABEL_WIDTH
+          : WRAPPED_LANE_GUTTER;
         out.push({
           id: `rowlabel-${row.index}`,
           type: "rowlabel",
-          position: { x: WRAPPED_LANE_GUTTER, y: row.y + LANE_TOP_OFFSET - 30 },
+          position: { x: rowStartX, y: row.y + LANE_TOP_OFFSET - 30 },
           data: {
             row: row.index + 1,
             of: wrap.rows.length,
             firstStep: stepNumberOf(row.steps[0]?.id),
             lastStep: stepNumberOf(row.steps[row.steps.length - 1]?.id),
+            backward,
           },
           draggable: false,
           selectable: false,
@@ -372,7 +395,12 @@ export function StaticProcessMapDiagram({
 
   const stepById = useMemo(() => new Map(steps.map((s) => [s.id, s])), [steps]);
 
-  /** The connections the wrap had to break, so the edge list can skip them. */
+  /**
+   * The connections the wrap genuinely had to break, so the edge list can skip
+   * them. The seam — the step a row ends on to the step the next row begins
+   * on — is no longer one of them: serpentine rows put those two in the same
+   * column, so the line between them is a short drop that crosses nothing.
+   */
   const crossRowIds = useMemo(() => {
     if (!wrap.wrapped) return new Set<string>();
     const rowOf = new Map(wrap.rows.flatMap((r) => r.steps.map((s) => [s.id, r.index])));
@@ -381,15 +409,22 @@ export function StaticProcessMapDiagram({
         .filter((c) => {
           const a = rowOf.get(c.fromStepId);
           const b = rowOf.get(c.toStepId);
-          return a !== undefined && b !== undefined && a !== b;
+          if (a === undefined || b === undefined || a === b) return false;
+          return !isSeamConnection(wrap, c);
         })
         .map((c) => c.id)
     );
   }, [connections, wrap]);
 
+  /** The seam connections, which are drawn as the drop from one row to the next. */
+  const seamIds = useMemo(() => {
+    if (!wrap.wrapped) return new Set<string>();
+    return new Set(connections.filter((c) => isSeamConnection(wrap, c)).map((c) => c.id));
+  }, [connections, wrap]);
+
   const edges: Edge[] = useMemo(
     () =>
-      connections.flatMap((c) => {
+      connections.flatMap((c): Edge[] => {
         const from = stepById.get(c.fromStepId);
         const to = stepById.get(c.toStepId);
         if (!from || !to) return [];
@@ -398,8 +433,48 @@ export function StaticProcessMapDiagram({
         // swimlanes, so routing around the steps means crossing the lanes
         // instead. It is marked at both ends instead — see crossRowEndpoints.
         if (crossRowIds.has(c.id)) return [];
-        const isLoop = to.positionX < from.positionX;
-        const { sourceHandle, targetHandle } = chooseHandles(from, to);
+
+        // The seam drops straight down a column, and is drawn teal so it reads
+        // as the same thing the row label and the rule are: furniture telling
+        // you where one row ends and the next begins.
+        const isSeam = seamIds.has(c.id);
+        if (isSeam) {
+          return [
+            {
+              id: c.id,
+              source: c.fromStepId,
+              target: c.toStepId,
+              sourceHandle: "bottom",
+              targetHandle: "top-t",
+              label: c.label ?? undefined,
+              type: "smoothstep",
+              style: { stroke: "#0d9488", strokeWidth: 2.5, vectorEffect: "non-scaling-stroke" },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#0d9488" },
+              labelStyle: { fontSize: 10, fontWeight: 700 },
+              labelBgStyle: { fill: "#fff" },
+              zIndex: 2,
+            },
+          ];
+        }
+
+        // On a wrapped map the handles have to come from where the step was
+        // *placed*, not from its stored coordinates: a backward row runs right
+        // to left, so a source picked from the stored order would leave every
+        // arrow on that row entering and leaving the wrong sides.
+        const fromPlaced = placedById.get(c.fromStepId);
+        const toPlaced = placedById.get(c.toStepId);
+        const usePlaced = wrap.wrapped && fromPlaced && toPlaced;
+        const { sourceHandle, targetHandle } = usePlaced
+          ? chooseHandlesAt(fromPlaced, toPlaced)
+          : chooseHandles(from, to);
+
+        // A loop is a connection running against its row's own direction.
+        const isLoop = usePlaced
+          ? (wrap.rows[fromPlaced.row]?.direction === "backward"
+              ? toPlaced.x > fromPlaced.x
+              : toPlaced.x < fromPlaced.x)
+          : to.positionX < from.positionX;
+
         return [
           {
             id: c.id,
@@ -418,7 +493,7 @@ export function StaticProcessMapDiagram({
           },
         ];
       }),
-    [connections, stepById, crossRowIds]
+    [connections, stepById, crossRowIds, seamIds, placedById, wrap]
   );
 
 

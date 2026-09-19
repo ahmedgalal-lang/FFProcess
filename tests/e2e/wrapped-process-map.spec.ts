@@ -67,6 +67,25 @@ async function mapInfo(page: import("@playwright/test").Page, processIds: string
       rules: all.filter((n) => id(n).startsWith("rowrule-")).length,
       stubs: all.filter((n) => id(n).startsWith("stub-")).length,
       scale,
+      rowLabelText: all
+        .filter((n) => id(n).startsWith("rowlabel-"))
+        .map((n) => ({ id: id(n), text: n.textContent ?? "", x: n.getBoundingClientRect().left })),
+      stepBoxes: steps.map((n) => {
+        const r = n.getBoundingClientRect();
+        return { id: id(n), x: r.left, y: r.top, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      }),
+      // Lane bands carry their row in their id, so a step's row is the row of
+      // the band its centre falls inside — a lane change within one row looks
+      // exactly like a row change if you only compare y.
+      laneBoxes: lanes.map((n) => {
+        const r = n.getBoundingClientRect();
+        return { row: Number(id(n).split("-")[1]), top: r.top, bottom: r.bottom };
+      }),
+      edgeCount: flow.querySelectorAll(".react-flow__edge").length,
+      sealEdges: [...flow.querySelectorAll<SVGPathElement>(".react-flow__edge-path")].filter((p) =>
+        (p.getAttribute("style") ?? "").includes("13, 148, 136") ||
+        (p.style.stroke ?? "").toLowerCase() === "#0d9488"
+      ).length,
       outside: all.filter((n) => {
         const r = n.getBoundingClientRect();
         return r.right > rect.right + 2 || r.left < rect.left - 2;
@@ -107,12 +126,14 @@ test("every row says which row it is, and the rows are ruled apart", async ({ pa
   // One rule between each pair of rows, and none above the first.
   expect(map.rules).toBe(map.rowLabels.length - 1);
 
-  // A short link at each end of every connection the wrap had to break. That
-  // is one pair per crossing, not one pair per row boundary: this fixture has
-  // an extra labelled branch that skips ahead and crosses a row of its own.
+  // A short link at each end of every connection the wrap had to break — and
+  // since the rows run serpentine, the seam between one row and the next is no
+  // longer one of them: those two steps share a column, so the line is simply
+  // drawn. What is left is the fixture's extra labelled branch, which skips
+  // ahead into a row it is not adjacent to and still cannot be drawn.
   expect(map.stubs).toBe(map.markerText.length);
   expect(map.stubs % 2).toBe(0);
-  expect(map.stubs).toBeGreaterThanOrEqual((map.rowLabels.length - 1) * 2);
+  expect(map.stubs, "only the un-drawable crossing is marked").toBe(2);
 });
 
 test("a short process does not wrap and is left as it was", async ({ page }) => {
@@ -234,4 +255,69 @@ test("the slide deck carries every step of a long process too", async ({ page })
   } finally {
     rmSync(file, { force: true });
   }
+});
+
+
+test("rows run serpentine, so each begins under where the last ended", async ({ page }) => {
+  // The request, in the user's words: "make the starting point on a new row
+  // start directly below the ending point, so it joins seamlessly even if the
+  // rest will be backward."
+  await signIn(page);
+  const map = (await mapInfo(page, [LONG_PROCESS_ID]))!;
+
+  const rowOf = (cy: number) =>
+    map.laneBoxes.find((b) => cy >= b.top && cy <= b.bottom)?.row ?? -1;
+
+  // Steps in the order the process runs, which is the order they were seeded.
+  const ordered = map.stepBoxes
+    .slice()
+    .sort((a, b) => Number(a.id.split("-step-")[1]) - Number(b.id.split("-step-")[1]));
+
+  // Wherever two consecutive steps sit on different rows, the second must be
+  // directly beneath the first — that is the whole point.
+  let seams = 0;
+  for (let i = 0; i < ordered.length - 1; i++) {
+    const here = ordered[i]!;
+    const next = ordered[i + 1]!;
+    const a = rowOf(here.cy);
+    const b = rowOf(next.cy);
+    if (a === -1 || b === -1 || a === b) continue;
+    if (b !== a + 1) continue; // a branch skipping rows, not a seam
+    seams += 1;
+    expect(
+      Math.abs(next.cx - here.cx),
+      `${next.id} should begin directly below ${here.id}`
+    ).toBeLessThan(30);
+  }
+  expect(seams, "a 22-step process wraps, so it has seams").toBeGreaterThanOrEqual(3);
+});
+
+test("a backward row says so, at the end it starts from", async ({ page }) => {
+  await signIn(page);
+  const map = (await mapInfo(page, [LONG_PROCESS_ID]))!;
+
+  const labels = map.rowLabelText.slice().sort((a, b) => Number(a.id.split("-")[1]) - Number(b.id.split("-")[1]));
+  expect(labels.length).toBeGreaterThan(2);
+
+  // Rows alternate, and only the backward ones carry the warning.
+  expect(labels[0]!.text).not.toMatch(/right to left/i);
+  expect(labels[1]!.text, "row 2 runs backward and says so").toMatch(/right to left/i);
+  expect(labels[2]!.text).not.toMatch(/right to left/i);
+
+  // ...and the warning sits at the end the row starts from, not at the left
+  // where a reader meets it only after crossing the row.
+  expect(labels[1]!.x, "a backward row's label sits to the right").toBeGreaterThan(labels[0]!.x);
+});
+
+test("the seam between rows is drawn, not left to a pair of pills", async ({ page }) => {
+  await signIn(page);
+  const map = (await mapInfo(page, [LONG_PROCESS_ID]))!;
+
+  // Teal, like the row label and the rule: the furniture that says where one
+  // row ends and the next begins.
+  expect(map.sealEdges, "one drawn drop per row boundary").toBeGreaterThanOrEqual(map.rowLabels.length - 1);
+
+  // And the markers that used to stand in for them are gone from the seams.
+  const continues = map.markerText.filter((t) => /continues on row/.test(t));
+  expect(continues.length, "only the un-drawable crossing still needs a marker").toBe(1);
 });

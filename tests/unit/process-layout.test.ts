@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assignSwimlanes,
   crossRowMarkers,
+  isSeamConnection,
   MIN_ROW_CAPACITY,
   PRINT_LANE_HEIGHT,
   PRINT_STEP_X_SPACING,
@@ -218,9 +219,44 @@ describe("wrapProcessMap — capacity and rows", () => {
     // FIRST_STEP_X: that constant is sized for a 214px card, and print draws a
     // 130px one. Half a column centres the card whatever size it is.
     const layout = wrapProcessMap(steps(12), opts(1400));
-    expect(layout.rows[1]!.steps.map((s) => s.x)).toEqual(
-      [0, 1, 2, 3, 4].map((c) => STEP_X_SPACING / 2 + c * STEP_X_SPACING)
-    );
+    const columnX = (c: number) => STEP_X_SPACING / 2 + c * STEP_X_SPACING;
+    expect(layout.rows[0]!.steps.map((s) => s.x)).toEqual([0, 1, 2, 3, 4].map(columnX));
+    // The second row runs the other way, so it occupies the same columns in
+    // the opposite order.
+    expect(layout.rows[1]!.steps.map((s) => s.x)).toEqual([4, 3, 2, 1, 0].map(columnX));
+  });
+
+  it("runs alternate rows backwards, so each begins under where the last ended", () => {
+    const layout = wrapProcessMap(steps(12), opts(1400));
+    expect(layout.rows.map((r) => r.direction)).toEqual(["forward", "backward", "forward"]);
+
+    for (let i = 0; i < layout.rows.length - 1; i++) {
+      const ends = layout.rows[i]!.steps.at(-1)!;
+      const begins = layout.rows[i + 1]!.steps[0]!;
+      expect(begins.column, `row ${i + 2} begins under where row ${i + 1} ended`).toBe(ends.column);
+      expect(begins.x).toBe(ends.x);
+    }
+  });
+
+  it("starts a short BACKWARD final row under the step above it, not at its own far end", () => {
+    // The row has to be both short and backward, which is fussier than it
+    // sounds: 11 steps at a capacity of 5 leaves a final row of one, but that
+    // row is index 2 and so runs forward — it never touches the reversing
+    // branch at all. A mutation that reversed within the row's own length
+    // instead of the full capacity passed the whole suite because of it.
+    // 7 steps gives rows of 5 and 2, and the short one is backward.
+    const layout = wrapProcessMap(steps(7), opts(1400));
+    const last = layout.rows.at(-1)!;
+    const previous = layout.rows.at(-2)!;
+
+    expect(layout.capacity).toBe(5);
+    expect(last.direction).toBe("backward");
+    expect(last.steps).toHaveLength(2);
+
+    // It begins in column 4 — under the step above — and works left to 3,
+    // rather than beginning at column 1 because it happens to be two long.
+    expect(last.steps[0]!.column).toBe(previous.steps.at(-1)!.column);
+    expect(last.steps.map((s) => s.column)).toEqual([4, 3]);
   });
 
   it("uses the compact print geometry when it is given it", () => {
@@ -314,24 +350,35 @@ describe("crossRowMarkers", () => {
     expect(crossRowMarkers(layout(), [{ fromStepId: "s1", toStepId: "s2" }])).toEqual([]);
   });
 
-  it("marks both ends of a connection that crosses a row", () => {
-    const markers = crossRowMarkers(layout(), [{ fromStepId: "s5", toStepId: "s6" }]);
-    expect(markers).toHaveLength(2);
-    expect(markers).toContainEqual({ stepId: "s5", kind: "continues", otherRow: 2 });
-    expect(markers).toContainEqual({ stepId: "s6", kind: "from", otherRow: 1 });
-  });
+  it("leaves the seam alone — it is drawn, so marking it would say it twice", () => {
+    // s5 ends row 1 and s6 begins row 2, directly beneath it. That line can be
+    // drawn, which is the whole point of running the rows serpentine.
+    expect(crossRowMarkers(layout(), [{ fromStepId: "s5", toStepId: "s6" }])).toEqual([]);
+    expect(isSeamConnection(layout(), { fromStepId: "s5", toStepId: "s6" })).toBe(true);
 
-  it("counts rows the way a reader does, from one", () => {
     const [marker] = crossRowMarkers(layout(), [{ fromStepId: "s10", toStepId: "s11" }]);
-    expect(marker!.otherRow).toBe(3);
+    expect(marker, "the row-2 to row-3 seam is drawn too").toBeUndefined();
   });
 
-  it("marks both outgoing paths of a decision that lands on different rows", () => {
+  it("still marks a connection that jumps rows anywhere but the seam", () => {
+    // s5 is the last of row 1; s11 is the first of row 3. A line between them
+    // would travel through row 2's swimlanes, so it stays a pair of markers.
+    const markers = crossRowMarkers(layout(), [{ fromStepId: "s5", toStepId: "s11" }]);
+    expect(markers).toHaveLength(2);
+    expect(markers).toContainEqual({ stepId: "s5", kind: "continues", otherRow: 3 });
+    expect(markers).toContainEqual({ stepId: "s11", kind: "from", otherRow: 1 });
+    expect(isSeamConnection(layout(), { fromStepId: "s5", toStepId: "s11" })).toBe(false);
+  });
+
+  it("marks the branch of a decision that leaves the seam, and draws the one that follows it", () => {
     const markers = crossRowMarkers(layout(), [
       { fromStepId: "s5", toStepId: "s6" },
       { fromStepId: "s5", toStepId: "s11" },
     ]);
-    expect(markers.filter((m) => m.stepId === "s5")).toHaveLength(2);
+    // Only the far branch is marked; the seam branch is a drawn line.
+    expect(markers.filter((m) => m.stepId === "s5")).toHaveLength(1);
+    expect(markers.filter((m) => m.stepId === "s11")).toHaveLength(1);
+    expect(markers.filter((m) => m.stepId === "s6")).toHaveLength(0);
   });
 
   it("ignores a connection naming a step that is not on the map", () => {

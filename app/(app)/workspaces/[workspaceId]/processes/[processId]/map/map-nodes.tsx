@@ -427,7 +427,14 @@ export function CompactStepNode({ data }: NodeProps & { data: CompactStepData })
   );
 }
 
-export type RowLabelData = { row: number; of: number; firstStep: number; lastStep: number };
+export type RowLabelData = {
+  row: number;
+  of: number;
+  firstStep: number;
+  lastStep: number;
+  /** A serpentine row that runs right to left, so a reader is told before they start. */
+  backward?: boolean;
+};
 
 /**
  * Which row of a wrapped map this is, and which steps are on it.
@@ -448,6 +455,10 @@ export function RowLabelNode({ data }: NodeProps & { data: RowLabelData }) {
       <span className="font-semibold opacity-90">
         · steps {data.firstStep}–{data.lastStep}
       </span>
+      {/* A backward row reads 12, 11, 10… across the page. Said in words as
+          well as by the arrow, and before the row rather than after it, so a
+          reader is warned instead of confused. */}
+      {data.backward && <span className="font-semibold">· ← runs right to left</span>}
     </div>
   );
 }
