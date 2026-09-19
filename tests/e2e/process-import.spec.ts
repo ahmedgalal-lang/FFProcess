@@ -72,7 +72,7 @@ test.describe("building a process from a spreadsheet", () => {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: template,
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
 
     // The summary appears, and says what will be created — before anything is.
     await expect(page.getByText("This is what will be created")).toBeVisible();
@@ -105,7 +105,7 @@ test.describe("building a process from a spreadsheet", () => {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: Buffer.from("this is not a workbook at all"),
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
 
     await expect(
       page.getByRole("region", { name: "Build a process from a spreadsheet" }).getByRole("alert")
@@ -128,7 +128,7 @@ test.describe("building a process from a spreadsheet", () => {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: template,
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
     await expect(page.getByText("This is what will be created")).toBeVisible();
 
     // Cancel must be reachable by keyboard while a request could be in flight.
@@ -168,7 +168,7 @@ test.describe("the import panel is usable without a mouse or colour vision", () 
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: template,
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
     await expect(page.getByText("This is what will be created")).toBeVisible();
 
     results = await new AxeBuilder({ page }).include("main").analyze();
@@ -181,7 +181,7 @@ test.describe("the import panel is usable without a mouse or colour vision", () 
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: Buffer.from("not a workbook"),
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
     await expect(
       page.getByRole("region", { name: "Build a process from a spreadsheet" }).getByRole("alert")
     ).toBeVisible();
@@ -208,7 +208,7 @@ test.describe("the import panel is usable without a mouse or colour vision", () 
       buffer: template,
     });
 
-    const check = page.getByRole("button", { name: "Check this file" });
+    const check = page.getByRole("button", { name: "Upload and check" });
     await check.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByText("This is what will be created")).toBeVisible();
@@ -229,7 +229,7 @@ test.describe("the import panel is usable without a mouse or colour vision", () 
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: Buffer.from("not a workbook"),
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
 
     // Announced to a screen reader rather than only turning red. Scoped to the
     // panel's own region: the page carries other live regions, and an
@@ -266,7 +266,7 @@ test.describe("an imported process is an ordinary process", () => {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: template,
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
     await page.getByRole("button", { name: /^Create / }).click();
     await expect(page.getByText(/^Created Purchase Requisition/)).toBeVisible({ timeout: 15000 });
 
@@ -329,7 +329,7 @@ test.describe("a full-size process", () => {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: await buildSampleWorkbook(),
     });
-    await page.getByRole("button", { name: "Check this file" }).click();
+    await page.getByRole("button", { name: "Upload and check" }).click();
 
     // The summary states the size before anything is written.
     await expect(page.getByText("This is what will be created")).toBeVisible();
@@ -381,12 +381,12 @@ test("a failed upload says so instead of doing nothing", async ({ page }) => {
     return route.continue();
   });
 
-  await page.getByRole("button", { name: "Check this file" }).click();
+  await page.getByRole("button", { name: "Upload and check" }).click();
 
   const panel = page.getByRole("region", { name: "Build a process from a spreadsheet" });
   await expect(panel.getByRole("alert")).toBeVisible({ timeout: 15000 });
   await expect(panel.getByRole("alert")).toContainText(/could not be run|Reload the page/i);
 
   // ...and the control comes back, rather than being stuck mid-flight.
-  await expect(page.getByRole("button", { name: "Check this file" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Upload and check" })).toBeEnabled();
 });

@@ -141,6 +141,13 @@ export function ImportPanel({ workspaceId }: { workspaceId: string }) {
           >
             Filled-in template (.xlsx)
           </label>
+          {/* Said before the first click rather than discovered after it: the
+              upload does not create anything on its own, and a control that
+              quietly does nothing visible is what this panel was reported as
+              doing. */}
+          <p className="mt-0.5 text-xs text-slate-600">
+            Uploading shows you what will be created. Nothing is added until you confirm it.
+          </p>
           <input
             id="process-import-file"
             ref={fileRef}
@@ -162,7 +169,7 @@ export function ImportPanel({ workspaceId }: { workspaceId: string }) {
               disabled={previewing || !fileName}
               className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
             >
-              {previewing ? "Checking…" : "Check this file"}
+              {previewing ? "Uploading…" : "Upload and check"}
             </button>
             {(summary || error) && (
               // Its own pending flag, not the shared one: a Cancel that goes
