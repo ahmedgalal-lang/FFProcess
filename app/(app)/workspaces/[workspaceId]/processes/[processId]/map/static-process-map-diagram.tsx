@@ -12,6 +12,7 @@ import {
   PRINT_LANE_HEIGHT,
   PRINT_NODE_HALF_SIZE,
   PRINT_STEP_X_SPACING,
+  WRAPPED_LANE_GUTTER,
 } from "@/lib/domain/process-layout";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import {
@@ -21,6 +22,9 @@ import {
   LaneNode,
   ContinuationNode,
   CompactStepNode,
+  RowLabelNode,
+  RowRuleNode,
+  LinkStubNode,
   type StepLinkData,
 } from "./map-nodes";
 
@@ -31,6 +35,9 @@ const NODE_TYPES = {
   lane: LaneNode,
   continuation: ContinuationNode,
   compact: CompactStepNode,
+  rowlabel: RowLabelNode,
+  rowrule: RowRuleNode,
+  linkstub: LinkStubNode,
 };
 
 const HALF_SIZE = NODE_HALF_SIZE;
@@ -155,6 +162,10 @@ export function StaticProcessMapDiagram({
     : Math.max(...steps.map((s) => s.positionX), 400) + 260;
 
   const nodes: Node[] = useMemo(() => {
+    /** A step's 1-based position in the process, for the row label's range. */
+    const stepNumberOf = (id: string | undefined) =>
+      id === undefined ? 0 : steps.findIndex((s) => s.id === id) + 1;
+
     if (wrap.wrapped) {
       // Each row carries its own lanes, labelled, so a reader never has to
       // look back to an earlier row to know whose lane a step is in — on paper
@@ -163,8 +174,12 @@ export function StaticProcessMapDiagram({
         row.lanes.map((lane, i) => ({
           id: `lane-${row.index}-${lane.roleId ?? "unassigned"}`,
           type: "lane",
-          position: { x: 0, y: row.y + lane.y + LANE_TOP_OFFSET },
-          data: { label: lane.label, tinted: i % 2 === 1 },
+          // Shifted right by the gutter: the lane name used to be drawn at the
+          // lane's own top-left, which is where the row's first step also
+          // wants to be — a decision diamond sat on top of it on a real
+          // export. The name now lives to the left of the map entirely.
+          position: { x: WRAPPED_LANE_GUTTER, y: row.y + lane.y + LANE_TOP_OFFSET },
+          data: { label: lane.label, tinted: i % 2 === 1, gutter: WRAPPED_LANE_GUTTER },
           style: { width: canvasWidth, height: PRINT_LANE_HEIGHT },
           draggable: false,
           selectable: false,
@@ -172,6 +187,40 @@ export function StaticProcessMapDiagram({
           zIndex: 0,
         }))
       );
+
+      // Row furniture: the label, the rule that ends the row before it, and
+      // the short link to the next row. All teal, so they read as one set.
+      const furniture: Node[] = wrap.rows.flatMap((row) => {
+        const out: Node[] = [];
+        out.push({
+          id: `rowlabel-${row.index}`,
+          type: "rowlabel",
+          position: { x: WRAPPED_LANE_GUTTER, y: row.y + LANE_TOP_OFFSET - 30 },
+          data: {
+            row: row.index + 1,
+            of: wrap.rows.length,
+            firstStep: stepNumberOf(row.steps[0]?.id),
+            lastStep: stepNumberOf(row.steps[row.steps.length - 1]?.id),
+          },
+          draggable: false,
+          selectable: false,
+          focusable: false,
+          zIndex: 5,
+        });
+        if (row.index > 0) {
+          out.push({
+            id: `rowrule-${row.index}`,
+            type: "rowrule",
+            position: { x: 0, y: row.y + LANE_TOP_OFFSET - 48 },
+            data: { width: canvasWidth + WRAPPED_LANE_GUTTER },
+            draggable: false,
+            selectable: false,
+            focusable: false,
+            zIndex: 0,
+          });
+        }
+        return out;
+      });
 
       const rowStepNodes: Node[] = steps.flatMap((s, i) => {
         const placed = placedById.get(s.id);
@@ -182,7 +231,10 @@ export function StaticProcessMapDiagram({
           {
             id: s.id,
             type: "compact",
-            position: { x: placed.x - half.x, y: placed.y + LANE_TOP_OFFSET - half.y },
+            position: {
+              x: WRAPPED_LANE_GUTTER + placed.x - half.x,
+              y: placed.y + LANE_TOP_OFFSET - half.y,
+            },
             data: {
               label: s.label,
               roleName: s.assignedRole?.name,
@@ -205,8 +257,9 @@ export function StaticProcessMapDiagram({
         ];
       });
 
-      // One marker per broken end, sitting just beyond the step it belongs to
-      // so a reader meets it where the line would have gone.
+      // A marker directly above its own step, and a short stub beside it. The
+      // markers used to sit out at the page edge, a long way from the step
+      // they belong to, which is half of why the wrap read as confusing.
       const labelOf = new Map(connections.map((c) => [`${c.fromStepId}->${c.toStepId}`, c.label]));
       const markerNodes: Node[] = crossRowMarkers(wrap, connections).flatMap((marker, i) => {
         const placed = placedById.get(marker.stepId);
@@ -217,23 +270,43 @@ export function StaticProcessMapDiagram({
               (marker.kind === "continues" ? c.fromStepId : c.toStepId) === marker.stepId &&
               labelOf.get(`${c.fromStepId}->${c.toStepId}`)
           )?.label ?? undefined;
+        const out = marker.kind === "continues";
+        // Measured off the step's own shape, not a fixed offset: a decision is
+        // taller than a task, and a marker placed a constant distance above
+        // the centre landed inside the diamond.
+        const step = steps.find((s) => s.id === marker.stepId);
+        const half = PRINT_NODE_HALF_SIZE[step ? nodeKindFor(step.type) : "task"];
         return [
           {
             id: `marker-${marker.kind}-${marker.stepId}-${i}`,
             type: "continuation",
             position: {
-              x: marker.kind === "continues" ? placed.x + 70 : placed.x - 150,
-              y: placed.y + LANE_TOP_OFFSET + 22,
+              x: WRAPPED_LANE_GUTTER + placed.x - 60,
+              y: placed.y + LANE_TOP_OFFSET - half.y - 24,
             },
             data: { kind: marker.kind, otherRow: marker.otherRow, connectionLabel },
             draggable: false,
             selectable: false,
-            zIndex: 2,
+            zIndex: 4,
+          },
+          {
+            id: `stub-${marker.kind}-${marker.stepId}-${i}`,
+            type: "linkstub",
+            // Ends exactly at the card's edge — the incoming one used to start
+            // far enough left to sit on top of the lane name in the gutter.
+            position: {
+              x: WRAPPED_LANE_GUTTER + placed.x + (out ? half.x + 2 : -half.x - 60),
+              y: placed.y + LANE_TOP_OFFSET - 14,
+            },
+            data: { kind: out ? "out" : "in" },
+            draggable: false,
+            selectable: false,
+            zIndex: 3,
           },
         ];
       });
 
-      return [...rowLaneNodes, ...rowStepNodes, ...markerNodes];
+      return [...furniture, ...rowLaneNodes, ...rowStepNodes, ...markerNodes];
     }
 
     const laneNodes: Node[] = laneOrder.map((roleId, i) => ({

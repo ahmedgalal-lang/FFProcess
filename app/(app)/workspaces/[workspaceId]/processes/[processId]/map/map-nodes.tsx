@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { gateLine, type AuthorityDirection } from "@/lib/domain/authority-table";
-import { DECISION_TEXT_INSET, NODE_HALF_SIZE, PRINT_NODE_HALF_SIZE } from "@/lib/domain/process-layout";
+import {
+  DECISION_TEXT_INSET,
+  NODE_HALF_SIZE,
+  PRINT_NODE_HALF_SIZE,
+  shortRoleName,
+} from "@/lib/domain/process-layout";
 
 // One handle per side, doing double duty as both a source and a target — the
 // canvas picks which id to wire an edge to based on the geometric relationship
@@ -176,7 +181,7 @@ export function TerminalNode({ data }: NodeProps & { data: StepNodeData }) {
   );
 }
 
-export type LaneNodeData = { label: string; tinted?: boolean };
+export type LaneNodeData = { label: string; tinted?: boolean; gutter?: number };
 
 export type BranchEntryData = {
   label: string;
@@ -227,11 +232,23 @@ export function LaneNode({ data }: NodeProps & { data: LaneNodeData }) {
   // own white background while letting edges show through everywhere.
   return (
     <div
-      className={`flex h-full items-start border-b border-dashed border-slate-200 pl-4 pt-2.5 ${
+      className={`relative flex h-full items-start border-b border-dashed border-slate-200 pl-4 pt-2.5 ${
         data.tinted ? "bg-slate-50/70" : "bg-white/70"
       }`}
     >
-      <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">{data.label}</span>
+      {data.gutter ? (
+        // In the gutter, to the left of the map. Drawn inside the lane it
+        // used to collide with the row's first step — on a real export a
+        // decision diamond sat squarely on top of a role name.
+        <span
+          className="absolute right-full flex items-center justify-end pr-3 text-right text-[10px] font-bold uppercase leading-tight tracking-wide text-slate-600"
+          style={{ width: (data.gutter ?? 0) - 80, top: 0, bottom: 0 }}
+        >
+          {data.label}
+        </span>
+      ) : (
+        <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">{data.label}</span>
+      )}
     </div>
   );
 }
@@ -257,7 +274,7 @@ export type ContinuationNodeData = {
 export function ContinuationNode({ data }: NodeProps & { data: ContinuationNodeData }) {
   const goes = data.kind === "continues";
   return (
-    <div className="flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm">
+    <div className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-teal-400 bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800 shadow-sm">
       <Handle type="target" position={Position.Left} className="!opacity-0" />
       <span aria-hidden>{goes ? "↳" : "↱"}</span>
       <span>
@@ -327,8 +344,11 @@ export function CompactStepNode({ data }: NodeProps & { data: CompactStepData })
         <span className="text-[10px] font-semibold leading-tight text-slate-900">{data.label}</span>
       </div>
       {data.roleName && (
-        <span className="text-[8.5px] font-medium uppercase leading-tight tracking-wide text-slate-600">
-          {data.roleName}
+        <span
+          title={data.roleName}
+          className="text-[8.5px] font-medium uppercase leading-tight tracking-wide text-slate-600"
+        >
+          {shortRoleName(data.roleName)}
         </span>
       )}
       {detail.length > 0 && (
@@ -404,5 +424,76 @@ export function CompactStepNode({ data }: NodeProps & { data: CompactStepData })
       <Handles />
       {body}
     </div>
+  );
+}
+
+export type RowLabelData = { row: number; of: number; firstStep: number; lastStep: number };
+
+/**
+ * Which row of a wrapped map this is, and which steps are on it.
+ *
+ * Teal, and so are the continuation markers and the short link between rows.
+ * Nothing else on the map uses it — a step number is indigo, a decision amber,
+ * a card slate — so the row's furniture reads as signposting rather than as
+ * more diagram. Reported as "very confusing to read": the rows were divided by
+ * a dashed lane edge that looks like part of the swimlane, not like the end of
+ * a row.
+ */
+export function RowLabelNode({ data }: NodeProps & { data: RowLabelData }) {
+  return (
+    <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-teal-400 bg-teal-50 px-2.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-teal-800">
+      <span>Row</span>
+      <span className="text-[10.5px]">{data.row}</span>
+      <span className="font-semibold opacity-90">of {data.of}</span>
+      <span className="font-semibold opacity-90">
+        · steps {data.firstStep}–{data.lastStep}
+      </span>
+    </div>
+  );
+}
+
+/** The rule across the page that ends one row and starts the next. */
+export function RowRuleNode({ data }: NodeProps & { data: { width: number } }) {
+  return <div className="border-t border-slate-300" style={{ width: data.width }} />;
+}
+
+export type LinkStubData = { kind: "out" | "in" };
+
+/**
+ * The short link tying one row's last step to the next row's first.
+ *
+ * "out" leaves the last step and turns down towards the row below; "in" comes
+ * up and turns into the first step of the next row. They cannot meet — they
+ * are at opposite ends of the page — so the matching colour and the arrowheads
+ * are what pair them. A line drawn all the way round the sheet would meet, and
+ * would cross the intervening lanes to do it.
+ */
+export function LinkStubNode({ data }: NodeProps & { data: LinkStubData }) {
+  const W = 62;
+  const H = 40;
+  const out = data.kind === "out";
+  return (
+    <svg width={W + 6} height={H + 6} viewBox={`-3 -3 ${W + 6} ${H + 6}`} className="overflow-visible" aria-hidden>
+      <path
+        d={
+          out
+            ? `M 0 10 H ${W - 18} Q ${W - 4} 10 ${W - 4} 24 V ${H - 8}`
+            : `M 4 ${H} V 22 Q 4 8 18 8 H ${W - 12}`
+        }
+        fill="none"
+        stroke="#14b8a6"
+        strokeWidth={2.25}
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        d={
+          out
+            ? `M ${W - 10} ${H - 9} L ${W - 4} ${H} L ${W + 2} ${H - 9} z`
+            : `M ${W - 13} 2 L ${W - 2} 8 L ${W - 13} 14 z`
+        }
+        fill="#14b8a6"
+      />
+    </svg>
   );
 }

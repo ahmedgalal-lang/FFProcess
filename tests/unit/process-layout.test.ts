@@ -6,6 +6,8 @@ import {
   PRINT_LANE_HEIGHT,
   PRINT_STEP_X_SPACING,
   WRAPPED_ROW_GAP,
+  shortRoleName,
+  CARD_ROLE_BUDGET,
   wrapProcessMap,
   laneIndexAtY,
   laneY,
@@ -418,5 +420,38 @@ describe("wrapProcessMap — rows do not sit flush", () => {
     const layout = wrapProcessMap(steps, { boxWidth: 1400, laneLabel: () => "" });
     const last = layout.rows[layout.rows.length - 1]!;
     expect(layout.height).toBe(last.y + last.height);
+  });
+});
+
+describe("shortRoleName", () => {
+  it("leaves a name that already fits alone", () => {
+    expect(shortRoleName("SECTOR OWNER")).toBe("SECTOR OWNER");
+    expect(shortRoleName("CEO")).toBe("CEO");
+  });
+
+  it("cuts a long name on a word boundary", () => {
+    // Four lines on a card whose own step name is one line.
+    expect(shortRoleName("HEAD OF COMMERCIAL AND BUSINESS DEVELOPMENT")).toBe("HEAD OF COMMERCIAL…");
+  });
+
+  it("never returns more than the budget plus the ellipsis", () => {
+    for (const name of [
+      "HEAD OF COMMERCIAL AND BUSINESS DEVELOPMENT",
+      "GLOBAL PROCUREMENT AND SUPPLY CHAIN DIRECTOR",
+      "A B C D E F G H I J K L M N O P Q R S T U V",
+    ]) {
+      expect(shortRoleName(name).length).toBeLessThanOrEqual(CARD_ROLE_BUDGET + 1);
+    }
+  });
+
+  it("cuts mid-word only when one word is longer than the whole budget", () => {
+    const out = shortRoleName("SUPERCALIFRAGILISTICEXPIALIDOCIOUS");
+    expect(out).toBe("SUPERCALIFRAGILISTIC…");
+    expect(out.length).toBe(CARD_ROLE_BUDGET + 1);
+  });
+
+  it("tolerates whitespace and an empty name", () => {
+    expect(shortRoleName("   SECTOR OWNER  ")).toBe("SECTOR OWNER");
+    expect(shortRoleName("")).toBe("");
   });
 });

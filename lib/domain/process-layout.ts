@@ -178,7 +178,42 @@ export const PRINT_LANE_HEIGHT = 92;
  * other put the first label of one row on top of the last lane of the row
  * before it — which clipped it in half.
  */
-export const WRAPPED_ROW_GAP = 30;
+export const WRAPPED_ROW_GAP = 46;
+
+/**
+ * Width reserved to the left of a wrapped map for the lane names.
+ *
+ * The lane name used to be drawn inside the lane, at its top-left — which is
+ * exactly where the row's first step also wants to be. On a real export a
+ * decision diamond sat squarely on top of "HEAD OF COMMERCIAL AND BUSINESS
+ * DEVELOPMENT". A gutter takes the name out of the steps' way for good.
+ */
+export const WRAPPED_LANE_GUTTER = 170;
+
+/** How many characters of a role name a compact card will carry. */
+export const CARD_ROLE_BUDGET = 20;
+
+/**
+ * A role name cut to fit a compact card, on a word boundary.
+ *
+ * "HEAD OF COMMERCIAL AND BUSINESS DEVELOPMENT" is four lines on a card whose
+ * own step name is one. The lane in the gutter still carries it in full, and
+ * the card carries enough to recognise it.
+ */
+export function shortRoleName(name: string, budget: number = CARD_ROLE_BUDGET): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= budget) return trimmed;
+  const words = trimmed.split(/\s+/);
+  let out = "";
+  for (const word of words) {
+    const next = out ? `${out} ${word}` : word;
+    if (next.length > budget) break;
+    out = next;
+  }
+  // A single word longer than the budget still has to be cut somewhere.
+  if (!out) out = trimmed.slice(0, budget);
+  return `${out}\u2026`;
+}
 
 /** Half-width/half-height of a compact print card, mirroring NODE_HALF_SIZE. */
 export const PRINT_NODE_HALF_SIZE: Record<"task" | "decision" | "terminal", { x: number; y: number }> = {

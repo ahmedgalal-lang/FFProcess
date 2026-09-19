@@ -48,7 +48,11 @@ async function mapInfo(page: import("@playwright/test").Page, processIds: string
     const id = (n: HTMLElement) => n.dataset["id"] ?? "";
     const lanes = all.filter((n) => id(n).startsWith("lane-"));
     const markers = all.filter((n) => id(n).startsWith("marker-"));
-    const steps = all.filter((n) => !id(n).startsWith("lane-") && !id(n).startsWith("marker-"));
+    // A wrapped map also carries its own furniture — the row label, the rule
+    // that ends the row before it, and the short link to the next row. None
+    // of it is a step.
+    const FURNITURE = ["lane-", "marker-", "rowlabel-", "rowrule-", "stub-"];
+    const steps = all.filter((n) => !FURNITURE.some((p) => id(n).startsWith(p)));
     const rect = flow.getBoundingClientRect();
     const transform = flow.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform ?? "";
     const scale = Number(/scale\(([\d.]+)\)/.exec(transform)?.[1] ?? "1");
@@ -59,6 +63,9 @@ async function mapInfo(page: import("@playwright/test").Page, processIds: string
       laneLabels: lanes.map((n) => n.textContent?.trim() ?? ""),
       laneIds: lanes.map(id),
       markerText: markers.map((n) => n.textContent?.trim() ?? ""),
+      rowLabels: all.filter((n) => id(n).startsWith("rowlabel-")).map((n) => n.textContent?.trim() ?? ""),
+      rules: all.filter((n) => id(n).startsWith("rowrule-")).length,
+      stubs: all.filter((n) => id(n).startsWith("stub-")).length,
       scale,
       outside: all.filter((n) => {
         const r = n.getBoundingClientRect();
@@ -84,6 +91,28 @@ test("a long process wraps onto rows and stays readable", async ({ page }) => {
   // The point of the exercise. One row of full-size cards scaled this to 0.39;
   // anything near that is the bug this feature exists to fix.
   expect(map.scale).toBeGreaterThan(0.7);
+});
+
+test("every row says which row it is, and the rows are ruled apart", async ({ page }) => {
+  // Reported as "very confusing to read": the rows were divided by a dashed
+  // lane edge that looks like part of the swimlane rather than the end of a
+  // row, and nothing said which row you were on.
+  await signIn(page);
+  const map = (await mapInfo(page, [LONG_PROCESS_ID]))!;
+
+  expect(map.rowLabels.length).toBeGreaterThan(1);
+  expect(map.rowLabels[0]).toMatch(/Row\s*1\s*of\s*\d/i);
+  expect(map.rowLabels[0]).toMatch(/steps\s*1[–-]\d/i);
+
+  // One rule between each pair of rows, and none above the first.
+  expect(map.rules).toBe(map.rowLabels.length - 1);
+
+  // A short link at each end of every connection the wrap had to break. That
+  // is one pair per crossing, not one pair per row boundary: this fixture has
+  // an extra labelled branch that skips ahead and crosses a row of its own.
+  expect(map.stubs).toBe(map.markerText.length);
+  expect(map.stubs % 2).toBe(0);
+  expect(map.stubs).toBeGreaterThanOrEqual((map.rowLabels.length - 1) * 2);
 });
 
 test("a short process does not wrap and is left as it was", async ({ page }) => {
