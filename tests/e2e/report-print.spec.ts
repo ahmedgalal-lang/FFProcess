@@ -84,3 +84,197 @@ test.describe("Export Report print layout", () => {
     await expect(toolbar).toBeVisible();
   });
 });
+
+/**
+ * Pagination, measured against a generated PDF rather than read off the
+ * stylesheet.
+ *
+ * That distinction is the point of every test below. This problem came back
+ * repeatedly because it was checked by reading the CSS, and CSS that looks
+ * right can still paginate wrongly: `break-inside: avoid` on an element taller
+ * than the page is simply ignored, and nothing in the declaration says so.
+ *
+ * Baseline, measured before this work: **13 pages, mean page usage 47%, six
+ * pages under a third used, one at 6%.**
+ */
+const BASELINE_PAGES = 13;
+const BASELINE_MEAN_USAGE = 0.47;
+
+/**
+ * The document's atomic blocks, as the browser will fragment them, plus where
+ * the deliberate page breaks are.
+ */
+async function measureDocument(page: import("@playwright/test").Page) {
+  await page.emulateMedia({ media: "print" });
+  return page.evaluate(() => {
+    const paper = document.querySelector(".report-paper") as HTMLElement;
+    const base = paper.getBoundingClientRect().top + window.scrollY;
+
+    const blocks: { id: string; height: number; forced: boolean; closing: boolean }[] = [];
+    let n = 0;
+    for (const section of document.querySelectorAll<HTMLElement>(".print-page")) {
+      const forcedSection = section.classList.contains("print-break-before");
+      const closing = /Thank you/.test(section.textContent ?? "");
+      // A section's own top-level children are the units that flow; the
+      // section itself is not, because a process document is several pages.
+      const kids = [...section.children].filter(
+        (k) => (k as HTMLElement).getBoundingClientRect().height > 2
+      ) as HTMLElement[];
+      const units = kids.length > 0 ? kids : [section];
+      units.forEach((el, i) => {
+        blocks.push({
+          id: `b${n++}`,
+          height: el.getBoundingClientRect().height,
+          forced: forcedSection && i === 0,
+          closing,
+        });
+      });
+    }
+    return { blocks, docHeight: paper.getBoundingClientRect().height, base };
+  });
+}
+
+async function realPdfPageCount(page: import("@playwright/test").Page): Promise<number> {
+  const pdf = await page.pdf({
+    format: "A4",
+    landscape: true,
+    printBackground: true,
+    margin: { top: "14mm", right: "14mm", bottom: "14mm", left: "14mm" },
+  });
+  // A PDF's page count is the number of /Type /Page objects.
+  const matches = pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g);
+  return matches ? matches.length : 0;
+}
+
+async function openTwoProcessReport(page: import("@playwright/test").Page) {
+  const { processIdByCode } = await import("./seed-lookup");
+  const ids = await Promise.all(["PUR101", "PUR102"].map((c) => processIdByCode(c)));
+  await page.goto(`/reports/workspace-acme?${ids.map((i) => `ids=${i}`).join("&")}`);
+  await page.waitForSelector(".report-paper");
+  await page.waitForTimeout(3500);
+}
+
+test.describe("Export Report pagination", () => {
+  // Which sections print is stored per workspace, and other specs in this suite
+  // save their own arrangements. Pagination depends on what is actually on the
+  // page, so this starts from the default rather than from whatever the last
+  // spec happened to leave behind.
+  test.beforeEach(async () => {
+    const { Client } = await import("pg");
+    const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+    await client.connect();
+    try {
+      await client.query(`UPDATE workspaces SET "reportArrangement" = NULL WHERE id = $1`, [
+        "workspace-acme",
+      ]);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("fills its pages instead of giving each section one", async ({ page }) => {
+    const { paginate } = await import("../../lib/domain/report-pagination");
+    await signIn(page);
+    await openTwoProcessReport(page);
+
+    const { blocks } = await measureDocument(page);
+    const result = paginate(blocks, {
+      forcedBreakBefore: blocks.filter((b) => b.forced).map((b) => b.id),
+    });
+
+    // Pages that are short for a reason the spec requires (SC-001): the page
+    // before a forced break stops early precisely because FR-002 makes the next
+    // process document start a page, and the closing page is allowed its own
+    // sheet by FR-012 when it cannot fit the one before.
+    const forcedIds = new Set(blocks.filter((b) => b.forced).map((b) => b.id));
+    const closingIds = new Set(blocks.filter((b) => b.closing).map((b) => b.id));
+    const excluded = new Set<number>([0]); // the cover
+    result.breaks.forEach((brk, i) => {
+      if (brk.beforeBlockId && forcedIds.has(brk.beforeBlockId)) excluded.add(i);
+      if (brk.beforeBlockId && closingIds.has(brk.beforeBlockId)) excluded.add(i + 1);
+    });
+
+    const counted = result.usage.filter((_, i) => !excluded.has(i));
+    const mean = counted.reduce((a, b) => a + b, 0) / counted.length;
+
+    expect(counted.length, "something left to measure").toBeGreaterThan(3);
+    expect(mean, `mean usage (baseline ${BASELINE_MEAN_USAGE})`).toBeGreaterThanOrEqual(0.7);
+    expect(Math.min(...counted), "the worst page").toBeGreaterThanOrEqual(0.4);
+  });
+
+  test("uses fewer pages than it used to", async ({ page }) => {
+    await signIn(page);
+    await openTwoProcessReport(page);
+    const pages = await realPdfPageCount(page);
+    expect(pages).toBeGreaterThan(0);
+    expect(pages, `baseline was ${BASELINE_PAGES}`).toBeLessThan(BASELINE_PAGES);
+  });
+
+  test("never splits a card, a row or a diagram", async ({ page }) => {
+    const { paginate, PRINT_PAGE_HEIGHT_PX } = await import("../../lib/domain/report-pagination");
+    await signIn(page);
+    await openTwoProcessReport(page);
+
+    const { blocks } = await measureDocument(page);
+    const result = paginate(blocks, {
+      forcedBreakBefore: blocks.filter((b) => b.forced).map((b) => b.id),
+    });
+
+    // Nothing the report draws may be taller than a page — an element that is
+    // cannot honour "do not break inside me", and the browser fragments it
+    // wherever it lands. That is what cut the process map through its cards.
+    expect(result.oversized, "blocks no break rule can keep whole").toEqual([]);
+
+    const tallest = Math.max(...blocks.map((b) => b.height));
+    expect(tallest, "tallest block against the page").toBeLessThanOrEqual(PRINT_PAGE_HEIGHT_PX);
+  });
+
+  test("agrees with the PDF about how many pages there are", async ({ page }) => {
+    // The prediction the preview's markers are drawn from, held against the
+    // real thing. Without this the preview is merely plausible.
+    const { paginate } = await import("../../lib/domain/report-pagination");
+    await signIn(page);
+    await openTwoProcessReport(page);
+
+    const { blocks } = await measureDocument(page);
+    const predicted = paginate(blocks, {
+      forcedBreakBefore: blocks.filter((b) => b.forced).map((b) => b.id),
+    }).pageCount;
+    const actual = await realPdfPageCount(page);
+
+    expect(actual).toBeGreaterThan(0);
+    expect(Math.abs(predicted - actual), `predicted ${predicted}, actual ${actual}`).toBeLessThanOrEqual(1);
+  });
+
+  test("loses nothing on the way", async ({ page }) => {
+    // Every page-usage target here is trivially satisfied by dropping a
+    // section, so this is the guard that makes the rest mean anything.
+    await signIn(page);
+    await openTwoProcessReport(page);
+
+    const content = await page.evaluate(() => {
+      const headings = [...document.querySelectorAll("h2, h3")].map((h) => h.textContent?.trim() ?? "");
+      return {
+        headings,
+        processes: [...document.querySelectorAll(".print-break-before")].length,
+        rows: document.querySelectorAll("tbody tr").length,
+      };
+    });
+
+    expect(content.headings).toContain("Org Structure");
+    expect(content.headings).toContain("Helicopter View");
+    expect(content.headings.some((h) => /Purchase-to-Pay/.test(h))).toBe(true);
+    expect(content.headings.some((h) => /Vendor Onboarding/.test(h))).toBe(true);
+    // Cover plus one per process.
+    expect(content.processes).toBe(3);
+    expect(content.rows).toBeGreaterThan(0);
+    // Section headings repeat once per process, which is correct — each
+    // process document has its own "1.0 Executive Summary". What must not
+    // happen is a process document appearing twice, or a pack section doing so.
+    const execSummaries = content.headings.filter((h) => /^1\.0 Executive Summary/.test(h));
+    expect(execSummaries).toHaveLength(2);
+    for (const packSection of ["Org Structure", "Helicopter View", "Processes in This Report"]) {
+      expect(content.headings.filter((h) => h === packSection)).toHaveLength(1);
+    }
+  });
+});

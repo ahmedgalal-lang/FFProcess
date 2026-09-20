@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Source_Serif_4 } from "next/font/google";
 import { StaticOrgChart } from "../../(app)/workspaces/[workspaceId]/org/chart/static-org-chart";
 import { StaticProcessMapDiagram } from "../../(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram";
 import { StaticMilestoneRails } from "../../(app)/workspaces/[workspaceId]/helicopter/static-milestone-rails";
+import { paginate } from "@/lib/domain/report-pagination";
 import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
 import type { RaciCode, StepType } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
@@ -172,6 +173,59 @@ export function ExportPreview({
 
   const [density, setDensity] = useState<DensityId>("default");
 
+  /**
+   * Where the PDF will break, so the preview can say so.
+   *
+   * The marker used to be drawn by `.print-page::after` — the very class that
+   * forced the break — so preview and PDF agreed only because both broke after
+   * every section. Now that sections flow, CSS decides breaks at paint time and
+   * tells the DOM nothing, so the only honest option is to measure the blocks
+   * and predict, which is what paginate() does.
+   */
+  const paperRef = useRef<HTMLElement | null>(null);
+  const [breakOffsets, setBreakOffsets] = useState<number[]>([]);
+
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+
+    const measure = () => {
+      const base = paper.getBoundingClientRect().top;
+      const blocks: { id: string; height: number }[] = [];
+      const forcedBreakBefore: string[] = [];
+      let n = 0;
+
+      for (const section of paper.querySelectorAll<HTMLElement>(".print-page")) {
+        const forced = section.classList.contains("print-break-before");
+        // A section's own children are what flows; the section is not, because
+        // a process document is several pages long.
+        const kids = Array.from(section.children).filter(
+          (k) => (k as HTMLElement).getBoundingClientRect().height > 2
+        ) as HTMLElement[];
+        const units = kids.length > 0 ? kids : [section];
+        units.forEach((el, i) => {
+          const id = `blk${n++}`;
+          blocks.push({ id, height: el.getBoundingClientRect().height });
+          if (forced && i === 0) forcedBreakBefore.push(id);
+        });
+      }
+
+      const { breaks } = paginate(blocks, { forcedBreakBefore });
+      setBreakOffsets(breaks.map((b) => b.offset));
+      void base;
+    };
+
+    // After layout has settled — diagrams and charts size themselves late, and
+    // a height measured before they do is a break in the wrong place.
+    const id = window.setTimeout(measure, 400);
+    const observer = new ResizeObserver(() => window.setTimeout(measure, 0));
+    observer.observe(paper);
+    return () => {
+      window.clearTimeout(id);
+      observer.disconnect();
+    };
+  }, [density, processes, arrangement]);
+
   useEffect(() => {
     const scale = DENSITY_OPTIONS.find((option) => option.id === density)?.scale ?? 1;
     const root = document.documentElement;
@@ -229,13 +283,19 @@ export function ExportPreview({
             background: #fff;
             box-shadow: 0 2px 10px rgba(15, 23, 42, 0.14);
           }
-          /* Where the PDF is forced onto a new page, the preview says so
-             rather than leaving the reader to find out at print time. */
-          .print-page:not(:last-child)::after {
-            content: "Page break";
-            display: block;
-            margin: 22px -14mm 26px;
-            padding-top: 6px;
+          /* Where the PDF will break, the preview says so rather than leaving
+             the reader to find out at print time.
+
+             Positioned from a measurement, not from a class. It used to be
+             drawn by .print-page::after — the very class that forced the break
+             — so preview and PDF agreed only because both broke after every
+             section. Once sections flow, CSS decides breaks at paint time and
+             tells the DOM nothing, so the preview has to predict them: see
+             paginate() in lib/domain/report-pagination.ts. */
+          .print-break-marker {
+            position: absolute;
+            left: -14mm;
+            right: -14mm;
             border-top: 1px dashed #94a3b8;
             font-size: 10px;
             font-weight: 600;
@@ -243,13 +303,33 @@ export function ExportPreview({
             text-transform: uppercase;
             color: #94a3b8;
             text-align: center;
+            pointer-events: none;
           }
         }
 
         @media print {
           .no-print { display: none !important; }
-          .print-page { break-after: page; }
-          .print-page:last-child { break-after: auto; }
+
+          /* ---- The page rule, stated once ----------------------------------
+             A report is a document, not a slide deck. Every section used to
+             carry break-after: page, so a section of three lines took a whole
+             sheet and the next started fresh however much room was left — six
+             of thirteen pages under a third used, and about half the paper
+             blank. Sections now flow.
+
+             Two divisions still earn a page because they tell a reader where
+             they are: the cover, and the start of each process document.
+
+             What may not be split is the BLOCK, not the section. A process
+             document measures around four pages, and break-inside: avoid on an
+             element taller than the page cannot be honoured — the browser
+             ignores it and fragments wherever it lands, which is what cut the
+             process map through the middle of its step cards. Asking the
+             possible is the whole fix. */
+          .print-page { break-after: auto; }
+          .print-break-before { break-before: page; }
+          .print-keep { break-inside: avoid; }
+
           body { background: #fff !important; }
           .report-root { background: #fff; }
           /* On paper the sheet *is* the page — the printer supplies the
@@ -267,16 +347,22 @@ export function ExportPreview({
              over instead of breaking right after it. */
           h1, h2, h3, h4 { break-after: avoid; break-inside: avoid; }
 
+          /* A table continuing onto another page repeats its column headings.
+             The browser does this for a real thead by itself, which is why
+             nothing is built for it — but it only works if the markup has one,
+             so the report's tables must keep theirs. */
+          thead { display: table-header-group; }
+
           /* Table rows read as one thing and shouldn't be sliced by a page
              boundary — a row half on one page and half on the next is
              unreadable either side of the cut. */
           tr { break-inside: avoid; }
 
           /* Chrome's print engine doesn't fragment a flex container reliably
-             — a list of break-inside-avoid cards inside a flex column can
+             — a list of print-keep cards inside a flex column can
              jump to the next page as one clump even when several of them
              would still fit on the page they're on, wasting whatever room
-             was left. Block layout fragments the way break-inside-avoid on
+             was left. Block layout fragments the way print-keep on
              each child expects, so print falls back to it here and swaps
              the flex gap for margins between the same children. */
           .print-stack { display: block; }
@@ -367,7 +453,18 @@ export function ExportPreview({
         </div>
       )}
 
-      <main className="report-paper">
+      <main className="report-paper relative" ref={paperRef}>
+        {/* Drawn from the measurement, not from a class — see the effect above. */}
+        {breakOffsets.map((offset, i) => (
+          <div
+            key={`break-${i}`}
+            aria-hidden="true"
+            className="print-break-marker no-print absolute -left-[14mm] -right-[14mm] border-t border-dashed border-slate-400 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400"
+            style={{ top: offset }}
+          >
+            Page break
+          </div>
+        ))}
         {/* The pack's front and back matter, in the order this client arranged
             it. "index" is where the processes themselves go, so moving it
             moves the whole body of the pack rather than just its contents
@@ -462,7 +559,7 @@ function CoverPage({
   const previewed = processes.slice(0, previewCount);
 
   return (
-    <section className="print-page relative min-h-[182mm] overflow-hidden border border-slate-300">
+    <section className="print-page print-break-before relative min-h-[182mm] overflow-hidden border border-slate-300">
       <div className="pointer-events-none absolute inset-3 border border-slate-200" />
       <div className="relative flex h-full flex-col p-[6%]">
         <div className="flex items-center gap-2.5">
@@ -558,7 +655,7 @@ function BrandBanner({ eyebrow, children }: { eyebrow?: React.ReactNode; childre
  */
 function ClosingPage() {
   return (
-    <section className="print-page mt-10 break-inside-avoid">
+    <section className="print-page print-keep mt-6">
       <div
         className="rounded-xl px-6 py-10 text-center text-[var(--accent-ink)]"
         style={{ backgroundImage: "linear-gradient(120deg, var(--accent), var(--accent-banner-to))" }}
@@ -616,11 +713,11 @@ function ProcessReportSection({
     // gets a page of its own rather than sharing one with the next process's
     // content: two processes' banners stacked on one page reads as one
     // process bleeding into another, not as two separate documents.
-    <section className="print-page">
+    <section className="print-page print-break-before">
       {/* Banner and its document metadata are one title block — kept
           together so a page break can't land between them and strand the
           banner alone at the bottom of a page. */}
-      <div className="break-inside-avoid">
+      <div className="print-keep">
         <BrandBanner
           eyebrow={
             <>
@@ -759,7 +856,7 @@ function RaciAuthorityTable({
                          column so wrapped lines align under the sentence. */
                       <ul className="ml-3.5 list-outside list-disc space-y-1 marker:text-slate-500">
                         {row.ruleSentences.map((sentence, i) => (
-                          <li key={i} className="break-inside-avoid pl-0.5 leading-snug">
+                          <li key={i} className="print-keep pl-0.5 leading-snug">
                             {sentence}
                           </li>
                         ))}
@@ -842,7 +939,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
       <SubHeading>External Entities</SubHeading>
       <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
         {process.externalEntities.map((entity, i) => (
-          <li key={i} className="break-inside-avoid">
+          <li key={i} className="print-keep">
             <strong className="text-slate-900">{entity.name}</strong> &mdash; {entity.description}
           </li>
         ))}
@@ -880,7 +977,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
           // the box's border and its four sides of padding cost real
           // vertical space on every step, and a long process pays that
           // cost once per step.
-          <div key={step.id} className="mt-2.5 break-inside-avoid border-t border-slate-200 pt-2">
+          <div key={step.id} className="mt-2.5 print-keep border-t border-slate-200 pt-2">
             <div className="flex items-baseline justify-between gap-3">
               <span className="font-semibold text-slate-900">{step.label}</span>
               <span className="text-xs text-slate-500">
@@ -931,8 +1028,8 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
             key={cp.rowId}
             className={
               cp.flagged
-                ? "break-inside-avoid rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800"
-                : "break-inside-avoid text-slate-700"
+                ? "print-keep rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800"
+                : "print-keep text-slate-700"
             }
           >
             {cp.flagged && <strong>⚠ </strong>}
@@ -952,7 +1049,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
           blank page, and a torn-off box edge at the bottom of the
           page it came from. A table taller than a page still has
           to fragment; the tr rule keeps that from cutting a row. */}
-      <div className="break-inside-avoid overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="print-keep overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
             <tr>
@@ -1040,14 +1137,14 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
           out of room, which is what keeps the whole chain on a single page.
           Four columns, fixed rather than responsive: an A4 landscape page is
           narrower than the lg breakpoint, so a responsive count existed on
-          screen and never in the PDF. break-inside-avoid keeps a phase's title
+          screen and never in the PDF. print-keep keeps a phase's title
           with its own list rather than splitting it across two columns; a
           phase taller than the page still has to break somewhere, and the
-          per-activity break-inside-avoid is what stops that from cutting an
+          per-activity print-keep is what stops that from cutting an
           entry in half. */}
       <div className="columns-4 gap-x-5">
         {columns.map((column) => (
-          <div key={column.title} className="mb-3 break-inside-avoid">
+          <div key={column.title} className="mb-3 print-keep">
             <h3
               className="border-b-2 pb-1 text-[10px] font-bold uppercase tracking-wide"
               style={{ borderColor: column.color ?? "#cbd5e1", color: column.color ?? "#475569" }}
@@ -1056,7 +1153,7 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
             </h3>
             <ul className="print-stack mt-1.5 flex flex-col gap-1.5">
               {column.activities.map((activity) => (
-                <li key={activity.stepId} className="break-inside-avoid text-xs leading-tight">
+                <li key={activity.stepId} className="print-keep text-xs leading-tight">
                   <span className="font-semibold text-slate-900">{activity.label}</span>
                   <span className="mt-0.5 block text-[11px] text-slate-500">
                     {activity.ownerName ?? "No owner yet"}
@@ -1121,7 +1218,7 @@ function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
         {processes.map((process, i) => (
           <li
             key={process.id}
-            className="flex items-center gap-3 break-inside-avoid border-b border-slate-100 py-2.5 text-sm last:border-b-0"
+            className="flex items-center gap-3 print-keep border-b border-slate-100 py-2.5 text-sm last:border-b-0"
           >
             <span
               className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full text-[11px] font-bold text-white"
@@ -1173,7 +1270,7 @@ const DEFAULT_TONE = { chip: "bg-slate-100 text-slate-600", label: "text-slate-6
  */
 function RoleCard({ name, duties }: { name: string; duties: { key: string; label: string; tasks: string[] }[] }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 break-inside-avoid">
+    <div className="overflow-hidden rounded-xl border border-slate-200 print-keep">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3.5 py-2">
         <span className="text-sm font-bold text-slate-900">{name}</span>
         <span className="ml-auto flex flex-wrap gap-1.5">
@@ -1215,11 +1312,11 @@ function ScopeBox({ label, value }: { label: string; value: string }) {
 
 function BulletBox({ label, items }: { label: string; items: string[] }) {
   return (
-    <div className="break-inside-avoid rounded-lg border border-slate-200 px-3 py-2.5">
+    <div className="print-keep rounded-lg border border-slate-200 px-3 py-2.5">
       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
       <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-slate-700">
         {items.map((item, i) => (
-          <li key={i} className="break-inside-avoid">
+          <li key={i} className="print-keep">
             {item}
           </li>
         ))}

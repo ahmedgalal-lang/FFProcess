@@ -232,9 +232,23 @@ exported PDF's real page boundaries.
 
 - **SC-001**: Across an exported report, the mean proportion of each page's
   height that carries content rises from about 47% to **at least 70%**,
-  excluding the cover and the first page of each process document.
-- **SC-002**: **No page** other than those two deliberate kinds uses less than
-  **40%** of its height.
+  excluding pages that are short for a deliberate reason (see below).
+- **SC-002**: **No page** uses less than **40%** of its height, excluding those
+  same deliberate cases.
+
+**Which pages are excluded, and why.** Measuring the real output showed the
+first draft of these criteria named the wrong pages. Excluded are:
+
+1. **The cover**, which is its own page by design.
+2. **Any page that ends because the next thing starts a new one** — the page
+   before a process document begins. FR-002 requires each process document to
+   start a page, so the page before it stops wherever the previous process
+   ended. Penalising that would contradict FR-002.
+3. **The closing page, when the closing message genuinely does not fit the page
+   before it.** FR-012 permits exactly this, so it cannot also be a failure.
+
+The first draft excluded "the first page of each process document", which is
+backwards: that page is *full*. The short one is the page before it.
 - **SC-003**: The same content exports to **fewer pages** than it does today.
 - **SC-004**: **Zero** page breaks fall inside a step card, table row, list item
   or diagram, in any report.

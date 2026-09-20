@@ -15,6 +15,7 @@ import {
   PRINT_STEP_X_SPACING,
   WRAPPED_LANE_GUTTER,
 } from "@/lib/domain/process-layout";
+import { MAX_BLOCK_WITH_HEADING_PX } from "@/lib/domain/report-pagination";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import {
   TaskNode,
@@ -506,7 +507,21 @@ export function StaticProcessMapDiagram({
   // a cap, past which it falls back to shrinking one rendering to fit, which is
   // what this did for everything before. Completeness is never traded for
   // legibility: a shrunk map is worse, a map missing a row is wrong.
-  const MAX_DIAGRAM_HEIGHT = 1500;
+  // A printable page is PRINT_PAGE_HEIGHT_PX tall, and this box used to be
+  // allowed 1500 — 2.2 times that. `break-inside: avoid` cannot hold an element
+  // taller than the page, so the browser fragmented the map wherever it landed:
+  // step cards severed horizontally, a lane band resuming on the next sheet with
+  // no heading. That was the root cause of the sliced diagram, and no break rule
+  // could have fixed it.
+  //
+  // Capped here instead — and to a page *less its heading*, not a whole page:
+  // a block of exactly one page can never share one, so a full-page diagram
+  // stranded its own section heading alone on a sheet at 12% used.
+  //
+  // The map already wraps onto rows and scales to its box, so a shorter box
+  // yields a complete smaller drawing rather than a cropped one — completeness
+  // is never traded for legibility.
+  const MAX_DIAGRAM_HEIGHT = MAX_BLOCK_WITH_HEADING_PX;
   const diagramHeight = wrap.wrapped
     ? Math.max(320, Math.min(MAX_DIAGRAM_HEIGHT, wrap.height + 80))
     : Math.max(320, Math.min(640, layout.laneCount * LANE_HEIGHT + 80));

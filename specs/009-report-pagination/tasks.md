@@ -32,7 +32,7 @@ stylesheet in `app/reports/`, the diagram cap in the map component, tests in
 **Purpose**: Pin down the one number everything is measured against, and capture
 the baseline so improvement is measured rather than asserted.
 
-- [ ] T001 Create `lib/domain/report-pagination.ts` exporting `PRINT_PAGE_HEIGHT_PX = 688` (182mm at 96dpi: A4 landscape less the `@page` 14mm margins) with the derivation in a comment, plus the `AtomicBlock`, `PageBreak` and `Pagination` types from `data-model.md` Part 2
+- [X] T001 Create `lib/domain/report-pagination.ts` exporting `PRINT_PAGE_HEIGHT_PX = 688` (182mm at 96dpi: A4 landscape less the `@page` 14mm margins) with the derivation in a comment, plus the `AtomicBlock`, `PageBreak` and `Pagination` types from `data-model.md` Part 2
 - [ ] T002 Record today's numbers in `tests/e2e/report-print.spec.ts` as a named constant with a comment — 13 pages, 47% mean usage, six pages under a third — so every later assertion is against a measured baseline rather than a remembered one
 
 ---
@@ -42,10 +42,10 @@ the baseline so improvement is measured rather than asserted.
 **Purpose**: The packing rule and its tests. Every user story depends on it,
 and the preview cannot draw an honest marker without it.
 
-- [ ] T003 Write failing unit tests in `tests/unit/report-pagination.test.ts` for the packing rule in `data-model.md` Part 4: blocks fill a page until one does not fit; a block that does not fit moves whole; a forced break starts a page even with room left; `usage` reports the fraction of each page carrying content
-- [ ] T004 [P] Write failing unit tests in `tests/unit/report-pagination.test.ts` for degenerate input: zero, negative, `NaN` and infinite heights, an empty document, a single block, and a block several times a page. **It must never throw and never loop** — the wrapped process map hit exactly this hazard, where a zero divisor hung the test runner instead of failing it
-- [ ] T005 Implement `paginate(blocks, options)` in `lib/domain/report-pagination.ts` per `contracts/pagination.md` §2, clamping every height at the point of use so a bad measurement cannot produce an infinite page count
-- [ ] T006 Implement `oversized` reporting in `lib/domain/report-pagination.ts`: any block taller than `PRINT_PAGE_HEIGHT_PX` is named in the result rather than silently tolerated, because it is something no break rule can keep whole
+- [X] T003 Write failing unit tests in `tests/unit/report-pagination.test.ts` for the packing rule in `data-model.md` Part 4: blocks fill a page until one does not fit; a block that does not fit moves whole; a forced break starts a page even with room left; `usage` reports the fraction of each page carrying content
+- [X] T004 [P] Write failing unit tests in `tests/unit/report-pagination.test.ts` for degenerate input: zero, negative, `NaN` and infinite heights, an empty document, a single block, and a block several times a page. **It must never throw and never loop** — the wrapped process map hit exactly this hazard, where a zero divisor hung the test runner instead of failing it
+- [X] T005 Implement `paginate(blocks, options)` in `lib/domain/report-pagination.ts` per `contracts/pagination.md` §2, clamping every height at the point of use so a bad measurement cannot produce an infinite page count
+- [X] T006 Implement `oversized` reporting in `lib/domain/report-pagination.ts`: any block taller than `PRINT_PAGE_HEIGHT_PX` is named in the result rather than silently tolerated, because it is something no break rule can keep whole
 
 **Checkpoint**: the rule is testable, total and deterministic, with no UI attached.
 
@@ -59,15 +59,15 @@ and the preview cannot draw an honest marker without it.
 
 ### Tests (write first, must fail)
 
-- [ ] T007 [P] [US1] Write a failing e2e test in `tests/e2e/report-print.spec.ts` that generates a real PDF, rasterises each page and measures the fraction of its height carrying ink: assert mean usage **≥ 70%** and **no page below 40%**, excluding the cover and the first page of each process document (SC-001, SC-002)
-- [ ] T008 [P] [US1] Write a failing e2e test in `tests/e2e/report-print.spec.ts` asserting the same content exports to **fewer pages** than the recorded baseline (SC-003)
+- [X] T007 [P] [US1] Write a failing e2e test in `tests/e2e/report-print.spec.ts` that generates a real PDF, rasterises each page and measures the fraction of its height carrying ink: assert mean usage **≥ 70%** and **no page below 40%**, excluding the cover and the first page of each process document (SC-001, SC-002)
+- [X] T008 [P] [US1] Write a failing e2e test in `tests/e2e/report-print.spec.ts` asserting the same content exports to **fewer pages** than the recorded baseline (SC-003)
 
 ### Implementation
 
-- [ ] T009 [US1] Replace `.print-page { break-after: page }` in `app/reports/[workspaceId]/export-preview.tsx` with a rule that lets sections flow, keeping a forced break only for the cover and for each process document (FR-001, FR-002) — measured to move the report from 13 pages at 47% to 11 at 57.3% on its own
-- [ ] T010 [US1] Introduce one atomic-block class in `app/reports/[workspaceId]/export-preview.tsx`'s print stylesheet meaning "do not break inside this", and state the page rule once in that stylesheet (FR-018, research R8)
-- [ ] T011 [US1] Apply the atomic-block class in `app/reports/[workspaceId]/export-preview.tsx` at **block** granularity and remove the eighteen scattered `break-inside-avoid` class usages it replaces, so a process document flows while the cards, rows and entries inside it stay whole (FR-003, research R2)
-- [ ] T012 [US1] Remove `break-inside: avoid` from anything that can exceed a page in `app/reports/[workspaceId]/export-preview.tsx` — a 2902px process document cannot honour it, and the browser's response is to break it anywhere, which is the reported slicing
+- [X] T009 [US1] Replace `.print-page { break-after: page }` in `app/reports/[workspaceId]/export-preview.tsx` with a rule that lets sections flow, keeping a forced break only for the cover and for each process document (FR-001, FR-002) — measured to move the report from 13 pages at 47% to 11 at 57.3% on its own
+- [X] T010 [US1] Introduce one atomic-block class in `app/reports/[workspaceId]/export-preview.tsx`'s print stylesheet meaning "do not break inside this", and state the page rule once in that stylesheet (FR-018, research R8)
+- [X] T011 [US1] Apply the atomic-block class in `app/reports/[workspaceId]/export-preview.tsx` at **block** granularity and remove the eighteen scattered `break-inside-avoid` class usages it replaces, so a process document flows while the cards, rows and entries inside it stay whole (FR-003, research R2)
+- [X] T012 [US1] Remove `break-inside: avoid` from anything that can exceed a page in `app/reports/[workspaceId]/export-preview.tsx` — a 2902px process document cannot honour it, and the browser's response is to break it anywhere, which is the reported slicing
 
 **Checkpoint**: page usage measured against the target; the numbers decide, not the look.
 
@@ -81,15 +81,15 @@ and the preview cannot draw an honest marker without it.
 
 ### Tests (write first, must fail)
 
-- [ ] T013 [P] [US2] Write a failing e2e test in `tests/e2e/report-print.spec.ts` that compares every step card, table row, list item and diagram box against the page boundaries and asserts **zero** are straddled (SC-004)
-- [ ] T014 [P] [US2] Write a failing unit test in `tests/unit/report-pagination.test.ts` asserting `oversized` is empty for the heights a real report produces — anything in it will fragment whatever the break rules say
+- [X] T013 [P] [US2] Write a failing e2e test in `tests/e2e/report-print.spec.ts` that compares every step card, table row, list item and diagram box against the page boundaries and asserts **zero** are straddled (SC-004)
+- [X] T014 [P] [US2] Write a failing unit test in `tests/unit/report-pagination.test.ts` asserting `oversized` is empty for the heights a real report produces — anything in it will fragment whatever the break rules say
 
 ### Implementation
 
-- [ ] T015 [US2] Cap the report diagram at the printable page height in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram.tsx`, replacing `MAX_DIAGRAM_HEIGHT = 1500` with `PRINT_PAGE_HEIGHT_PX` from `lib/domain/report-pagination.ts` — 1500px against a 688px page is the root cause of the sliced diagram, and no break rule could have fixed it (FR-007, research R3)
-- [ ] T016 [US2] Confirm the capped diagram still draws every step in `static-process-map-diagram.tsx`: the map already wraps and scales, so a shorter box must produce a complete smaller drawing, never a cropped one — completeness is not traded for legibility
-- [ ] T017 [P] [US2] Verify the report's tables carry a real `<thead>` in `app/reports/[workspaceId]/export-preview.tsx` so the browser repeats headings on a continued table, and add one where missing (FR-008, research R5)
-- [ ] T018 [US2] Keep `h1..h4 { break-after: avoid }` in the restated stylesheet in `app/reports/[workspaceId]/export-preview.tsx`, so a heading is never the last thing on a page (FR-009)
+- [X] T015 [US2] Cap the report diagram at the printable page height in `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram.tsx`, replacing `MAX_DIAGRAM_HEIGHT = 1500` with `PRINT_PAGE_HEIGHT_PX` from `lib/domain/report-pagination.ts` — 1500px against a 688px page is the root cause of the sliced diagram, and no break rule could have fixed it (FR-007, research R3)
+- [X] T016 [US2] Confirm the capped diagram still draws every step in `static-process-map-diagram.tsx`: the map already wraps and scales, so a shorter box must produce a complete smaller drawing, never a cropped one — completeness is not traded for legibility
+- [X] T017 [P] [US2] Verify the report's tables carry a real `<thead>` in `app/reports/[workspaceId]/export-preview.tsx` so the browser repeats headings on a continued table, and add one where missing (FR-008, research R5)
+- [X] T018 [US2] Keep `h1..h4 { break-after: avoid }` in the restated stylesheet in `app/reports/[workspaceId]/export-preview.tsx`, so a heading is never the last thing on a page (FR-009)
 
 **Checkpoint**: a long process map prints complete on one page; nothing is straddled.
 
@@ -106,13 +106,13 @@ check that keeps every other claim in this feature honest.*
 
 ### Tests (write first, must fail)
 
-- [ ] T019 [P] [US4] Write a failing e2e test in `tests/e2e/report-print.spec.ts` that generates a PDF, reads its real page boundaries, and asserts every preview marker matches one and every boundary has a marker (SC-006, FR-013, FR-014)
+- [X] T019 [P] [US4] Write a failing e2e test in `tests/e2e/report-print.spec.ts` that generates a PDF, reads its real page boundaries, and asserts every preview marker matches one and every boundary has a marker (SC-006, FR-013, FR-014)
 
 ### Implementation
 
-- [ ] T020 [US4] Measure each atomic block's height in `app/reports/[workspaceId]/export-preview.tsx` and feed them to `paginate()`, replacing the `.print-page::after` marker that derived its position from the class that forces the break (research R4)
-- [ ] T021 [US4] Position the preview's "Page break" markers from `paginate()`'s output in `app/reports/[workspaceId]/export-preview.tsx`, including a marker inside an oversized block, so the preview never hides a fragmentation the PDF will show
-- [ ] T022 [US4] Keep the preview rendering at the printed page's real width and margins in `app/reports/[workspaceId]/export-preview.tsx`, so a measured height means the same on screen and on paper (FR-015)
+- [X] T020 [US4] Measure each atomic block's height in `app/reports/[workspaceId]/export-preview.tsx` and feed them to `paginate()`, replacing the `.print-page::after` marker that derived its position from the class that forces the break (research R4)
+- [X] T021 [US4] Position the preview's "Page break" markers from `paginate()`'s output in `app/reports/[workspaceId]/export-preview.tsx`, including a marker inside an oversized block, so the preview never hides a fragmentation the PDF will show
+- [X] T022 [US4] Keep the preview rendering at the printed page's real width and margins in `app/reports/[workspaceId]/export-preview.tsx`, so a measured height means the same on screen and on paper (FR-015)
 
 **Checkpoint**: preview and PDF break in the same places, proven against a real PDF.
 
@@ -126,21 +126,21 @@ check that keeps every other claim in this feature honest.*
 
 ### Tests (write first, must fail)
 
-- [ ] T023 [P] [US3] Write a failing e2e test in `tests/e2e/report-print.spec.ts` asserting the closing message shares a page with preceding content when that page has room, and takes its own page only when it does not (SC-005, FR-011, FR-012)
+- [X] T023 [P] [US3] Write a failing e2e test in `tests/e2e/report-print.spec.ts` asserting the closing message shares a page with preceding content when that page has room, and takes its own page only when it does not (SC-005, FR-011, FR-012)
 
 ### Implementation
 
-- [ ] T024 [US3] Make `ClosingPage` in `app/reports/[workspaceId]/export-preview.tsx` an ordinary flowing atomic block — drop its forced break and keep it whole — so at 136px it shares the last page instead of claiming one (research R7)
+- [X] T024 [US3] Make `ClosingPage` in `app/reports/[workspaceId]/export-preview.tsx` an ordinary flowing atomic block — drop its forced break and keep it whole — so at 136px it shares the last page instead of claiming one (research R7)
 
 ---
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T025 Write an e2e test in `tests/e2e/report-print.spec.ts` asserting every process, heading and table row present before the change is present after, once, in the same order (FR-017) — pagination that dropped a section would satisfy every usage target perfectly
+- [X] T025 Write an e2e test in `tests/e2e/report-print.spec.ts` asserting every process, heading and table row present before the change is present after, once, in the same order (FR-017) — pagination that dropped a section would satisfy every usage target perfectly
 - [ ] T026 [P] Write an e2e test in `tests/e2e/report-print.spec.ts` exercising several section selections and orders, including one with most sections off and one with everything on for several processes (FR-016, SC-008)
-- [ ] T027 Verify the suite by mutation: restore `break-after: page`, restore `MAX_DIAGRAM_HEIGHT = 1500`, and make `paginate()` ignore its forced breaks. Each must fail a named test. **A mutation that passes means the test reads the stylesheet rather than the PDF**, which is the exact failure that let this recur — rewrite it before the task is done
-- [ ] T028 Generate a before/after PDF into the scratchpad and record the real page count and mean usage in the completion report, so the improvement is a number rather than a claim
-- [ ] T029 Run `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm vitest run` and `pnpm exec playwright test`, and fix what they find
+- [X] T027 Verify the suite by mutation: restore `break-after: page`, restore `MAX_DIAGRAM_HEIGHT = 1500`, and make `paginate()` ignore its forced breaks. Each must fail a named test. **A mutation that passes means the test reads the stylesheet rather than the PDF**, which is the exact failure that let this recur — rewrite it before the task is done
+- [X] T028 Generate a before/after PDF into the scratchpad and record the real page count and mean usage in the completion report, so the improvement is a number rather than a claim
+- [X] T029 Run `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm vitest run` and `pnpm exec playwright test`, and fix what they find
 - [ ] T030 Read the exported PDF page by page and confirm it reads as a document: nothing stranded, nothing sliced, no heading orphaned at a page foot
 
 ---

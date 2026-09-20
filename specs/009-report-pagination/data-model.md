@@ -122,8 +122,14 @@ cannot disagree about it.
 
 - A page's **usage** is the fraction of `PRINT_PAGE_HEIGHT_PX` between the first
   and last ink on that page.
-- Two page kinds are **excluded**: the cover, and the first page of each process
-  document. Both are deliberately reserved, so counting them would penalise the
-  behaviour FR-002 requires.
+- Three cases are **excluded**, and the list was corrected against the real
+  output rather than reasoned about: the cover; **the page before a forced
+  break**, which stops early precisely because FR-002 makes the next process
+  document start a page; and the closing page when the closing message did not
+  fit the page before, which FR-012 explicitly allows.
+
+  The first version of this list said "the first page of each process document",
+  which is exactly backwards — that page is full. The short page is the one
+  before it.
 - Across the remaining pages: mean usage **≥ 70%** (SC-001), and no single page
   below **40%** (SC-002).
