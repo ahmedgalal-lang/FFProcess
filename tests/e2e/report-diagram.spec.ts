@@ -414,3 +414,66 @@ test("Export Report's process map fills the page width rather than leaving a ban
   expect(used).not.toBeNull();
   expect(used!).toBeGreaterThan(95);
 });
+
+/**
+ * A rail with more milestones than fit the page used to be dealt with by
+ * shrinking the whole drawing until it did. At 18 beads that reached about
+ * 0.43, which put the label text near 4px — fine on a screen you can zoom, and
+ * useless on the printed page this view exists to produce. It was reported
+ * simply as too small to read.
+ *
+ * It now folds onto more than one line and the beads stay full size. The two
+ * assertions that matter are that nothing was scaled down and that nothing
+ * ended up outside the page, because a wrap that overflows is no better than
+ * a shrink.
+ */
+test("Export Report's Helicopter View wraps a long rail instead of shrinking it", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/workspaces/workspace-acme/export");
+  const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
+  const count = await checkboxes.count();
+  for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
+  await page.getByRole("checkbox", { name: /RAIL100/ }).check();
+  await page.getByRole("button", { name: /Preview report/i }).click();
+  await page.waitForURL("**/reports/**");
+
+  const railsSection = page.locator("main > section").filter({ hasText: "Helicopter View" });
+  await expect(railsSection.locator(".break-inside-avoid").first()).toBeVisible();
+
+  const info = await page.evaluate(() => {
+    const heading = [...document.querySelectorAll("h2")].find((h) =>
+      /Helicopter View/i.test(h.textContent ?? "")
+    );
+    const section = heading!.closest("section")!;
+    const scaled = section.querySelector<HTMLElement>("div[style*='scale(']")!;
+    const frame = scaled.parentElement!.parentElement as HTMLElement;
+    const box = frame.getBoundingClientRect();
+
+    // A bead is the label block; its text is what has to stay readable.
+    const labels = [...section.querySelectorAll<HTMLElement>("div.line-clamp-2")];
+    const rects = labels.map((l) => l.getBoundingClientRect());
+    const fontSize = labels[0] ? parseFloat(getComputedStyle(labels[0]).fontSize) : 0;
+
+    return {
+      scale: Number(/scale\(([\d.]+)\)/.exec(scaled.style.transform)?.[1] ?? "1"),
+      beadCount: labels.length,
+      // Distinct vertical bands the beads sit in — more than one means it wrapped.
+      rows: new Set(rects.map((r) => Math.round(r.top / 20))).size,
+      renderedFontPx: fontSize,
+      overflowing: rects.filter((r) => r.left < box.left - 1 || r.right > box.right + 1).length,
+    };
+  });
+
+  // It wrapped rather than shrank.
+  expect(info.beadCount).toBeGreaterThan(9);
+  expect(info.rows, "a long rail folds onto more than one line").toBeGreaterThan(1);
+  expect(info.scale, "the drawing is not shrunk to fit").toBeGreaterThan(0.9);
+
+  // And the text is actually readable on paper.
+  expect(info.renderedFontPx * info.scale).toBeGreaterThanOrEqual(8);
+
+  // Nothing was pushed off the page by the wrap.
+  expect(info.overflowing, "bead labels outside the page").toBe(0);
+});

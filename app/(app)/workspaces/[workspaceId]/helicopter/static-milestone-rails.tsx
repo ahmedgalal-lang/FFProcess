@@ -1,4 +1,12 @@
-import { buildMilestoneRails, type Bead, type Rail, type RailProcess } from "@/lib/domain/milestone-rails";
+import {
+  buildMilestoneRails,
+  MIN_BEAD_GAP,
+  RAIL_SPACING,
+  WRAP_EDGE,
+  type Bead,
+  type Rail,
+  type RailProcess,
+} from "@/lib/domain/milestone-rails";
 
 const TRACK_Y = 34;
 const BEAD_SIZE = 13;
@@ -17,13 +25,26 @@ const PAGE_CONTENT_WIDTH_PX = (297 - 14 * 2) * (96 / 25.4);
 const BOX_BORDER_PX = 2;
 
 /**
+ * How far below the track a bead's label block reaches: the bead itself, its
+ * two lines of label, and the step number under them. The drop from one row of
+ * a wrapped rail to the next starts below this, so it never crosses the text.
+ */
+const LABEL_BLOCK_HEIGHT = 62;
+
+/**
  * A read-only rendering of the Milestone Rails for the Export Report — same
  * geometry as the interactive MilestoneRailsView, but with no PNG-export
  * button and no navigation link on a process's name, so it's safe to embed in
  * a preview/print page.
  */
 export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }) {
-  const layout = buildMilestoneRails(processes);
+  // The width the rails have to fit, less the px-6 they are drawn inside. A
+  // rail longer than this now folds onto another line rather than being
+  // shrunk: at 22 milestones the shrink reached about 0.43, which put the
+  // labels near 4px and made the view unreadable on the page it exists for.
+  const layout = buildMilestoneRails(processes, {
+    maxWidth: PAGE_CONTENT_WIDTH_PX - BOX_BORDER_PX - 48,
+  });
 
   // px-6 / py-5 on the drawing itself, counted here so the box the rails are
   // fitted into is the one actually drawn rather than the bare layout size.
@@ -81,6 +102,25 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
 }
 
 function StaticRailRow({ rail }: { rail: Rail }) {
+  // Where each line of a wrapped rail starts and ends, so the track is drawn
+  // only under the beads it actually carries — a full-width line under a row
+  // holding two beads reads as a rail that lost the rest of them.
+  const lines = Array.from({ length: rail.rows }, (_, row) => {
+    const xs = rail.beads.filter((b) => b.row === row).map((b) => b.x);
+    if (xs.length === 0) return { row, left: 0, right: rail.width, turn: null as null | number };
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    // The track runs a little past its outermost beads, and the turn leaves
+    // from the end the row finishes at — which alternates.
+    const finishesAt = row % 2 === 1 ? left : right;
+    return {
+      row,
+      left: Math.max(0, left - WRAP_EDGE / 2),
+      right: Math.min(rail.width, right + WRAP_EDGE / 2),
+      turn: row < rail.rows - 1 ? finishesAt : null,
+    };
+  });
+
   return (
     <div className="absolute" style={{ left: rail.offsetX, top: rail.y, width: rail.width, height: rail.height }}>
       <div className="flex items-baseline gap-2">
@@ -96,12 +136,66 @@ function StaticRailRow({ rail }: { rail: Rail }) {
         )}
       </div>
 
-      <div
-        className={`absolute left-0 right-0 border-t-2 ${
-          rail.branchFrom ? "border-dashed border-amber-300" : "border-slate-200"
-        }`}
-        style={{ top: TRACK_Y }}
-      />
+      {lines.map((line) => (
+        <div key={`line-${line.row}`}>
+          <div
+            className={`absolute border-t-2 ${
+              rail.branchFrom ? "border-dashed border-amber-300" : "border-slate-200"
+            }`}
+            style={{ left: line.left, width: line.right - line.left, top: TRACK_Y + line.row * RAIL_SPACING }}
+          />
+          {/* The turn. It drops straight down rather than looping out to the
+              side, because the side is where the label is: a bead's label is
+              centred on it and about a slot wide, so a loop wide enough to
+              read passes through the text of the very bead it leaves. A
+              serpentine row ends directly above where the next begins, so the
+              two are already in one column and a straight line joins them —
+              the same drop the wrapped process map uses for its own seam. */}
+          {line.turn !== null && (
+            <svg
+              aria-hidden="true"
+              className="pointer-events-none absolute overflow-visible"
+              style={{
+                left: line.turn - 5,
+                top: TRACK_Y + line.row * RAIL_SPACING + LABEL_BLOCK_HEIGHT,
+                width: 10,
+                height: RAIL_SPACING - LABEL_BLOCK_HEIGHT - 10,
+              }}
+            >
+              <line
+                x1={5}
+                y1={0}
+                x2={5}
+                y2={RAIL_SPACING - LABEL_BLOCK_HEIGHT - 16}
+                stroke="#0d9488"
+                strokeWidth={2}
+              />
+              <path
+                d={`M1,${RAIL_SPACING - LABEL_BLOCK_HEIGHT - 18} L5,${RAIL_SPACING - LABEL_BLOCK_HEIGHT - 10} L9,${RAIL_SPACING - LABEL_BLOCK_HEIGHT - 18} Z`}
+                fill="#0d9488"
+              />
+            </svg>
+          )}
+          {/* Which line this is, and which way it runs. A backward line reads
+              18, 17, 16 across the page, so it says so before you start it. */}
+          {rail.rows > 1 && (
+            <span
+              // On a white ground, so the drop arriving from the row above
+              // passes behind it and the text stays legible — the same thing
+              // an edge label on the process map does.
+              className="absolute bg-white px-1 font-mono text-[8.5px] font-bold tracking-wider text-teal-700"
+              style={{
+                left: line.row % 2 === 1 ? undefined : line.left,
+                right: line.row % 2 === 1 ? rail.width - line.right : undefined,
+                top: TRACK_Y + line.row * RAIL_SPACING - 15,
+              }}
+            >
+              ROW {line.row + 1} OF {rail.rows}
+              {line.row % 2 === 1 ? " \u2190 RIGHT TO LEFT" : ""}
+            </span>
+          )}
+        </div>
+      ))}
 
       {rail.isEmpty ? (
         <span className="absolute text-[10px] italic text-slate-500" style={{ left: 4, top: TRACK_Y + 7 }}>
@@ -122,7 +216,10 @@ function StaticBead({ bead }: { bead: Bead }) {
   const fill = bead.isMilestone ? "bg-white" : "bg-slate-100";
 
   return (
-    <div className="absolute w-[104px] -translate-x-1/2 text-center" style={{ left: bead.x, top: TRACK_Y - BEAD_SIZE / 2 }}>
+    <div
+      className="absolute -translate-x-1/2 text-center"
+      style={{ left: bead.x, top: TRACK_Y + bead.y - BEAD_SIZE / 2, width: MIN_BEAD_GAP - 4 }}
+    >
       <div
         className={`mx-auto border-2 ${ring} ${fill} ${bead.isDecision ? "rotate-45 rounded-[2px]" : "rounded-full"}`}
         style={{ width: BEAD_SIZE, height: BEAD_SIZE }}

@@ -352,3 +352,153 @@ describe("buildMilestoneRails — a rail with more beads than fit", () => {
     expect(rail!.width).toBe(RAIL_WIDTH);
   });
 });
+
+/**
+ * A rail with more beads than the page is wide used to be dealt with by
+ * shrinking the whole drawing until it fitted — which at 22 milestones meant
+ * a scale of about 0.43 and label text around 4px. Legible on a screen you can
+ * zoom; not legible on the printed page this view exists to produce.
+ *
+ * It now wraps instead, and the rows run serpentine: each begins directly
+ * under where the last ended, so the track stays one continuous line. The
+ * beads never shrink.
+ */
+describe("buildMilestoneRails — wrapping a rail too wide for the page", () => {
+  /** The printable width of an A4 landscape page, which is what the report has. */
+  const PAGE = 1015;
+
+  const long = process({
+    id: "p-long",
+    code: "TES100",
+    name: "End to end high-level",
+    stepCount: 22,
+    steps: Array.from({ length: 22 }, (_, i) =>
+      step({ id: `s${i + 1}`, number: i + 1, milestone: true, label: `Milestone ${i + 1}` })
+    ),
+  });
+
+  it("is left on one row when it already fits", () => {
+    const short = process({
+      id: "p-short",
+      code: "TES200",
+      stepCount: 10,
+      steps: [step({ id: "a", number: 1, milestone: true }), step({ id: "b", number: 10, milestone: true })],
+    });
+    const [rail] = buildMilestoneRails([short], { maxWidth: PAGE }).rails;
+    expect(rail!.rows).toBe(1);
+    expect(rail!.beads.every((b) => b.row === 0)).toBe(true);
+    expect(rail!.height).toBe(RAIL_SPACING);
+  });
+
+  it("wraps a long rail onto rows instead of running off the page", () => {
+    const [rail] = buildMilestoneRails([long], { maxWidth: PAGE }).rails;
+    expect(rail!.rows).toBeGreaterThan(1);
+    expect(rail!.beads).toHaveLength(22);
+    // Nothing is placed beyond the page it was given.
+    for (const bead of rail!.beads) {
+      expect(bead.x, `bead ${bead.number}`).toBeLessThanOrEqual(PAGE);
+      expect(bead.x).toBeGreaterThanOrEqual(0);
+    }
+    expect(rail!.width).toBeLessThanOrEqual(PAGE);
+  });
+
+  it("keeps every label clear of the page edges, which is what a centred label needs", () => {
+    const [rail] = buildMilestoneRails([long], { maxWidth: PAGE }).rails;
+    // A label is centred on its bead and about a slot wide, so a bead closer
+    // to an edge than half a slot has its text cut off.
+    const halfSlot = MIN_BEAD_GAP / 2;
+    for (const bead of rail!.beads) {
+      expect(bead.x, `bead ${bead.number} left edge`).toBeGreaterThanOrEqual(halfSlot);
+      expect(bead.x, `bead ${bead.number} right edge`).toBeLessThanOrEqual(PAGE - halfSlot);
+    }
+  });
+
+  it("never puts two beads closer than a label's width apart", () => {
+    const [rail] = buildMilestoneRails([long], { maxWidth: PAGE }).rails;
+    const rows = new Map<number, number[]>();
+    for (const bead of rail!.beads) rows.set(bead.row, [...(rows.get(bead.row) ?? []), bead.x]);
+    for (const [row, xs] of rows) {
+      const sorted = [...xs].sort((a, b) => a - b);
+      for (let i = 1; i < sorted.length; i++) {
+        expect(sorted[i]! - sorted[i - 1]!, `row ${row}`).toBeGreaterThanOrEqual(MIN_BEAD_GAP);
+      }
+    }
+  });
+
+  it("runs alternate rows backwards, so each begins under where the last ended", () => {
+    const [rail] = buildMilestoneRails([long], { maxWidth: PAGE }).rails;
+    const byRow = new Map<number, typeof rail.beads>();
+    for (const bead of rail!.beads) byRow.set(bead.row, [...(byRow.get(bead.row) ?? []), bead]);
+
+    // Row 0 ascends left to right; row 1 descends; row 2 ascends again.
+    expect(byRow.get(0)!.map((b) => b.x)).toEqual([...byRow.get(0)!.map((b) => b.x)].sort((a, b) => a - b));
+    expect(byRow.get(1)!.map((b) => b.x)).toEqual([...byRow.get(1)!.map((b) => b.x)].sort((a, b) => b - a));
+
+    // ...and the turn is a straight drop: the last bead of a row and the first
+    // of the next share a column.
+    for (let r = 0; r < rail!.rows - 1; r++) {
+      const ends = byRow.get(r)!.at(-1)!;
+      const begins = byRow.get(r + 1)![0]!;
+      expect(begins.x, `row ${r + 2} begins under where row ${r + 1} ended`).toBe(ends.x);
+    }
+  });
+
+  it("gives each row its own line, and the rail the height to hold them", () => {
+    const [rail] = buildMilestoneRails([long], { maxWidth: PAGE }).rails;
+    expect(rail!.height).toBe(rail!.rows * RAIL_SPACING);
+    for (const bead of rail!.beads) expect(bead.y).toBe(bead.row * RAIL_SPACING);
+  });
+
+  it("drops a branch from where the bead actually is, not from the rail's first line", () => {
+    const branch = process({
+      id: "p-branch",
+      code: "TES300",
+      stepCount: 3,
+      branchFrom: { processId: "p-long", stepId: "s15" },
+      steps: [step({ id: "b1", number: 1, milestone: true })],
+    });
+    const layout = buildMilestoneRails([long, branch], { maxWidth: PAGE });
+    const source = layout.rails.find((r) => r.processId === "p-long")!;
+    const origin = source.beads.find((b) => b.stepId === "s15")!;
+    const drop = layout.drops[0]!;
+
+    // Step 15 is on a later row, so the drop starts a row or more down the
+    // rail — starting it at the rail's top would draw a line through the
+    // rows in between.
+    expect(origin.row).toBeGreaterThan(0);
+    expect(drop.fromY).toBe(source.y + origin.y);
+    expect(drop.x).toBe(source.offsetX + origin.x);
+  });
+
+  it("stacks the next process below the whole wrapped rail, not on top of it", () => {
+    const second = process({
+      id: "p-second",
+      code: "TES400",
+      stepCount: 2,
+      steps: [step({ id: "x", number: 1, milestone: true })],
+    });
+    const layout = buildMilestoneRails([long, second], { maxWidth: PAGE });
+    const first = layout.rails.find((r) => r.processId === "p-long")!;
+    const next = layout.rails.find((r) => r.processId === "p-second")!;
+    expect(next.y).toBe(first.y + first.height);
+    expect(layout.height).toBe(first.height + next.height);
+  });
+
+  it("does not wrap at all when it is given no width to fit", () => {
+    // The interactive view scrolls and has no page to respect, so it keeps
+    // the proportional placement it always had.
+    const [rail] = buildMilestoneRails([long]).rails;
+    expect(rail!.rows).toBe(1);
+    expect(rail!.width).toBeGreaterThan(PAGE);
+  });
+
+  it("never asks for fewer than two beads a row, however little room it is given", () => {
+    for (const maxWidth of [0, 1, 50, -100, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const [rail] = buildMilestoneRails([long], { maxWidth }).rails;
+      const perRow = new Map<number, number>();
+      for (const bead of rail!.beads) perRow.set(bead.row, (perRow.get(bead.row) ?? 0) + 1);
+      expect(Math.max(...perRow.values()), `maxWidth ${maxWidth}`).toBeGreaterThanOrEqual(2);
+      expect(rail!.rows).toBeLessThanOrEqual(22);
+    }
+  });
+});
