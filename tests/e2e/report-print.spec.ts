@@ -120,7 +120,13 @@ async function measureDocument(page: import("@playwright/test").Page) {
       const kids = [...section.children].filter(
         (k) => (k as HTMLElement).getBoundingClientRect().height > 2
       ) as HTMLElement[];
-      const units = kids.length > 0 ? kids : [section];
+      // Descend into a wrapper that only holds atomic blocks — the wrapped
+      // process map is a column of one box per row-group.
+      const units = (kids.length > 0 ? kids : [section]).flatMap((kid) => {
+        if (kid.classList.contains("print-keep")) return [kid];
+        const inner = [...kid.querySelectorAll<HTMLElement>(":scope > .print-keep")];
+        return inner.length > 0 ? inner : [kid];
+      });
       units.forEach((el, i) => {
         blocks.push({
           id: `b${n++}`,

@@ -202,7 +202,15 @@ export function ExportPreview({
         const kids = Array.from(section.children).filter(
           (k) => (k as HTMLElement).getBoundingClientRect().height > 2
         ) as HTMLElement[];
-        const units = kids.length > 0 ? kids : [section];
+        // A child that is only a wrapper around atomic blocks is not itself a
+        // block: the wrapped process map is a column of one box per row-group,
+        // and measuring the column instead of the boxes made it taller than a
+        // page and every break after it wrong.
+        const units = (kids.length > 0 ? kids : [section]).flatMap((kid) => {
+          if (kid.classList.contains("print-keep")) return [kid];
+          const inner = Array.from(kid.querySelectorAll<HTMLElement>(":scope > .print-keep"));
+          return inner.length > 0 ? inner : [kid];
+        });
         units.forEach((el, i) => {
           const id = `blk${n++}`;
           blocks.push({ id, height: el.getBoundingClientRect().height });
@@ -301,7 +309,7 @@ export function ExportPreview({
             font-weight: 600;
             letter-spacing: 0.04em;
             text-transform: uppercase;
-            color: #94a3b8;
+            color: #64748b;
             text-align: center;
             pointer-events: none;
           }
@@ -459,7 +467,7 @@ export function ExportPreview({
           <div
             key={`break-${i}`}
             aria-hidden="true"
-            className="print-break-marker no-print absolute -left-[14mm] -right-[14mm] border-t border-dashed border-slate-400 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400"
+            className="print-break-marker no-print absolute -left-[14mm] -right-[14mm] border-t border-dashed border-slate-400 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500"
             style={{ top: offset }}
           >
             Page break
