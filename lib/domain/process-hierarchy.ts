@@ -91,3 +91,67 @@ export function wouldCreateBranchCycle(
 
   return false;
 }
+
+/** A process, as far as working out where it sits in the tree is concerned. */
+export type HierarchyNode = { id: string; parentProcessId: string | null };
+
+/**
+ * Every process in the order the list should draw them: a parent, then its
+ * children, then their children, to whatever depth the data actually goes.
+ *
+ * The list used to build this inline as a two-level tree — the top-level
+ * processes, each followed by its direct children, plus any child whose
+ * parent was missing entirely. A process nested one level deeper than that
+ * was in none of those three buckets and was silently dropped: it existed,
+ * it opened fine by URL, and searching found it, because search shows every
+ * match flat and skips the grouping. It simply was not on the list. Nothing
+ * stops a consultant nesting that deep, either — the parent picker offers
+ * every process in the workspace, including ones that already have a parent.
+ *
+ * So this returns every process exactly once, whatever the shape of the data:
+ * that is the property worth having, and the reason this is a function with
+ * tests rather than three lines in a page component.
+ *
+ * `depth` is how far to indent a row. A process whose parent is not in the
+ * list at all — deleted, or filtered out — is a root rather than a casualty.
+ */
+export function orderProcessTree<T extends HierarchyNode>(
+  processes: T[]
+): { process: T; depth: number }[] {
+  const byParent = new Map<string | null, T[]>();
+  const present = new Set(processes.map((p) => p.id));
+
+  for (const process of processes) {
+    // A parent that is not here cannot be nested under, so the child is a root.
+    const key =
+      process.parentProcessId && present.has(process.parentProcessId)
+        ? process.parentProcessId
+        : null;
+    byParent.set(key, [...(byParent.get(key) ?? []), process]);
+  }
+
+  const out: { process: T; depth: number }[] = [];
+  const placed = new Set<string>();
+
+  const walk = (parentId: string | null, depth: number) => {
+    for (const process of byParent.get(parentId) ?? []) {
+      // Cycles are guarded at write time, but a page that hangs is a worse
+      // failure than one that draws a cycle oddly — so each process is placed
+      // at most once regardless of what the data claims.
+      if (placed.has(process.id)) continue;
+      placed.add(process.id);
+      out.push({ process, depth });
+      walk(process.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+
+  // Anything a cycle kept out of the walk still belongs on the list.
+  for (const process of processes) {
+    if (placed.has(process.id)) continue;
+    placed.add(process.id);
+    out.push({ process, depth: 0 });
+  }
+
+  return out;
+}

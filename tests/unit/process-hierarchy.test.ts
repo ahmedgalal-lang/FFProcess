@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   generateProcessCode,
   isCodeAvailable,
+  orderProcessTree,
   wouldCreateBranchCycle,
   wouldCreateCycle,
 } from "@/lib/domain/process-hierarchy";
@@ -127,5 +128,66 @@ describe("wouldCreateBranchCycle", () => {
   it("terminates on a pre-existing cycle in the data rather than looping forever", () => {
     const branchSourceOf = new Map<string, string | null>([["x", "y"], ["y", "x"]]);
     expect(wouldCreateBranchCycle("z", "x", branchSourceOf)).toBe(true);
+  });
+});
+
+describe("orderProcessTree", () => {
+  const p = (id: string, parentProcessId: string | null = null) => ({ id, parentProcessId });
+
+  it("lists a top-level process followed by its children", () => {
+    const rows = orderProcessTree([p("child", "parent"), p("parent")]);
+    expect(rows.map((r) => r.process.id)).toEqual(["parent", "child"]);
+    expect(rows.map((r) => r.depth)).toEqual([0, 1]);
+  });
+
+  it("lists a process nested deeper than one level", () => {
+    // The reported bug: a sub-process of a sub-process was built as a
+    // two-level tree — top-level processes, each followed by its direct
+    // children — so a grandchild was in none of the buckets and silently
+    // vanished from the list. It could still be found by searching, because
+    // search skips the grouping and shows every match flat, which is exactly
+    // how it was noticed: "it's not displayed, I have to search for it."
+    const rows = orderProcessTree([p("grandchild", "child"), p("child", "parent"), p("parent")]);
+    expect(rows.map((r) => r.process.id)).toEqual(["parent", "child", "grandchild"]);
+    expect(rows.map((r) => r.depth)).toEqual([0, 1, 2]);
+  });
+
+  it("loses nothing, however deep or however it was ordered coming in", () => {
+    const deep = [
+      p("e", "d"), p("c", "b"), p("a"), p("d", "c"), p("b", "a"),
+      p("other"), p("other-child", "other"),
+    ];
+    const rows = orderProcessTree(deep);
+    expect(rows).toHaveLength(deep.length);
+    expect(new Set(rows.map((r) => r.process.id)).size).toBe(deep.length);
+  });
+
+  it("lists a process whose parent is not in the list, in its own place among the roots", () => {
+    // A child whose parent was deleted, or filtered out by a category — it
+    // has nowhere to nest, so it stands on its own rather than disappearing.
+    // Its position matters too: the list is ordered by code, so an orphan
+    // belongs where its code puts it, not exiled to the bottom of the page
+    // where a reader scanning alphabetically would never look for it.
+    const rows = orderProcessTree([p("orphan", "missing"), p("top"), p("kid", "top")]);
+    expect(rows.map((r) => r.process.id)).toEqual(["orphan", "top", "kid"]);
+    expect(rows.map((r) => r.depth)).toEqual([0, 0, 1]);
+  });
+
+  it("puts a parent before its children even when the input is reversed", () => {
+    const rows = orderProcessTree([p("c", "b"), p("b", "a"), p("a")]);
+    expect(rows.map((r) => r.process.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("terminates and loses nothing on a cycle in the data", () => {
+    // Cycles are guarded at write time, but a list that hangs the page is a
+    // worse failure than one that draws a cycle oddly.
+    const rows = orderProcessTree([p("x", "y"), p("y", "x"), p("free")]);
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((r) => r.process.id)).size).toBe(3);
+  });
+
+  it("keeps the order it was given among siblings", () => {
+    const rows = orderProcessTree([p("top"), p("b", "top"), p("a", "top")]);
+    expect(rows.map((r) => r.process.id)).toEqual(["top", "b", "a"]);
   });
 });

@@ -6,6 +6,7 @@ import { GenerateTemplateForm } from "./template-form";
 import { ImportPanel } from "./import-panel";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { hasSufficientAccess } from "@/lib/domain/access-control";
+import { orderProcessTree } from "@/lib/domain/process-hierarchy";
 
 export default async function ProcessesPage(props: PageProps<"/workspaces/[workspaceId]/processes">) {
   const { workspaceId } = await props.params;
@@ -60,15 +61,19 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
     steps: proc.steps.map((step) => ({ id: step.id, label: step.label })),
   }));
 
-  // Group as a simple two-level tree: top-level processes, each followed by its children.
-  // Search results are shown flat (by code) instead — a match's parent may not itself match.
-  const topLevel = processes.filter((p) => !p.parentProcessId);
-  const childrenOf = (id: string) => processes.filter((p) => p.parentProcessId === id);
-  const ordered = topLevel.flatMap((p) => [p, ...childrenOf(p.id)]);
-  const orphanChildren = processes.filter(
-    (p) => p.parentProcessId && !processes.some((parent) => parent.id === p.parentProcessId)
-  );
-  const rows = q ? processes : [...ordered, ...orphanChildren];
+  // Group as a tree: a parent, then its children, to whatever depth the data
+  // goes. This was built inline as a *two-level* tree — top-level processes,
+  // each followed by its direct children, plus any child whose parent was
+  // missing — and a process nested one level deeper than that was in none of
+  // those buckets and silently vanished from the list. It still opened by URL
+  // and search still found it, because search shows matches flat and skips
+  // the grouping entirely, which is exactly how it was reported: "it's not
+  // displayed, I have to search for it."
+  //
+  // Search results stay flat (by code) — a match's parent may not itself match.
+  const rows = q
+    ? processes.map((process) => ({ process, depth: 0 }))
+    : orderProcessTree(processes);
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -130,10 +135,17 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
+            {rows.map(({ process: p, depth }) => (
               <tr key={p.id} className="border-t border-slate-100">
                 <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">
-                  {p.parentProcessId ? <span className="mr-1 text-slate-300">↳</span> : null}
+                  {/* Indented by how deep it actually sits, so a sub-process of
+                      a sub-process reads as one rather than as a sibling of
+                      its own parent. */}
+                  {depth > 0 ? (
+                    <span className="mr-1 text-slate-300" style={{ paddingLeft: (depth - 1) * 12 }}>
+                      ↳
+                    </span>
+                  ) : null}
                   {p.code}
                 </td>
                 <td className="px-4 py-2 font-medium text-slate-900">
