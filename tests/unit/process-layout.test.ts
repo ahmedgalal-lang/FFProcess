@@ -5,6 +5,7 @@ import {
   isSeamConnection,
   MIN_ROW_CAPACITY,
   PRINT_LANE_HEIGHT,
+  PRINT_NODE_HALF_SIZE,
   PRINT_STEP_X_SPACING,
   WRAPPED_ROW_GAP,
   shortRoleName,
@@ -500,5 +501,144 @@ describe("shortRoleName", () => {
   it("tolerates whitespace and an empty name", () => {
     expect(shortRoleName("   SECTOR OWNER  ")).toBe("SECTOR OWNER");
     expect(shortRoleName("")).toBe("");
+  });
+});
+
+describe("wrapProcessMap — bands:false (report print, dense rows)", () => {
+  const opts = (boxWidth: number, bands?: boolean) => ({
+    boxWidth,
+    laneLabel: (id: string | null) => id ?? "Unassigned",
+    ...(bands === undefined ? {} : { bands }),
+  });
+  const step = (id: string, role: string | null, x: number) => ({
+    id,
+    assignedRoleId: role,
+    swimlaneRoleId: null,
+    positionX: x,
+    positionY: 0,
+  });
+
+  it("omitting bands reproduces today's per-role row height exactly", () => {
+    // Same fixture as "gives a row the height of the lanes it actually
+    // carries" above, proving the default (bands omitted) is identical to
+    // bands:true — which is what keeps the PPTX export, the only other
+    // caller, untouched by this feature without it having to opt in.
+    const steps = [
+      ...["a", "b", "c", "d", "e"].map((id, i) => step(id, "r1", i * 100)),
+      step("f", "r1", 500),
+      step("g", "r2", 600),
+    ];
+    const withOption = wrapProcessMap(steps, opts(1400, true));
+    const withoutOption = wrapProcessMap(steps, opts(1400));
+    expect(withoutOption.rows.map((r) => r.height)).toEqual([LANE_HEIGHT, LANE_HEIGHT * 2]);
+    expect(withoutOption).toEqual(withOption);
+  });
+
+  it("gives a bandless row the height of its tallest card, regardless of role count", () => {
+    // Five roles in one row must be no taller than one role in one row, as
+    // long as neither row's cards are taller than the other's.
+    const oneRole = [...["a", "b", "c", "d", "e"].map((id, i) => step(id, "r1", i * 100))];
+    const fiveRoles = ["r1", "r2", "r3", "r4", "r5"].map((r, i) => step(r + "-step", r, i * 100));
+
+    const a = wrapProcessMap(oneRole, opts(1400, false));
+    const b = wrapProcessMap(fiveRoles, opts(1400, false));
+    expect(a.rows[0]!.height).toBe(b.rows[0]!.height);
+    // And it is not the five-lane height bands:true would have given it.
+    expect(b.rows[0]!.height).toBeLessThan(LANE_HEIGHT * 5);
+  });
+
+  it("centres every step in a bandless row on the row's own centre, not a lane offset", () => {
+    // laneHeight is passed but deliberately different from the bandless row's
+    // own computed height (tallest card + gap), so the two arithmetics cannot
+    // coincidentally agree the way row.y + laneH/2 and row.y + height/2 would
+    // if laneIndex happened to be 0 for every step regardless of which
+    // formula is used — the actual bug this test exists to catch.
+    const steps = ["r1", "r2", "r3"].map((r, i) => step(r + "-step", r, i * 100));
+    const layout = wrapProcessMap(steps, {
+      boxWidth: 1400,
+      laneLabel: (id) => id ?? "Unassigned",
+      laneHeight: 400,
+      bands: false,
+    });
+    const row = layout.rows[0]!;
+    const ys = new Set(row.steps.map((s) => s.y));
+    expect(ys.size).toBe(1);
+    expect([...ys][0]).toBe(row.y + row.height / 2);
+    // And that centre is nowhere near the 400px laneHeight-derived offset a
+    // banded row would have used.
+    expect([...ys][0]).not.toBe(row.y + 400 / 2);
+  });
+
+  it("still reports a row's lanes even when bands are dropped", () => {
+    // The report's render branch is what decides not to draw them; the
+    // layout function keeps returning what a row touches either way.
+    const steps = ["r1", "r2"].map((r, i) => step(r + "-step", r, i * 100));
+    const layout = wrapProcessMap(steps, opts(1400, false));
+    expect(layout.rows[0]!.lanes.map((l) => l.roleId)).toEqual(["r1", "r2"]);
+  });
+
+  it("widens the column so a bandless row's widest card clears its neighbour", () => {
+    // With lane bands, neighbouring steps are usually at different heights, so
+    // a decision (176px wide) overlapping a 150px column went unnoticed.
+    // Collapse the lanes and that overlap means no clear strip beside the
+    // card, which sends the connector router out of the card's bottom and
+    // around — a straight run of six steps drawn as a row of detours, and the
+    // reason the drawing looked right on some processes and wrong on others.
+    const withDecision = [
+      { ...step("a", "r1", 0), kind: "decision" as const },
+      step("b", "r1", 100),
+      step("c", "r1", 200),
+    ];
+    const allTasks = ["a", "b", "c"].map((id, i) => step(id, "r1", i * 100));
+
+    const dense = wrapProcessMap(allTasks, {
+      boxWidth: 1400,
+      laneLabel: () => "",
+      stepSpacing: PRINT_STEP_X_SPACING,
+      bands: false,
+    });
+    const wide = wrapProcessMap(withDecision, {
+      boxWidth: 1400,
+      laneLabel: () => "",
+      stepSpacing: PRINT_STEP_X_SPACING,
+      bands: false,
+    });
+
+    const gapOf = (layout: ReturnType<typeof wrapProcessMap>) => {
+      const [first, second] = layout.rows[0]!.steps;
+      return second!.x - first!.x;
+    };
+
+    // A process of tasks alone keeps the tight column it always had.
+    expect(gapOf(dense)).toBe(PRINT_STEP_X_SPACING);
+    // One containing a decision gets a column wide enough for it.
+    expect(gapOf(wide)).toBeGreaterThanOrEqual(PRINT_NODE_HALF_SIZE.decision.x * 2);
+  });
+
+  it("does not widen the column when bands are kept", () => {
+    // The slide deck still draws lane bands, so its geometry must not move.
+    const withDecision = [
+      { ...step("a", "r1", 0), kind: "decision" as const },
+      step("b", "r1", 100),
+    ];
+    const layout = wrapProcessMap(withDecision, {
+      boxWidth: 1400,
+      laneLabel: () => "",
+      stepSpacing: PRINT_STEP_X_SPACING,
+      bands: true,
+    });
+    const [first, second] = layout.rows[0]!.steps;
+    expect(second!.x - first!.x).toBe(PRINT_STEP_X_SPACING);
+  });
+
+  it("leaves capacity, column and serpentine direction unaffected by bands", () => {
+    const steps = Array.from({ length: 12 }, (_, i) => step(`s${i + 1}`, "r1", i * 100));
+    const banded = wrapProcessMap(steps, opts(1400, true));
+    const bandless = wrapProcessMap(steps, opts(1400, false));
+    expect(bandless.capacity).toBe(banded.capacity);
+    expect(bandless.rows.map((r) => r.direction)).toEqual(banded.rows.map((r) => r.direction));
+    expect(bandless.rows.map((r) => r.steps.map((s) => s.column))).toEqual(
+      banded.rows.map((r) => r.steps.map((s) => s.column))
+    );
   });
 });

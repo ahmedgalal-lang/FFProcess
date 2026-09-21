@@ -110,7 +110,14 @@ export async function makeLongProcess(): Promise<{ id: string; code: string; ste
     }
 
     // A straight chain, plus one labelled branch that skips ahead far enough to
-    // land on a different row whatever the capacity turns out to be.
+    // land on a different row whatever the capacity turns out to be — and by
+    // more than one row, which is the part that matters. A connection landing
+    // in the very next row at the same column is a *seam*: the serpentine
+    // layout puts those two steps directly above one another, so it is drawn
+    // as a short vertical drop rather than broken into a marked pair. Step 7
+    // to step 14 was exactly that at one capacity and not at another, so the
+    // fixture silently stopped exercising cross-row markers when the column
+    // spacing changed. Three rows ahead can never be a seam.
     for (let i = 0; i < STEPS.length - 1; i++) {
       await c.query(
         `INSERT INTO step_connections (id, "processId", "fromStepId", "toStepId", label)
@@ -130,7 +137,7 @@ export async function makeLongProcess(): Promise<{ id: string; code: string; ste
         `${LONG_PROCESS_ID}-conn-branch`,
         LONG_PROCESS_ID,
         `${LONG_PROCESS_ID}-step-7`,
-        `${LONG_PROCESS_ID}-step-14`,
+        `${LONG_PROCESS_ID}-step-20`,
       ]
     );
   });

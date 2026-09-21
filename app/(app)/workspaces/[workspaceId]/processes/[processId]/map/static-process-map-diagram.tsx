@@ -86,6 +86,25 @@ const NODE_HEIGHT: Record<string, number> = {
 /** The printable width of an A4 landscape report page, which is what this is drawn into. */
 const PAGE_CONTENT_WIDTH_PX = (297 - 14 * 2) * (96 / 25.4);
 
+/**
+ * Whether the printed map draws one lane band per role a row's steps use.
+ *
+ * A single source for the choice `wrapProcessMap` is called with and the
+ * render branch that decides whether to build lane nodes from what it
+ * returns — the two must agree, since a `false` here with lane rendering left
+ * on would draw bands with nothing under them, and the reverse would silently
+ * drop bands the layout still budgeted room for.
+ *
+ * The report drops them: a row of six steps across five roles was drawn five
+ * lanes tall and never more than one card tall in any column, which cost the
+ * map four pages of mostly blank paper. Every card prints its own role name
+ * beneath its label, so a reader still has the answer, on the card rather
+ * than in a band behind it. The interactive canvas does not call
+ * wrapProcessMap at all, and the PPTX deck leaves the option unset, so both
+ * keep their bands.
+ */
+const BANDS_DRAWN = false;
+
 type StepT = {
   id: string;
   type: "START" | "TASK" | "DECISION" | "END";
@@ -193,6 +212,7 @@ export function StaticProcessMapDiagram({
           swimlaneRoleId: s.swimlaneRole?.id ?? null,
           positionX: s.positionX,
           positionY: s.positionY,
+          kind: nodeKindFor(s.type),
         })),
         {
           boxWidth: BOX_WIDTH,
@@ -202,6 +222,15 @@ export function StaticProcessMapDiagram({
           // has to be scaled at all.
           stepSpacing: PRINT_STEP_X_SPACING,
           laneHeight: PRINT_LANE_HEIGHT,
+          // The report's defect was a row of steps across several roles being
+          // drawn one lane band per role — a six-step, five-role row five
+          // lanes tall and never more than one card tall in any column. The
+          // printed map draws a row as a single band instead; every card
+          // already prints its own role name beneath its label, so nothing
+          // a reader needs is lost. The interactive canvas does not call
+          // wrapProcessMap at all, and the PPTX export omits this option, so
+          // both keep today's lane bands untouched.
+          bands: BANDS_DRAWN,
         }
       ),
     [steps, laneLabel, BOX_WIDTH]
@@ -222,11 +251,15 @@ export function StaticProcessMapDiagram({
       id === undefined ? 0 : steps.findIndex((s) => s.id === id) + 1;
 
     if (wrap.wrapped) {
-      // Each row carries its own lanes, labelled, so a reader never has to
-      // look back to an earlier row to know whose lane a step is in — on paper
-      // they cannot scroll.
+      // Each row's own lane bands were drawn here so a reader never had to
+      // look back to an earlier row to know whose lane a step was in — on
+      // paper they cannot scroll. bands:false drops them: a row is one band
+      // instead of one per role, which is the whole fix for the report's
+      // page-count defect, and every card already prints its own role name
+      // beneath its label, so a reader still has an answer, just on the card
+      // rather than in a band behind it.
       const rowLaneNodes: Node[] = wrap.rows.flatMap((row) =>
-        row.lanes.map((lane, i) => ({
+        (BANDS_DRAWN ? row.lanes : []).map((lane, i) => ({
           id: `lane-${row.index}-${lane.roleId ?? "unassigned"}`,
           type: "lane",
           // Shifted right by the gutter: the lane name used to be drawn at the

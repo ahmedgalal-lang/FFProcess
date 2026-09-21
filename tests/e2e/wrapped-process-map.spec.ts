@@ -9,7 +9,7 @@ import {
   LONG_PROCESS_ID,
   SHORT_PROCESS_ID,
 } from "../fixtures/long-process";
-import { makeWideProcess, removeWideProcess } from "../fixtures/wide-process";
+import { makeWideProcess, removeWideProcess, WIDE_PROCESS_ID } from "../fixtures/wide-process";
 
 /**
  * A long process map wraps onto several rows instead of being squeezed into
@@ -91,11 +91,21 @@ async function mapInfo(page: import("@playwright/test").Page, processIds: string
       }),
       // Lane bands carry their row in their id, so a step's row is the row of
       // the band its centre falls inside — a lane change within one row looks
-      // exactly like a row change if you only compare y.
+      // exactly like a row change if you only compare y. Kept for a process
+      // whose map still draws them (the interactive canvas, the PPTX deck);
+      // empty on the report's wrapped map, which no longer draws lane bands
+      // at all — rowLabelBoxes below is the row-detector that works either way.
       laneBoxes: lanes.map((n) => {
         const r = n.getBoundingClientRect();
         return { row: Number(id(n).split("-")[1]), top: r.top, bottom: r.bottom };
       }),
+      // Every row draws exactly one label, regardless of whether it also
+      // draws lane bands, so a step's row is the row of the nearest label at
+      // or above its own centre — the row-detector these tests use once lane
+      // bands can no longer be relied on to exist.
+      rowLabelBoxes: all
+        .filter((n) => id(n).startsWith("rowlabel-"))
+        .map((n) => ({ row: Number(id(n).split("-")[1]), top: n.getBoundingClientRect().top })),
       edgeCount: flow.querySelectorAll(".react-flow__edge").length,
       // The seam is drawn inside a canvas when both rows share one, and
       // between the canvases when they do not — a wrapped map is one box per
@@ -127,9 +137,10 @@ test("a long process wraps onto rows and stays readable", async ({ page }) => {
   expect(new Set(map.stepLabels).size).toBe(22);
   expect(map.outside).toBe(0);
 
-  // More than one row: lane ids carry their row, so two rows means two prefixes.
-  const rows = new Set(map.laneIds.map((id) => id.split("-")[1]));
-  expect(rows.size).toBeGreaterThan(1);
+  // More than one row. The report no longer draws lane bands at all, so the
+  // row count comes from the row labels — always exactly one per row — rather
+  // than from lane ids, which used to double as a row-detector.
+  expect(map.rowLabels.length).toBeGreaterThan(1);
 
   // The point of the exercise. One row of full-size cards scaled this to 0.39;
   // anything near that is the bug this feature exists to fix.
@@ -173,27 +184,28 @@ test("a short process does not wrap and is left as it was", async ({ page }) => 
   expect(map.markerText).toEqual([]);
 });
 
-test("every row carries its own labelled lanes", async ({ page }) => {
+test("every step still says which role it belongs to, without a lane to say it instead", async ({ page }) => {
+  // Superseded by dropping lane bands from the report (this feature): a row
+  // no longer reserves a band per role, so the thing this test used to check
+  // — "a row only gets the lanes it needs" — no longer applies, there being
+  // no lanes at all. What must still be true is the reason that trade was
+  // judged safe: every step's role stays legible on its own card.
   await signIn(page);
   const map = (await mapInfo(page, [LONG_PROCESS_ID]))!;
 
-  const byRow = new Map<string, string[]>();
-  map.laneIds.forEach((id, i) => {
-    const row = id.split("-")[1]!;
-    byRow.set(row, [...(byRow.get(row) ?? []), map.laneLabels[i]!]);
-  });
+  expect(map.laneIds).toEqual([]);
+  expect(map.stepCount).toBeGreaterThan(1);
 
-  expect(byRow.size).toBeGreaterThan(1);
-  for (const [row, labels] of byRow) {
-    expect(labels.length, `row ${row} has no lanes`).toBeGreaterThan(0);
-    expect(labels.every((l) => l.length > 0), `row ${row} has an unlabelled lane`).toBe(true);
+  // At least three distinct roles are readable straight off the cards — this
+  // fixture's whole point (three roles plus a roleless step) is preserved by
+  // reading it off the card rather than off a lane it no longer has.
+  const ROLE_NAMES = ["AP Clerk", "Finance Manager", "Procurement Lead"];
+  for (const role of ROLE_NAMES) {
+    expect(
+      map.stepLabels.some((t) => t.toUpperCase().includes(role.toUpperCase())),
+      `no card carries the role "${role}"`
+    ).toBe(true);
   }
-
-  // A row must not reserve space for a lane it has no steps in: with four
-  // distinct lanes across the process, no row should carry all four.
-  const distinct = new Set(map.laneLabels);
-  expect(distinct.size).toBeGreaterThanOrEqual(3);
-  expect(Math.min(...[...byRow.values()].map((l) => l.length))).toBeLessThan(distinct.size);
 });
 
 test("a connection crossing a row is marked at both ends, keeping its label", async ({ page }) => {
@@ -289,8 +301,15 @@ test("rows run serpentine, so each begins under where the last ended", async ({ 
   await signIn(page);
   const map = (await mapInfo(page, [LONG_PROCESS_ID]))!;
 
-  const rowOf = (cy: number) =>
-    map.laneBoxes.find((b) => cy >= b.top && cy <= b.bottom)?.row ?? -1;
+  // Every row draws exactly one label, above its own steps, whether or not it
+  // also draws lane bands — so a step's row is whichever row label sits
+  // nearest above it. This used to read lane bands instead; the report no
+  // longer draws any.
+  const rowOf = (cy: number) => {
+    const above = map.rowLabelBoxes.filter((b) => b.top <= cy + 40);
+    if (above.length === 0) return -1;
+    return above.reduce((best, b) => (b.top > best.top ? b : best)).row;
+  };
 
   // Steps in the order the process runs, which is the order they were seeded.
   const ordered = map.stepBoxes
@@ -346,10 +365,18 @@ test("the seam between rows is drawn, not left to a pair of pills", async ({ pag
   expect(continues.length, "only the un-drawable crossing still needs a marker").toBe(1);
 });
 
-test("every row's furniture is drawn in that row's own box", async ({ page }) => {
+test("every row's rule is drawn in that row's own box, not a neighbour's", async ({ page }) => {
   // The six-role process, not the three-role one: rows that use different
   // numbers of lanes are different heights, which is what makes one row's
   // vertical range reach into the next.
+  //
+  // A box may legitimately hold more than one wrap-row now that bands are
+  // dropped from the report: a bandless row is short enough that several fit
+  // the same page-height budget, which is the whole point of this feature.
+  // What still must never happen is a row's *rule* — the line marking where
+  // it begins — turning up in a different box from the row it belongs to,
+  // which was the original bug this test guards (a row's range reaching 14px
+  // into the next row's, so the rule was drawn at the foot of the box above).
   const wide = await makeWideProcess();
   await signIn(page);
   await page.goto(`/reports/${WORKSPACE}?ids=${wide.id}`);
@@ -358,8 +385,6 @@ test("every row's furniture is drawn in that row's own box", async ({ page }) =>
 
   const boxes = await page.evaluate(() => {
     const id = (n: Element) => n.getAttribute("data-id") ?? "";
-    // The row a node says it belongs to, taken from its id, against the row
-    // the box it was drawn in says it holds.
     return [...document.querySelectorAll(".react-flow")]
       .map((flow) => {
         const nodes = [...flow.querySelectorAll(".react-flow__node")];
@@ -371,30 +396,107 @@ test("every row's furniture is drawn in that row's own box", async ({ page }) =>
             .filter((r): r is string => r !== undefined)
             .map(Number)
         );
-        return { rows: [...rows].sort((a, b) => a - b), rules: nodes.filter((n) => id(n).startsWith("rowrule-")).map(id) };
+        return {
+          rows: [...rows].sort((a, b) => a - b),
+          rules: nodes.filter((n) => id(n).startsWith("rowrule-")).map(id),
+        };
       })
       .filter((b): b is NonNullable<typeof b> => b !== null);
   });
 
-  expect(boxes.length).toBeGreaterThan(1);
+  expect(boxes.length).toBeGreaterThan(0);
 
-  // A box holds one row's furniture and no other row's. This used to be
-  // decided by asking which row's vertical range a node's y fell inside, and
-  // consecutive rows' ranges overlapped by 14px — so every row's rule was
-  // drawn at the foot of the box above it, leaving a stray full-width line
-  // under every map in the report and none under the last.
+  // Every row appears in exactly one box, and a box's rows are contiguous —
+  // no box skips a row or holds two non-adjacent ones, which would mean
+  // furniture leaked across a group boundary.
+  const allRows = boxes.flatMap((b) => b.rows);
+  expect(allRows, "every row exactly once, across all boxes").toEqual(
+    [...allRows].sort((a, b) => a - b)
+  );
+  expect(new Set(allRows).size).toBe(allRows.length);
   for (const box of boxes) {
-    expect(box.rows, `a box drew furniture from rows ${box.rows.join(", ")}`).toHaveLength(1);
+    for (let i = 1; i < box.rows.length; i++) {
+      expect(box.rows[i], `box holding rows ${box.rows.join(", ")} is not contiguous`).toBe(
+        box.rows[i - 1]! + 1
+      );
+    }
   }
 
-  // The rule is the line that separates a row from the one before it, so
-  // every row has one except the first — and the last is not the exception.
-  const withRule = boxes.filter((b) => b.rules.length > 0);
-  expect(withRule).toHaveLength(boxes.length - 1);
-  expect(boxes[0]!.rules).toEqual([]);
-  for (const box of withRule) {
-    expect(box.rules).toEqual([`rowrule-${box.rows[0]}`]);
+  // The rule for row N lives in the box that holds row N — never the box
+  // before it, and never absent because it drifted into the wrong box.
+  for (const box of boxes) {
+    const expectedRules = box.rows.filter((r) => r > 0).map((r) => `rowrule-${r}`);
+    expect(box.rules).toEqual(expectedRules);
   }
+
+  // Row 0 never has a rule — there is no row above it to be ruled off from.
+  const firstBox = boxes.find((b) => b.rows.includes(0))!;
+  expect(firstBox.rules.includes("rowrule-0")).toBe(false);
+
+  await removeWideProcess();
+});
+
+
+test("the report drops lane bands — a row is one card tall, whatever roles it touches", async ({ page }) => {
+  // The defect this feature exists for: a row of six steps across five roles
+  // was drawn five lane bands tall, most of it blank. The fix is that the
+  // report draws no lane bands at all — a row is a single band sized to its
+  // tallest card — while the live canvas (a separate, unwrapped rendering
+  // path this feature never touches) keeps its full swimlanes.
+  await makeWideProcess();
+  await signIn(page);
+  await page.goto(`/reports/workspace-acme?ids=${WIDE_PROCESS_ID}`);
+  await page.waitForSelector(".report-paper");
+  await page.waitForTimeout(3000);
+
+  const found = await page.evaluate(() => {
+    const id = (n: Element) => n.getAttribute("data-id") ?? "";
+    const flows = [...document.querySelectorAll(".react-flow")];
+    const mapFlows = flows.slice(1);
+    const nodes = mapFlows.flatMap((f) => [...f.querySelectorAll(".react-flow__node")]);
+    const laneNodes = nodes.filter((n) => id(n).startsWith("lane-"));
+    const cards = nodes.filter((n) => !["lane-", "marker-", "rowlabel-", "rowrule-", "stub-"].some((p) => id(n).startsWith(p)));
+    // A role name, on the card, exactly where it already was — this feature
+    // does not add it, it relies on it already being there.
+    const roleTexts = cards.map((n) => n.textContent ?? "");
+    return {
+      laneNodeCount: laneNodes.length,
+      cardCount: cards.length,
+      hasProcurementOnACard: roleTexts.some((t) => /PROCUREMENT/i.test(t)),
+      hasDesignHouseOnACard: roleTexts.some((t) => /DESIGN HOUSE/i.test(t)),
+    };
+  });
+
+  expect(found.laneNodeCount, "no lane bands should be drawn on the report's wrapped map").toBe(0);
+  expect(found.cardCount).toBeGreaterThan(0);
+  expect(found.hasProcurementOnACard, "a step's role must still be legible on its own card").toBe(true);
+  expect(found.hasDesignHouseOnACard).toBe(true);
+
+  await removeWideProcess();
+});
+
+test("the report's rows fit far fewer pages without lane bands", async ({ page }) => {
+  await makeWideProcess();
+  await signIn(page);
+  await page.goto(`/reports/workspace-acme?ids=${WIDE_PROCESS_ID}`);
+  await page.waitForSelector(".report-paper");
+  await page.waitForTimeout(3000);
+
+  const pdf = await page.pdf({
+    format: "A4",
+    landscape: true,
+    printBackground: true,
+    margin: { top: "14mm", right: "14mm", bottom: "14mm", left: "14mm" },
+  });
+  const text = pdf.toString("latin1");
+  const pageCount = (text.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+
+  // Measured before this feature, on this same fixture (research.md): the map
+  // spanned 4 pages of a 9-page report (rows 1-4 one to a page, row 5 sharing
+  // a page with the next section). One lane band per role, drawn on every row
+  // regardless of how many of that row's own steps used it, is what cost the
+  // pages — dropping bands is what gets them back.
+  expect(pageCount, "the whole report must be measurably shorter without lane bands").toBeLessThan(9);
 
   await removeWideProcess();
 });

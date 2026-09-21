@@ -155,23 +155,20 @@ test("Export Report's static diagram fits a wide process instead of clipping it"
   });
   expect(clipped, "nodes clipped by their own box").toBe(0);
 
-  // The swimlane itself rendered — not just the steps floating with no lane
-  // context, the other half of what "swimlane not visible" reported. Lane
-  // nodes carry a stable "lane-<roleId>" id, unlike a step node's uuid, so
-  // that's what picks the lane out from every step node that also shows the
-  // role name as its own subtitle.
-  // One lane per row: a wide process now wraps onto several rows, and each row
-  // carries its own labelled lanes so a reader never has to look back to an
-  // earlier row to know whose lane a step is in. It used to be exactly one.
-  const lane = diagram.locator('.react-flow__node[data-id^="lane-"]').filter({ hasText: roleName });
-  await expect(lane.first()).toBeVisible();
-  const laneCount = await lane.count();
-  const rows = new Set(
-    await lane.evaluateAll((ns) =>
-      ns.map((n) => /^lane-(\d+)-/.exec((n as HTMLElement).dataset["id"] ?? "")?.[1] ?? "0")
-    )
-  );
-  expect(laneCount).toBe(rows.size);
+  // The other half of what "swimlane not visible" reported: the steps must not
+  // be floating with no idea whose they are. A *wrapped* printed map no longer
+  // draws lane bands at all — a row of steps across several roles was drawn
+  // one band per role and cost the map pages of blank paper — so the role is
+  // read off the card, which is where it has always also been printed. An
+  // unwrapped map still draws its lanes, untouched.
+  const laneBands = diagram.locator('.react-flow__node[data-id^="lane-"]');
+  expect(await laneBands.count(), "a wrapped printed map draws no lane bands").toBe(0);
+
+  const withRole = stepNodes.filter({ hasText: roleName });
+  expect(
+    await withRole.count(),
+    `no card carries the role "${roleName}"`
+  ).toBeGreaterThan(0);
 });
 
 test("Export Report's static diagram draws an Unassigned lane for steps with no owner", async ({ page }) => {

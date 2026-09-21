@@ -172,6 +172,20 @@ export const PRINT_STEP_X_SPACING = 150;
 export const PRINT_LANE_HEIGHT = 92;
 
 /**
+ * Clear space left between two cards standing side by side on one line.
+ *
+ * Only a bandless row needs this. With lane bands, neighbouring steps are
+ * usually in different lanes and so at different heights, and a card wider
+ * than the column spacing simply overlapped the column beside it without
+ * anyone noticing — a decision is 176px wide against a 150px column. Collapse
+ * the lanes and every step in the row is on one line, where that overlap
+ * means there is no clear strip beside the card at all: the connector router
+ * then has to leave through the top or the bottom and travel around, which is
+ * how a straight run of six steps turned into a row of detours.
+ */
+export const PRINT_CARD_GUTTER = 20;
+
+/**
  * Vertical space between one row of a wrapped map and the next.
  *
  * A lane's label is drawn above its band, so rows stacked flush against each
@@ -235,6 +249,14 @@ export type WrapStep = {
   swimlaneRoleId: string | null;
   positionX: number;
   positionY: number;
+  /**
+   * The card shape this step draws as, in the same terms as
+   * PRINT_NODE_HALF_SIZE. Only read when a bandless row needs to size itself
+   * to its tallest card — see the `bands` option below. Defaults to "task",
+   * which is right for most steps and merely conservative (not wrong) for a
+   * step whose card is actually shorter.
+   */
+  kind?: "task" | "decision" | "terminal";
 };
 
 export type WrappedLane = {
@@ -325,10 +347,36 @@ export function wrapProcessMap(
     /** Defaults to the on-screen geometry; print passes the compact one. */
     stepSpacing?: number;
     laneHeight?: number;
+    /**
+     * When false, a row is drawn as a single band sized to its tallest card
+     * rather than one band per role its steps use — the printed report's
+     * defect was a row of six steps across five roles being drawn five lanes
+     * tall while never more than one card tall in any column. Defaults to
+     * true, which reproduces today's per-role banding exactly, so the only
+     * other caller (the PPTX slide deck) is unaffected unless it opts in.
+     */
+    bands?: boolean;
   }
 ): WrappedMapLayout {
-  const spacing = options.stepSpacing ?? STEP_X_SPACING;
   const laneH = options.laneHeight ?? LANE_HEIGHT;
+  const bands = options.bands ?? true;
+
+  // A bandless row puts every one of its steps on one line, so a card wider
+  // than the column spacing no longer merely overlaps an empty column — it
+  // overlaps its neighbour, leaving the connector router no clear strip to
+  // leave through and forcing it into a detour out of the card's bottom and
+  // back up again. Widening the column to clear the widest card the process
+  // actually holds is what keeps a run of consecutive steps a straight line.
+  // Costs a step a row on a process containing a decision, which is cheap
+  // against the rows a bandless map saves.
+  const widestCard = Math.max(
+    0,
+    ...steps.map((s) => PRINT_NODE_HALF_SIZE[s.kind ?? "task"].x * 2)
+  );
+  const requestedSpacing = options.stepSpacing ?? STEP_X_SPACING;
+  const spacing = bands
+    ? requestedSpacing
+    : Math.max(requestedSpacing, widestCard + PRINT_CARD_GUTTER);
   // Clamped a second time deliberately: everything below divides by this, so
   // a zero would be an infinite layout rather than a wrong one.
   const capacity = Math.max(MIN_ROW_CAPACITY, rowCapacity(options.boxWidth, spacing));
@@ -380,23 +428,38 @@ export function wrapProcessMap(
     // why the row label says which way it runs.
     const direction: "forward" | "backward" = index % 2 === 1 ? "backward" : "forward";
 
+    // With bands, a row is as tall as every lane its steps touch, stacked —
+    // which is what made a row of six steps across five roles draw five
+    // lanes tall while never more than one card tall in any column. Without
+    // them, a row is a single band sized to its tallest card, whatever role
+    // that card happens to belong to. PRINT_NODE_HALF_SIZE is used directly
+    // rather than threaded through as another option: a bandless row only
+    // exists for the printed report today, which is the only caller that
+    // draws the compact card this size describes.
+    const height = bands
+      ? lanes.length * laneH
+      : Math.max(...slice.map((s) => PRINT_NODE_HALF_SIZE[s.kind ?? "task"].y * 2)) + WRAPPED_ROW_GAP;
+
     const placed: PlacedStep[] = slice.map((step, position) => {
       const roleId = step.swimlaneRoleId ?? step.assignedRoleId;
-      const laneIndex = roleIds.indexOf(roleId);
+      const laneIndex = bands ? roleIds.indexOf(roleId) : 0;
       // A backward row starts at the far end of the *capacity*, not of its own
       // length: a short final row still has to begin under the step above it.
       const column = direction === "backward" ? capacity - 1 - position : position;
       return {
         id: step.id,
         x: spacing / 2 + column * spacing,
-        y: y + laneIndex * laneH + laneH / 2,
+        // Banded: the step's own lane offset within the row. Bandless: every
+        // step in the row shares the row's own centre — there is only one
+        // band, so a decision and a task beside it both sit on the same line
+        // rather than at baselines that differ for no visible reason.
+        y: bands ? y + laneIndex * laneH + laneH / 2 : y + height / 2,
         row: index,
         laneIndex,
         column,
       };
     });
 
-    const height = lanes.length * laneH;
     rows.push({
       index,
       lanes,
