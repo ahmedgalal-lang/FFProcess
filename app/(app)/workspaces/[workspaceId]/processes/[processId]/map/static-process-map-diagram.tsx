@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { ReactFlow, ReactFlowProvider, Background, MarkerType, type Node, type Edge } from "@xyflow/react";
 import {
   assignSwimlanes,
@@ -14,6 +14,7 @@ import {
   PRINT_NODE_HALF_SIZE,
   PRINT_STEP_X_SPACING,
   WRAPPED_LANE_GUTTER,
+  WRAPPED_ROW_GAP,
 } from "@/lib/domain/process-layout";
 import { MAX_BLOCK_WITH_HEADING_PX } from "@/lib/domain/report-pagination";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
@@ -44,8 +45,42 @@ const NODE_TYPES = {
 
 const HALF_SIZE = NODE_HALF_SIZE;
 
-/** Roughly how wide the row label pill draws, so a right-aligned one clears the edge. */
-const ROW_LABEL_WIDTH = 250;
+/**
+ * How wide the row label pill draws, so a right-aligned one clears the edge.
+ *
+ * Sized for the longest form — a backward row adds "← runs right to left" —
+ * because this both positions the label and measures the map's extent. At 250
+ * the backward label hung 26px past its own box and was clipped.
+ */
+const ROW_LABEL_WIDTH = 300;
+
+/**
+ * How wide each kind of node draws, so the map's true extent can be measured
+ * rather than guessed.
+ *
+ * A fixed "overhang" constant could not work: generous enough to keep a
+ * continuation marker from being clipped, it left a visible strip of page
+ * unused; tight enough to fill the page, it clipped the marker. The nodes know
+ * their own sizes, so the extent is computed from them.
+ */
+const EXTENT_SLACK = 16;
+
+const NODE_WIDTH: Record<string, number> = {
+  rowlabel: ROW_LABEL_WIDTH,
+  continuation: 118,
+  linkstub: 64,
+};
+
+/** The same, vertically, so a group's box is sized to what it actually holds. */
+const NODE_HEIGHT: Record<string, number> = {
+  rowlabel: 20,
+  rowrule: 4,
+  continuation: 22,
+  linkstub: 16,
+};
+
+/** The printable width of an A4 landscape report page, which is what this is drawn into. */
+const PAGE_CONTENT_WIDTH_PX = (297 - 14 * 2) * (96 / 25.4);
 
 type StepT = {
   id: string;
@@ -503,28 +538,177 @@ export function StaticProcessMapDiagram({
   // and roughly half an A4-landscape page. laneCount includes the Unassigned
   // lane when there is one, so it doesn't get squeezed out of the height
   // this box reserves for it.
-  // A wrapped map needs room for every row, so the box grows with them — up to
-  // a cap, past which it falls back to shrinking one rendering to fit, which is
-  // what this did for everything before. Completeness is never traded for
-  // legibility: a shrunk map is worse, a map missing a row is wrong.
-  // A printable page is PRINT_PAGE_HEIGHT_PX tall, and this box used to be
-  // allowed 1500 — 2.2 times that. `break-inside: avoid` cannot hold an element
-  // taller than the page, so the browser fragmented the map wherever it landed:
-  // step cards severed horizontally, a lane band resuming on the next sheet with
-  // no heading. That was the root cause of the sliced diagram, and no break rule
-  // could have fixed it.
   //
-  // Capped here instead — and to a page *less its heading*, not a whole page:
-  // a block of exactly one page can never share one, so a full-page diagram
-  // stranded its own section heading alone on a sheet at 12% used.
+  // A wrapped map is drawn one row-group per box rather than all of it in one.
   //
-  // The map already wraps onto rows and scales to its box, so a shorter box
-  // yields a complete smaller drawing rather than a cropped one — completeness
-  // is never traded for legibility.
-  const MAX_DIAGRAM_HEIGHT = MAX_BLOCK_WITH_HEADING_PX;
-  const diagramHeight = wrap.wrapped
-    ? Math.max(320, Math.min(MAX_DIAGRAM_HEIGHT, wrap.height + 80))
-    : Math.max(320, Math.min(640, layout.laneCount * LANE_HEIGHT + 80));
+  // The single box was capped at a printable page so a page break could not
+  // fall inside it and sever a step card. That kept the cards whole and made
+  // the map unreadable instead: a four-row process was scaled to 0.42 and its
+  // labels rendered at 3.7px. Capping height and scaling to fit are the same
+  // trade, and neither end of it is acceptable.
+  //
+  // A map is allowed to be taller than a page — it just has to break in a
+  // place that costs nothing. Between two rows is such a place: the rows are
+  // already separated by a gap and each carries its own lane labels, so a
+  // reader losing one to a page boundary loses nothing. Each group is its own
+  // block that stays whole, the browser breaks between them, and every card is
+  // drawn at full size.
+  const rowGroups = useMemo(() => {
+    if (!wrap.wrapped) return null;
+    const groups: { rows: typeof wrap.rows; top: number; height: number }[] = [];
+    let current: typeof wrap.rows = [];
+    let top = 0;
+    let height = 0;
+
+    for (const row of wrap.rows) {
+      // LANE_TOP_OFFSET is the room a row's label and rule need above it.
+      const needs = row.height + LANE_TOP_OFFSET + WRAPPED_ROW_GAP;
+      if (current.length > 0 && height + needs > MAX_BLOCK_WITH_HEADING_PX) {
+        groups.push({ rows: current, top, height });
+        top = row.y - LANE_TOP_OFFSET;
+        current = [];
+        height = 0;
+      }
+      if (current.length === 0) top = row.y - LANE_TOP_OFFSET;
+      current.push(row);
+      height += needs;
+    }
+    if (current.length > 0) groups.push({ rows: current, top, height });
+    return groups;
+  }, [wrap]);
+
+  /**
+   * Where the seam between one row and the next sits horizontally.
+   *
+   * Serpentine rows share a column at the turn, so this is the x of the last
+   * step of the row given — and the first step of the row below it.
+   */
+  const seamXOf = useCallback(
+    (rowIndex: number) => {
+      const row = wrap.rows[rowIndex];
+      const last = row?.steps[row.steps.length - 1];
+      return WRAPPED_LANE_GUTTER + (last?.x ?? 0);
+    },
+    [wrap]
+  );
+
+  /** Which row a node belongs to, from where the layout put it. */
+  const rowOfNode = useCallback(
+    (y: number) => {
+      for (const row of wrap.rows) {
+        const from = row.y + LANE_TOP_OFFSET - 60;
+        const to = row.y + row.height + LANE_TOP_OFFSET;
+        if (y >= from && y <= to) return row.index;
+      }
+      return -1;
+    },
+    [wrap]
+  );
+
+  const unwrappedHeight = Math.max(320, Math.min(640, layout.laneCount * LANE_HEIGHT + 80));
+
+  if (wrap.wrapped && rowGroups) {
+    const nodeRow = new Map(nodes.map((n) => [n.id, rowOfNode(n.position.y)]));
+
+    // One transform for every group, not fitView per group.
+    //
+    // fitView centres and scales each canvas on its own contents, which means
+    // two groups holding different-width rows are drawn at different scales and
+    // different offsets — and the serpentine alignment is lost, because a row
+    // no longer begins under the step the row above ended on. A shared zoom and
+    // a shared x keep the columns lined up down the whole map; each group only
+    // differs in the slice of y it shows.
+    // The furthest right anything is actually drawn, measured from the nodes
+    // themselves — lane bands included, since they define the map's own width.
+    const contentWidth = nodes.reduce((widest, n) => {
+      const kind = typeof n.type === "string" ? n.type : "";
+      const width =
+        kind === "compact"
+          ? PRINT_NODE_HALF_SIZE[(n.data as { kind?: keyof typeof PRINT_NODE_HALF_SIZE }).kind ?? "task"].x * 2
+          : kind === "lane" || kind === "rowrule"
+            ? Number(n.style?.width ?? canvasWidth)
+            : (NODE_WIDTH[kind] ?? 0);
+      return Math.max(widest, n.position.x + width);
+      // A few pixels of slack. The widths above are the ones the layout asks
+      // for, and a node can render a little past its own box — a link stub was
+      // measured three pixels over, which is enough to be clipped.
+    }, WRAPPED_LANE_GUTTER + canvasWidth) + EXTENT_SLACK;
+    const zoom = Math.min(1, (PAGE_CONTENT_WIDTH_PX - 6) / contentWidth);
+
+    return (
+      <div className="flex flex-col gap-2">
+        {rowGroups.map((group, i) => {
+          const rowIds = new Set(group.rows.map((r) => r.index));
+          const groupNodes = nodes.filter((n) => rowIds.has(nodeRow.get(n.id) ?? -1));
+          const groupEdges = edges.filter(
+            (e) => rowIds.has(nodeRow.get(e.source) ?? -1) && rowIds.has(nodeRow.get(e.target) ?? -1)
+          );
+
+          // The box is sized to what this group actually holds, measured the
+          // same way its width is. Deriving the height from the row's own
+          // geometry instead left a marker sitting above the first lane
+          // clipped by the top edge.
+          const heightOf = (n: (typeof groupNodes)[number]) => {
+            const kind = typeof n.type === "string" ? n.type : "";
+            if (kind === "compact") {
+              return (
+                PRINT_NODE_HALF_SIZE[(n.data as { kind?: keyof typeof PRINT_NODE_HALF_SIZE }).kind ?? "task"].y * 2
+              );
+            }
+            if (kind === "lane") return Number(n.style?.height ?? PRINT_LANE_HEIGHT);
+            return NODE_HEIGHT[kind] ?? 0;
+          };
+          const top = groupNodes.reduce((min, n) => Math.min(min, n.position.y), Infinity);
+          const bottom = groupNodes.reduce((max, n) => Math.max(max, n.position.y + heightOf(n)), -Infinity);
+          const contentTop = Number.isFinite(top) ? top - EXTENT_SLACK : group.top;
+          const contentHeight = Number.isFinite(bottom) ? bottom - contentTop + EXTENT_SLACK : group.height;
+
+          return (
+            <div key={`rowgroup-${i}`}>
+              <div
+                className="print-keep relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white"
+                style={{ height: contentHeight * zoom }}
+              >
+                <ReactFlowProvider>
+                  <ReactFlow
+                    nodes={groupNodes}
+                    edges={groupEdges}
+                    nodeTypes={NODE_TYPES}
+                    nodesDraggable={false}
+                    nodesConnectable={false}
+                    elementsSelectable={false}
+                    panOnDrag={false}
+                    zoomOnScroll={false}
+                    zoomOnPinch={false}
+                    zoomOnDoubleClick={false}
+                    minZoom={zoom}
+                    maxZoom={zoom}
+                    defaultViewport={{ x: 3, y: -contentTop * zoom, zoom }}
+                    proOptions={{ hideAttribution: true }}
+                  >
+                    <Background gap={20} size={1} color="#e2e8f0" />
+                  </ReactFlow>
+                </ReactFlowProvider>
+              </div>
+              {/* The seam. Two rows in one canvas are joined by a drawn line;
+                  across two canvases they cannot be, so the drop is drawn
+                  between the boxes at the column the rows share. */}
+              {i < rowGroups.length - 1 && (
+                <div aria-hidden="true" className="relative h-2">
+                  <div
+                    className="absolute top-0 h-2 border-l-2 border-teal-600"
+                    style={{ left: seamXOf(group.rows[group.rows.length - 1]!.index) * zoom }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const diagramHeight = unwrappedHeight;
 
   return (
     <div

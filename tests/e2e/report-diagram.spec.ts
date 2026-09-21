@@ -123,26 +123,37 @@ test("Export Report's static diagram fits a wide process instead of clipping it"
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
-  const diagram = page
-    .locator("main .rounded-xl.border.border-slate-200.bg-white")
-    .filter({ has: page.locator(".react-flow") })
-    .last();
-  await expect(diagram).toBeVisible();
-  const containerBox = (await diagram.boundingBox())!;
+  // A wrapped map is drawn one row-group per box, so "the diagram" is all of
+  // them — the cards this checks for are spread across the rows.
+  // A wrapped map is drawn one row-group per box, so "the diagram" is several
+  // boxes. Each step has to be inside the box it belongs to, which is what the
+  // single-container version of this check was really asserting.
+  const diagram = page.locator(".print-keep.relative").filter({ has: page.locator(".react-flow") });
+  await expect(diagram.first()).toBeVisible();
 
-  // Every step rendered, and none of them clipped outside the diagram's own
-  // box — the failure mode was a node positioned beyond what fitView could
-  // shrink to, invisible behind the container's overflow-hidden edge.
   const stepNodes = diagram.locator(".react-flow__node").filter({ hasText: /Step \d+/ });
   await expect(stepNodes).toHaveCount(STEP_COUNT);
 
-  const boxes = await stepNodes.evaluateAll((nodes) => nodes.map((n) => n.getBoundingClientRect()));
-  for (const box of boxes) {
-    expect(box.left).toBeGreaterThanOrEqual(containerBox.x - 1);
-    expect(box.top).toBeGreaterThanOrEqual(containerBox.y - 1);
-    expect(box.right).toBeLessThanOrEqual(containerBox.x + containerBox.width + 1);
-    expect(box.bottom).toBeLessThanOrEqual(containerBox.y + containerBox.height + 1);
-  }
+  // Nothing clipped by the box it is drawn in — the failure mode was a node
+  // positioned beyond what the canvas could show, invisible behind the
+  // container's overflow-hidden edge.
+  const clipped = await page.evaluate(() => {
+    const boxes = [...document.querySelectorAll<HTMLElement>(".print-keep.relative")].filter((b) =>
+      b.querySelector(".react-flow")
+    );
+    let bad = 0;
+    for (const box of boxes) {
+      const br = box.getBoundingClientRect();
+      for (const n of box.querySelectorAll<HTMLElement>(".react-flow__node")) {
+        const r = n.getBoundingClientRect();
+        if (r.left < br.left - 1 || r.right > br.right + 1 || r.top < br.top - 1 || r.bottom > br.bottom + 1) {
+          bad += 1;
+        }
+      }
+    }
+    return bad;
+  });
+  expect(clipped, "nodes clipped by their own box").toBe(0);
 
   // The swimlane itself rendered — not just the steps floating with no lane
   // context, the other half of what "swimlane not visible" reported. Lane
@@ -174,11 +185,12 @@ test("Export Report's static diagram draws an Unassigned lane for steps with no 
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
+  // A wrapped map is drawn one row-group per box, so "the diagram" is all of
+  // them — the cards this checks for are spread across the rows.
   const diagram = page
     .locator("main .rounded-xl.border.border-slate-200.bg-white")
-    .filter({ has: page.locator(".react-flow") })
-    .last();
-  await expect(diagram).toBeVisible();
+    .filter({ has: page.locator(".react-flow") });
+  await expect(diagram.first()).toBeVisible();
 
   // The failure mode: zero lane nodes at all, because the old code only ever
   // built a lane for a step that had a role. It has to be exactly the
@@ -208,11 +220,12 @@ test("Export Report's static diagram shows the same documented-card content as t
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
+  // A wrapped map is drawn one row-group per box, so "the diagram" is all of
+  // them — the cards this checks for are spread across the rows.
   const diagram = page
     .locator("main .rounded-xl.border.border-slate-200.bg-white")
-    .filter({ has: page.locator(".react-flow") })
-    .last();
-  await expect(diagram).toBeVisible();
+    .filter({ has: page.locator(".react-flow") });
+  await expect(diagram.first()).toBeVisible();
 
   const createPO = diagram.locator(".react-flow__node").filter({ hasText: "Create Purchase Order" });
   await expect(createPO.getByText("SLA 2d")).toBeVisible();
@@ -399,14 +412,19 @@ test("Export Report's process map fills the page width rather than leaving a ban
   await page.waitForSelector(".react-flow__node");
 
   const used = await page.evaluate(() => {
-    const flows = [...document.querySelectorAll(".react-flow")];
-    const flow = flows[flows.length - 1] as HTMLElement;
-    const rects = [...flow.querySelectorAll(".react-flow__node")].map((n) =>
-      n.getBoundingClientRect()
-    );
-    if (rects.length === 0) return null;
-    const drawn = Math.max(...rects.map((r) => r.right)) - Math.min(...rects.map((r) => r.left));
-    return (100 * drawn) / flow.getBoundingClientRect().width;
+    // Every canvas the map is drawn across, not just the last one: a wrapped
+    // map is one box per row-group, and the widest row is what has to fit.
+    const maps = [...document.querySelectorAll(".react-flow")].slice(1) as HTMLElement[];
+    if (maps.length === 0) return null;
+    const widths = maps.map((flow) => {
+      const rects = [...flow.querySelectorAll(".react-flow__node")].map((n) =>
+        n.getBoundingClientRect()
+      );
+      if (rects.length === 0) return 0;
+      const drawn = Math.max(...rects.map((r) => r.right)) - Math.min(...rects.map((r) => r.left));
+      return (100 * drawn) / flow.getBoundingClientRect().width;
+    });
+    return Math.max(...widths);
   });
 
   // Was 89.4%: fitView divides the box by (1 + padding), so the old 0.12 was

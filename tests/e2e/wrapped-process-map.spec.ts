@@ -35,16 +35,25 @@ test.afterAll(async () => {
   await removeShortProcess();
 });
 
-/** The last React Flow on the page is the process map; the first is the org chart. */
+/**
+ * The process map's canvases. The org chart is the first React Flow on the
+ * page; everything after it belongs to the map.
+ *
+ * A wrapped map is drawn one row-group per canvas rather than all of it in
+ * one — a single canvas had to be capped at a page to keep a page break out of
+ * a step card, and that capping scaled a four-row map to 0.42 with 3.7px
+ * labels. These tests therefore read across the canvases, not into one.
+ */
 async function mapInfo(page: import("@playwright/test").Page, processIds: string[]) {
   await page.goto(`/reports/${WORKSPACE}?${processIds.map((id) => `ids=${id}`).join("&")}`);
   await page.waitForSelector(".report-paper");
   await page.waitForTimeout(3000);
   return page.evaluate(() => {
     const flows = [...document.querySelectorAll(".react-flow")];
-    const flow = flows[flows.length - 1];
-    if (!flow) return null;
-    const all = [...flow.querySelectorAll<HTMLElement>(".react-flow__node")];
+    const mapFlows = flows.slice(1);
+    if (mapFlows.length === 0) return null;
+    const flow = mapFlows[0]!;
+    const all = mapFlows.flatMap((f) => [...f.querySelectorAll<HTMLElement>(".react-flow__node")]);
     const id = (n: HTMLElement) => n.dataset["id"] ?? "";
     const lanes = all.filter((n) => id(n).startsWith("lane-"));
     const markers = all.filter((n) => id(n).startsWith("marker-"));
@@ -53,9 +62,14 @@ async function mapInfo(page: import("@playwright/test").Page, processIds: string
     // of it is a step.
     const FURNITURE = ["lane-", "marker-", "rowlabel-", "rowrule-", "stub-"];
     const steps = all.filter((n) => !FURNITURE.some((p) => id(n).startsWith(p)));
-    const rect = flow.getBoundingClientRect();
-    const transform = flow.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform ?? "";
-    const scale = Number(/scale\(([\d.]+)\)/.exec(transform)?.[1] ?? "1");
+    // The smallest scale any group is drawn at — the map is only as readable
+    // as its worst row.
+    const scale = Math.min(
+      ...mapFlows.map((f) => {
+        const t = f.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform ?? "";
+        return Number(/scale\(([\d.]+)\)/.exec(t)?.[1] ?? "1");
+      })
+    );
     return {
       stepCount: steps.length,
       stepLabels: steps.map((n) => n.textContent?.trim() ?? ""),
@@ -82,13 +96,22 @@ async function mapInfo(page: import("@playwright/test").Page, processIds: string
         return { row: Number(id(n).split("-")[1]), top: r.top, bottom: r.bottom };
       }),
       edgeCount: flow.querySelectorAll(".react-flow__edge").length,
-      sealEdges: [...flow.querySelectorAll<SVGPathElement>(".react-flow__edge-path")].filter((p) =>
-        (p.getAttribute("style") ?? "").includes("13, 148, 136") ||
-        (p.style.stroke ?? "").toLowerCase() === "#0d9488"
-      ).length,
-      outside: all.filter((n) => {
-        const r = n.getBoundingClientRect();
-        return r.right > rect.right + 2 || r.left < rect.left - 2;
+      // The seam is drawn inside a canvas when both rows share one, and
+      // between the canvases when they do not — a wrapped map is one box per
+      // row-group, and a line cannot cross from one box to the next.
+      sealEdges:
+        mapFlows.flatMap((f) => [...f.querySelectorAll<SVGPathElement>(".react-flow__edge-path")])
+          .filter((p) =>
+            (p.getAttribute("style") ?? "").includes("13, 148, 136") ||
+            (p.style.stroke ?? "").toLowerCase() === "#0d9488"
+          ).length + document.querySelectorAll(".border-teal-600").length,
+      canvases: mapFlows.length,
+      outside: mapFlows.flatMap((f) => {
+        const fr = f.getBoundingClientRect();
+        return [...f.querySelectorAll<HTMLElement>(".react-flow__node")].filter((n) => {
+          const r = n.getBoundingClientRect();
+          return r.right > fr.right + 2 || r.left < fr.left - 2;
+        });
       }).length,
     };
   });
