@@ -17,6 +17,7 @@ import {
   WRAPPED_ROW_GAP,
 } from "@/lib/domain/process-layout";
 import { MAX_BLOCK_WITH_HEADING_PX } from "@/lib/domain/report-pagination";
+import { routeConnectors, type ConnectorRoute, type RoutedStep } from "@/lib/domain/connector-routing";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import {
   TaskNode,
@@ -30,6 +31,7 @@ import {
   LinkStubNode,
   type StepLinkData,
 } from "./map-nodes";
+import { RoutedEdge } from "./routed-edge";
 
 const NODE_TYPES = {
   task: TaskNode,
@@ -42,6 +44,8 @@ const NODE_TYPES = {
   rowrule: RowRuleNode,
   linkstub: LinkStubNode,
 };
+
+const EDGE_TYPES = { routed: RoutedEdge };
 
 const HALF_SIZE = NODE_HALF_SIZE;
 
@@ -104,23 +108,24 @@ function nodeKindFor(type: StepT["type"]): keyof typeof HALF_SIZE {
   return "task";
 }
 
-/** chooseHandles, but from where the wrap actually put the two steps. */
-function chooseHandlesAt(from: { x: number; y: number }, to: { x: number; y: number }) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? { sourceHandle: "right", targetHandle: "left-t" } : { sourceHandle: "left", targetHandle: "right-t" };
-  }
-  return dy >= 0 ? { sourceHandle: "bottom", targetHandle: "top-t" } : { sourceHandle: "top", targetHandle: "bottom-t" };
-}
-
-function chooseHandles(from: StepT, to: StepT) {
-  const dx = to.positionX - from.positionX;
-  const dy = to.positionY - from.positionY;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? { sourceHandle: "right", targetHandle: "left-t" } : { sourceHandle: "left", targetHandle: "right-t" };
-  }
-  return dy >= 0 ? { sourceHandle: "bottom", targetHandle: "top-t" } : { sourceHandle: "top", targetHandle: "bottom-t" };
+/**
+ * How a connector looks: which handles it uses, from the route, and whether it
+ * reads as a loop, which the caller decides.
+ *
+ * Keeping those apart matters most here. A serpentine row runs right to left,
+ * so on that row every ordinary step-to-step connector is drawn leaving its
+ * card's left — and not one of them is a loop.
+ */
+function edgeAppearance(route: ConnectorRoute | undefined, backward: boolean) {
+  const stroke = backward ? "#d97706" : "#64748b";
+  return {
+    sourceHandle: route?.source.side ?? "right",
+    targetHandle: `${route?.target.side ?? "left"}-t`,
+    style: backward
+      ? { stroke, strokeWidth: 2, strokeDasharray: "4 3", vectorEffect: "non-scaling-stroke" as const }
+      : { stroke, strokeWidth: 2, vectorEffect: "non-scaling-stroke" as const },
+    markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+  };
 }
 
 /**
@@ -458,6 +463,52 @@ export function StaticProcessMapDiagram({
     return new Set(connections.filter((c) => isSeamConnection(wrap, c)).map((c) => c.id));
   }, [connections, wrap]);
 
+  /**
+   * Where every drawn connector should go — the same router the live canvas
+   * uses, fed from wherever this diagram actually put the cards.
+   *
+   * On a wrapped map that is the serpentine placement, at the compact print
+   * size; on an unwrapped one it is the stored position and the lane the role
+   * puts the step in, at full size. The router is told about all of the cards
+   * either way, because its bands and channels are measured from what is on
+   * the page, not from what is being connected.
+   */
+  const routes = useMemo(() => {
+    const cards: RoutedStep[] = [];
+    for (const s of steps) {
+      const kind = nodeKindFor(s.type);
+      const placed = placedById.get(s.id);
+      if (wrap.wrapped && placed) {
+        const half = PRINT_NODE_HALF_SIZE[kind];
+        cards.push({
+          id: s.id,
+          x: WRAPPED_LANE_GUTTER + placed.x,
+          y: placed.y + LANE_TOP_OFFSET,
+          width: half.x * 2,
+          height: half.y * 2,
+          shape: kind === "decision" ? "diamond" : "rect",
+        });
+        continue;
+      }
+      const half = HALF_SIZE[kind];
+      cards.push({
+        id: s.id,
+        x: s.positionX,
+        y: layout.yOf.get(s.id) ?? s.positionY,
+        width: half.x * 2,
+        height: half.y * 2,
+        shape: kind === "decision" ? "diamond" : "rect",
+      });
+    }
+    // Only the connections this diagram draws as lines are routed. The ones
+    // the wrap had to break are replaced by a pair of stubs, and the seam is
+    // drawn as its own straight drop, so neither should be given a corridor.
+    const drawn = connections
+      .filter((c) => !crossRowIds.has(c.id) && !seamIds.has(c.id))
+      .map((c) => ({ id: c.id, fromStepId: c.fromStepId, toStepId: c.toStepId }));
+    return routeConnectors(cards, drawn);
+  }, [steps, placedById, wrap, layout, connections, crossRowIds, seamIds]);
+
   const edges: Edge[] = useMemo(
     () =>
       connections.flatMap((c): Edge[] => {
@@ -493,43 +544,39 @@ export function StaticProcessMapDiagram({
           ];
         }
 
-        // On a wrapped map the handles have to come from where the step was
-        // *placed*, not from its stored coordinates: a backward row runs right
-        // to left, so a source picked from the stored order would leave every
-        // arrow on that row entering and leaving the wrong sides.
+        // Which side a connector leaves and enters, and whether it reads as a
+        // loop, both come from the route — which was computed from where the
+        // cards were actually drawn. That matters most on a wrapped map, where
+        // a backward row runs right to left and the stored order says the
+        // opposite of what the page shows.
+        const route = routes.get(c.id);
+
+        // A loop is a connection running against its row's own direction —
+        // which on a serpentine map is not the same as running right to left.
         const fromPlaced = placedById.get(c.fromStepId);
         const toPlaced = placedById.get(c.toStepId);
-        const usePlaced = wrap.wrapped && fromPlaced && toPlaced;
-        const { sourceHandle, targetHandle } = usePlaced
-          ? chooseHandlesAt(fromPlaced, toPlaced)
-          : chooseHandles(from, to);
-
-        // A loop is a connection running against its row's own direction.
-        const isLoop = usePlaced
-          ? (wrap.rows[fromPlaced.row]?.direction === "backward"
+        const backward =
+          wrap.wrapped && fromPlaced && toPlaced
+            ? wrap.rows[fromPlaced.row]?.direction === "backward"
               ? toPlaced.x > fromPlaced.x
-              : toPlaced.x < fromPlaced.x)
-          : to.positionX < from.positionX;
+              : toPlaced.x < fromPlaced.x
+            : to.positionX < from.positionX;
 
         return [
           {
             id: c.id,
             source: c.fromStepId,
             target: c.toStepId,
-            sourceHandle,
-            targetHandle,
             label: c.label ?? undefined,
-            type: "smoothstep",
-            style: isLoop
-              ? { stroke: "#d97706", strokeWidth: 2, strokeDasharray: "4 3", vectorEffect: "non-scaling-stroke" }
-              : { stroke: "#64748b", strokeWidth: 2, vectorEffect: "non-scaling-stroke" },
-            markerEnd: { type: MarkerType.ArrowClosed, color: isLoop ? "#d97706" : "#64748b" },
+            type: "routed",
+            data: { route },
             labelStyle: { fontSize: 10, fontWeight: 700 },
             labelBgStyle: { fill: "#fff" },
+            ...edgeAppearance(route, backward),
           },
         ];
       }),
-    [connections, stepById, crossRowIds, seamIds, placedById, wrap]
+    [connections, stepById, crossRowIds, seamIds, routes, placedById, wrap]
   );
 
 
@@ -674,6 +721,7 @@ export function StaticProcessMapDiagram({
                     nodes={groupNodes}
                     edges={groupEdges}
                     nodeTypes={NODE_TYPES}
+                    edgeTypes={EDGE_TYPES}
                     nodesDraggable={false}
                     nodesConnectable={false}
                     elementsSelectable={false}
@@ -720,6 +768,7 @@ export function StaticProcessMapDiagram({
           nodes={nodes}
           edges={edges}
           nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}

@@ -30,6 +30,7 @@ import {
   LANE_TOP_OFFSET,
   NODE_HALF_SIZE,
 } from "@/lib/domain/process-layout";
+import { routeConnectors, type ConnectorRoute, type RoutedStep } from "@/lib/domain/connector-routing";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
 import {
   TaskNode,
@@ -40,6 +41,7 @@ import {
   BranchGutterNode,
   type StepLinkData,
 } from "./map-nodes";
+import { RoutedEdge } from "./routed-edge";
 
 const NODE_TYPES = {
   task: TaskNode,
@@ -49,6 +51,11 @@ const NODE_TYPES = {
   branchEntry: BranchEntryNode,
   branchGutter: BranchGutterNode,
 };
+
+const EDGE_TYPES = { routed: RoutedEdge };
+
+/** The node kinds that are step cards, and so have a size the router can use. */
+const CARD_KINDS = new Set(Object.keys(NODE_HALF_SIZE));
 
 /** Matches FIRST_STEP_X in lib/domain/process-layout, so the gutter never covers a step. */
 const BRANCH_GUTTER_WIDTH = 200;
@@ -103,14 +110,27 @@ function describeStep(s: StepT): string {
   return parts.join(", ");
 }
 
-/** Picks handle ids on each side based on the geometric relationship between two steps. */
-function chooseHandles(from: { x: number; y: number }, to: { x: number; y: number }) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? { sourceHandle: "right", targetHandle: "left-t" } : { sourceHandle: "left", targetHandle: "right-t" };
-  }
-  return dy >= 0 ? { sourceHandle: "bottom", targetHandle: "top-t" } : { sourceHandle: "top", targetHandle: "bottom-t" };
+/**
+ * How a connector looks: which handles it uses, from the route, and whether it
+ * reads as a loop, from the step order.
+ *
+ * The two are deliberately separate. Which side a connector leaves is geometry
+ * and belongs to the router. Whether it is running *against the flow* is not —
+ * a card whose neighbours sit directly under its edges is left through its
+ * bottom whichever way the process is going, and on the print diagram's
+ * serpentine map a whole row runs right to left without a single step in it
+ * being a loop.
+ */
+function edgeAppearance(route: ConnectorRoute | undefined, backward: boolean) {
+  const stroke = backward ? "#d97706" : "#64748b";
+  return {
+    sourceHandle: route?.source.side ?? "right",
+    targetHandle: `${route?.target.side ?? "left"}-t`,
+    style: backward
+      ? { stroke, strokeWidth: 2, strokeDasharray: "4 3", vectorEffect: "non-scaling-stroke" as const }
+      : { stroke, strokeWidth: 2, vectorEffect: "non-scaling-stroke" as const },
+    markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+  };
 }
 
 export function ProcessMapCanvas({
@@ -259,30 +279,24 @@ export function ProcessMapCanvas({
       const from = stepById.get(fromStepId);
       const to = stepById.get(toStepId);
       if (!from || !to) return null;
-      const isLoop = to.positionX < from.positionX;
-      const { sourceHandle, targetHandle } = chooseHandles(
-        { x: from.positionX, y: layout.yOf.get(from.id) ?? from.positionY },
-        { x: to.positionX, y: layout.yOf.get(to.id) ?? to.positionY }
-      );
+      // Only the connector's identity is decided here. Which side it leaves,
+      // where it turns and how it looks all come from the route, which is
+      // recomputed from where the cards actually are on every render — so
+      // dragging a step re-routes its connectors instead of leaving them
+      // pointing at where it used to be.
       return {
         id,
         source: fromStepId,
         target: toStepId,
-        sourceHandle,
-        targetHandle,
         label: label ?? undefined,
         ariaLabel: `Connector from ${from.label} to ${to.label}${label ? `, labeled ${label}` : ""}`,
-        type: "smoothstep",
+        type: "routed",
         animated: false,
-        style: isLoop
-          ? { stroke: "#d97706", strokeWidth: 2, strokeDasharray: "4 3", vectorEffect: "non-scaling-stroke" }
-          : { stroke: "#64748b", strokeWidth: 2, vectorEffect: "non-scaling-stroke" },
-        markerEnd: { type: MarkerType.ArrowClosed, color: isLoop ? "#d97706" : "#64748b" },
         labelStyle: { fontSize: 10, fontWeight: 700 },
         labelBgStyle: { fill: "#fff" },
       };
     },
-    [stepById, layout]
+    [stepById]
   );
 
   const initialEdges: Edge[] = useMemo(() => {
@@ -313,6 +327,48 @@ export function ProcessMapCanvas({
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [saving, setSaving] = useState(false);
+
+  /**
+   * Where every connector should be drawn, worked out from where the cards
+   * are right now.
+   *
+   * Keyed on `nodes`, which React Flow updates on every frame of a drag, so a
+   * card that moves takes its connectors with it. Freezing this onto the edges
+   * when they are first built is the obvious shortcut and it is wrong: the
+   * routes would go stale the moment anything moved.
+   */
+  const routes = useMemo(() => {
+    const cards: RoutedStep[] = [];
+    for (const node of nodes) {
+      if (!node.type || !CARD_KINDS.has(node.type)) continue;
+      const half = HALF_SIZE[node.type as keyof typeof HALF_SIZE];
+      cards.push({
+        id: node.id,
+        x: node.position.x + half.x,
+        y: node.position.y + half.y,
+        width: half.x * 2,
+        height: half.y * 2,
+        shape: node.type === "decision" ? "diamond" : "rect",
+      });
+    }
+    const links = edges
+      .filter((edge) => edge.type === "routed")
+      .map((edge) => ({ id: edge.id, fromStepId: edge.source, toStepId: edge.target }));
+    return routeConnectors(cards, links);
+  }, [nodes, edges]);
+
+  const routedEdges = useMemo(
+    () =>
+      edges.map((edge) => {
+        if (edge.type !== "routed") return edge;
+        const route = routes.get(edge.id);
+        const from = stepById.get(edge.source);
+        const to = stepById.get(edge.target);
+        const backward = !!from && !!to && to.positionX < from.positionX;
+        return { ...edge, ...edgeAppearance(route, backward), data: { ...edge.data, route } };
+      }),
+    [edges, routes, stepById]
+  );
 
   const onConnect: OnConnect = useCallback(
     (connection) => {
@@ -392,7 +448,7 @@ export function ProcessMapCanvas({
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
-          edges={edges}
+          edges={routedEdges}
           onNodesChange={(changes) =>
             setNodes((nds) => {
               const next = [...nds];
@@ -410,6 +466,7 @@ export function ProcessMapCanvas({
           onEdgesChange={onEdgesChange}
           deleteKeyCode={["Backspace", "Delete"]}
           nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.1, minZoom: 0.1 }}
           minZoom={0.1}
