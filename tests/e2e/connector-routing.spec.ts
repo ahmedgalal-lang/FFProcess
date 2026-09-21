@@ -183,6 +183,12 @@ function measure(boxes: Box[], wires: Wire[], zoom: number) {
 }
 
 async function openMap(page: import("@playwright/test").Page) {
+  // A stated viewport, not whatever the runner defaults to. The map fills the
+  // width of the page it is on, so the window size decides the zoom, which
+  // decides how big a connect handle is and where on screen it lands — at the
+  // default 1280x720 a handle sat under the canvas's own hint panel, and a
+  // mousedown aimed at it hit the panel instead.
+  await page.setViewportSize({ width: 1600, height: 1000 });
   await signIn(page);
   await page.goto(`/workspaces/${WORKSPACE}/processes/${TANGLED_PROCESS_ID}/map`);
   await page.waitForSelector(".react-flow__edge-path");

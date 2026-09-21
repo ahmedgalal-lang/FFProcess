@@ -114,7 +114,12 @@ export default async function ProcessMapPage(
   }
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full max-w-[1600px] px-6 py-8">
+      {/* The page is as wide as the window because the Process Map is a
+          spatial drawing and was being fitted to 11% zoom inside a reading
+          column. Everything that is prose or a form keeps the reading width;
+          only the map takes the whole page. */}
+      <div className="mx-auto w-full max-w-4xl">
       {process.parentProcess && (
         <div className="mb-1 text-xs text-slate-500">
           {process.parentProcess.code} · {process.parentProcess.name} <span className="mx-1">/</span>
@@ -148,6 +153,8 @@ export default async function ProcessMapPage(
         externalEntities={externalEntities}
       />
 
+      </div>
+
       <div className="mt-5" />
 
       <MapView
@@ -168,7 +175,7 @@ export default async function ProcessMapPage(
         otherProcesses={otherProcesses.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
       />
 
-      <div className="mt-5 flex flex-col gap-3">
+      <div className="mx-auto mt-5 flex w-full max-w-4xl flex-col gap-3">
         <AddStepForm
           workspaceId={workspaceId}
           processId={processId}

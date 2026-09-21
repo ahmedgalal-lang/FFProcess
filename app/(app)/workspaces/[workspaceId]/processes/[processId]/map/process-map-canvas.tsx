@@ -54,6 +54,13 @@ const NODE_TYPES = {
 
 const EDGE_TYPES = { routed: RoutedEdge };
 
+/**
+ * The smallest zoom the map will *open* at. Zooming out further by hand is
+ * still allowed — this only stops fitView choosing a scale nothing can be
+ * read at for a process that happens to be long.
+ */
+const OPENING_ZOOM_FLOOR = 0.4;
+
 /** The node kinds that are step cards, and so have a size the router can use. */
 const CARD_KINDS = new Set(Object.keys(NODE_HALF_SIZE));
 
@@ -468,7 +475,18 @@ export function ProcessMapCanvas({
           nodeTypes={NODE_TYPES}
           edgeTypes={EDGE_TYPES}
           fitView
-          fitViewOptions={{ padding: 0.1, minZoom: 0.1 }}
+          // A floor on the opening zoom, not on zooming out by hand.
+          //
+          // fitView scales the whole map to the box, and a long process is
+          // very wide: 25 steps at this spacing is about 6800px, which fitted
+          // to 11% — every card a grey smudge, every connector a hairline
+          // wandering off the edge. Below about 40% nothing on a card can be
+          // read, so there is no point opening there; the map opens at the
+          // start of the process at a size you can read and is panned, which
+          // is how a long flowchart is read anyway. minZoom stays low so
+          // anyone who does want the whole thing at a glance can still zoom
+          // out to it.
+          fitViewOptions={{ padding: 0.1, minZoom: OPENING_ZOOM_FLOOR }}
           minZoom={0.1}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
