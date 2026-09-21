@@ -234,7 +234,7 @@ export function StaticProcessMapDiagram({
           // wants to be — a decision diamond sat on top of it on a real
           // export. The name now lives to the left of the map entirely.
           position: { x: WRAPPED_LANE_GUTTER, y: row.y + lane.y + LANE_TOP_OFFSET },
-          data: { label: lane.label, tinted: i % 2 === 1, gutter: WRAPPED_LANE_GUTTER },
+          data: { label: lane.label, tinted: i % 2 === 1, gutter: WRAPPED_LANE_GUTTER, rowIndex: row.index },
           style: { width: canvasWidth, height: PRINT_LANE_HEIGHT },
           draggable: false,
           selectable: false,
@@ -265,6 +265,7 @@ export function StaticProcessMapDiagram({
             firstStep: stepNumberOf(row.steps[0]?.id),
             lastStep: stepNumberOf(row.steps[row.steps.length - 1]?.id),
             backward,
+            rowIndex: row.index,
           },
           draggable: false,
           selectable: false,
@@ -276,7 +277,7 @@ export function StaticProcessMapDiagram({
             id: `rowrule-${row.index}`,
             type: "rowrule",
             position: { x: 0, y: row.y + LANE_TOP_OFFSET - 48 },
-            data: { width: canvasWidth + WRAPPED_LANE_GUTTER },
+            data: { width: canvasWidth + WRAPPED_LANE_GUTTER, rowIndex: row.index },
             draggable: false,
             selectable: false,
             focusable: false,
@@ -313,6 +314,7 @@ export function StaticProcessMapDiagram({
                 code: l.targetProcess.code,
                 name: l.targetProcess.name,
               })),
+              rowIndex: placed.row,
             },
             draggable: false,
             selectable: false,
@@ -348,7 +350,7 @@ export function StaticProcessMapDiagram({
               x: WRAPPED_LANE_GUTTER + placed.x - 60,
               y: placed.y + LANE_TOP_OFFSET - half.y - 24,
             },
-            data: { kind: marker.kind, otherRow: marker.otherRow, connectionLabel },
+            data: { kind: marker.kind, otherRow: marker.otherRow, connectionLabel, rowIndex: placed.row },
             draggable: false,
             selectable: false,
             zIndex: 4,
@@ -362,7 +364,7 @@ export function StaticProcessMapDiagram({
               x: WRAPPED_LANE_GUTTER + placed.x + (out ? half.x + 2 : -half.x - 60),
               y: placed.y + LANE_TOP_OFFSET - 14,
             },
-            data: { kind: out ? "out" : "in" },
+            data: { kind: out ? "out" : "in", rowIndex: placed.row },
             draggable: false,
             selectable: false,
             zIndex: 3,
@@ -639,23 +641,27 @@ export function StaticProcessMapDiagram({
     [wrap]
   );
 
-  /** Which row a node belongs to, from where the layout put it. */
+  /**
+   * Which row a node belongs to.
+   *
+   * Every node here is built inside a loop over the rows, so its row is known
+   * at the moment it is made and is carried on its data. This used to be
+   * guessed back out of the node's y instead, by asking which row's vertical
+   * range contained it — and consecutive rows' ranges overlapped by 14px,
+   * because one reached 40px past its last lane and the next started 20px
+   * above its first with only a 46px gap between them. The first match won, so
+   * every row's rule was drawn at the bottom of the box *above* it and the
+   * last row got none: a stray full-width line under every map in the report.
+   */
   const rowOfNode = useCallback(
-    (y: number) => {
-      for (const row of wrap.rows) {
-        const from = row.y + LANE_TOP_OFFSET - 60;
-        const to = row.y + row.height + LANE_TOP_OFFSET;
-        if (y >= from && y <= to) return row.index;
-      }
-      return -1;
-    },
-    [wrap]
+    (node: Node) => (node.data as { rowIndex?: number } | undefined)?.rowIndex ?? -1,
+    []
   );
 
   const unwrappedHeight = Math.max(320, Math.min(640, layout.laneCount * LANE_HEIGHT + 80));
 
   if (wrap.wrapped && rowGroups) {
-    const nodeRow = new Map(nodes.map((n) => [n.id, rowOfNode(n.position.y)]));
+    const nodeRow = new Map(nodes.map((n) => [n.id, rowOfNode(n)]));
 
     // One transform for every group, not fitView per group.
     //

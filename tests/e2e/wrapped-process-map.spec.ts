@@ -9,6 +9,7 @@ import {
   LONG_PROCESS_ID,
   SHORT_PROCESS_ID,
 } from "../fixtures/long-process";
+import { makeWideProcess, removeWideProcess } from "../fixtures/wide-process";
 
 /**
  * A long process map wraps onto several rows instead of being squeezed into
@@ -343,4 +344,57 @@ test("the seam between rows is drawn, not left to a pair of pills", async ({ pag
   // And the markers that used to stand in for them are gone from the seams.
   const continues = map.markerText.filter((t) => /continues on row/.test(t));
   expect(continues.length, "only the un-drawable crossing still needs a marker").toBe(1);
+});
+
+test("every row's furniture is drawn in that row's own box", async ({ page }) => {
+  // The six-role process, not the three-role one: rows that use different
+  // numbers of lanes are different heights, which is what makes one row's
+  // vertical range reach into the next.
+  const wide = await makeWideProcess();
+  await signIn(page);
+  await page.goto(`/reports/${WORKSPACE}?ids=${wide.id}`);
+  await page.waitForSelector(".report-paper");
+  await page.waitForTimeout(3000);
+
+  const boxes = await page.evaluate(() => {
+    const id = (n: Element) => n.getAttribute("data-id") ?? "";
+    // The row a node says it belongs to, taken from its id, against the row
+    // the box it was drawn in says it holds.
+    return [...document.querySelectorAll(".react-flow")]
+      .map((flow) => {
+        const nodes = [...flow.querySelectorAll(".react-flow__node")];
+        const label = nodes.find((n) => id(n).startsWith("rowlabel-"));
+        if (!label) return null;
+        const rows = new Set(
+          nodes
+            .map((n) => /^(?:lane|rowlabel|rowrule)-(\d+)/.exec(id(n))?.[1])
+            .filter((r): r is string => r !== undefined)
+            .map(Number)
+        );
+        return { rows: [...rows].sort((a, b) => a - b), rules: nodes.filter((n) => id(n).startsWith("rowrule-")).map(id) };
+      })
+      .filter((b): b is NonNullable<typeof b> => b !== null);
+  });
+
+  expect(boxes.length).toBeGreaterThan(1);
+
+  // A box holds one row's furniture and no other row's. This used to be
+  // decided by asking which row's vertical range a node's y fell inside, and
+  // consecutive rows' ranges overlapped by 14px — so every row's rule was
+  // drawn at the foot of the box above it, leaving a stray full-width line
+  // under every map in the report and none under the last.
+  for (const box of boxes) {
+    expect(box.rows, `a box drew furniture from rows ${box.rows.join(", ")}`).toHaveLength(1);
+  }
+
+  // The rule is the line that separates a row from the one before it, so
+  // every row has one except the first — and the last is not the exception.
+  const withRule = boxes.filter((b) => b.rules.length > 0);
+  expect(withRule).toHaveLength(boxes.length - 1);
+  expect(boxes[0]!.rules).toEqual([]);
+  for (const box of withRule) {
+    expect(box.rules).toEqual([`rowrule-${box.rows[0]}`]);
+  }
+
+  await removeWideProcess();
 });
