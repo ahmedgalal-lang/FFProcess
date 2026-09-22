@@ -105,13 +105,28 @@ type GovernanceAssessmentResult = {
     title: string;
     description: string;
     policyTitle: string | null; // non-null when this item recommends a draft policy
+    riskTitle: string | null;   // non-null when this item is mitigating a specific risk
   }[];
   policies: {
     title: string; // must match a checklist item's policyTitle
     body: string;  // the full draft document
   }[];
+  risks: {
+    title: string; // must match a checklist item's riskTitle, when one names it
+    description: string;
+    likelihood: "low" | "medium" | "high";
+    impact: "low" | "medium" | "high" | "critical";
+  }[];
 };
 ```
+
+`risks` is populated the same call that produces the checklist and policies — a risk the
+model surfaces while reasoning about a focus area is exactly the thing a checklist item
+might reference as what it's mitigating, so keeping them in one structured response is
+what keeps a checklist item's `riskTitle` and the risk it names consistent by
+construction, the same reason `policies` and `policyTitle` are paired this way already
+(Decision 2). Ownership and status are never asked of the model — FR-011 makes those a
+consultant's own field to set, not something to guess from a company profile.
 
 ## Two entities the first pass under-scoped
 
