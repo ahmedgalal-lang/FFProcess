@@ -26,7 +26,7 @@ function formatDate(d: Date): string {
 export default async function GovernancePage(props: PageProps<"/workspaces/[workspaceId]/governance">) {
   const { workspaceId } = await props.params;
 
-  const [workspace, roles, people, processes, assessments, risks] = await Promise.all([
+  const [workspace, roles, people, processes, assessments, risks, policies] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
     prisma.role.findMany({ where: { workspaceId } }),
     prisma.person.findMany({ where: { workspaceId } }),
@@ -36,6 +36,14 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       include: { items: { include: { policy: true }, orderBy: { createdAt: "asc" } } },
     }),
     prisma.governanceRisk.findMany({ where: { workspaceId }, orderBy: { createdAt: "desc" } }),
+    // Read straight off the workspace rather than walking every assessment's
+    // items: a policy written by hand in the Policy Library has no checklist
+    // item to be found through, and would be invisible if gathered that way.
+    prisma.governancePolicyDraft.findMany({
+      where: { workspaceId },
+      include: { checklistItem: { select: { assessmentId: true } } },
+      orderBy: { updatedAt: "desc" },
+    }),
   ]);
 
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
@@ -45,36 +53,35 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
   // sourced from it can say which area it came from without a second query.
   const focusAreaByAssessmentId = new Map(assessments.map((a) => [a.id, a.focusArea]));
 
+  // Every policy in the workspace, drafted or hand-written, each labelled with
+  // the focus area whose assessment produced it — or null when nobody's
+  // assessment did, which the library reads as "Added manually".
+  const allPolicies: PolicyT[] = policies.map((policy) => {
+    const assessmentId = policy.checklistItem?.assessmentId;
+    const focusArea = assessmentId ? focusAreaByAssessmentId.get(assessmentId) : undefined;
+    return {
+      id: policy.id,
+      title: policy.title,
+      body: policy.body,
+      status: policy.status,
+      focusAreaLabel: focusArea ? GOVERNANCE_FOCUS_AREA_LABEL[focusArea] : null,
+      updatedAt: formatDate(policy.updatedAt),
+    };
+  });
+  const policyById = new Map(allPolicies.map((p) => [p.id, p]));
+
   const assessmentsByFocusArea: Record<string, AssessmentT> = {};
-  const allPolicies: PolicyT[] = [];
   for (const assessment of assessments) {
     const items: ChecklistItemT[] = assessment.items.map((item) => {
-      if (item.policy) {
-        allPolicies.push({
-          id: item.policy.id,
-          title: item.policy.title,
-          body: item.policy.body,
-          status: item.policy.status,
-          focusAreaLabel: GOVERNANCE_FOCUS_AREA_LABEL[assessment.focusArea],
-          updatedAt: formatDate(item.policy.updatedAt),
-        });
-      }
       return {
         id: item.id,
         phase: item.phase,
         title: item.title,
         description: item.description,
         status: item.status,
-        policy: item.policy
-          ? {
-              id: item.policy.id,
-              title: item.policy.title,
-              body: item.policy.body,
-              status: item.policy.status,
-              focusAreaLabel: GOVERNANCE_FOCUS_AREA_LABEL[assessment.focusArea],
-              updatedAt: formatDate(item.policy.updatedAt),
-            }
-          : null,
+        // The same object the library holds, so the drawer opens one policy
+        // whichever side it was reached from.
+        policy: item.policy ? (policyById.get(item.policy.id) ?? null) : null,
       };
     });
     assessmentsByFocusArea[assessment.focusArea] = {
@@ -165,7 +172,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <WorkspacePageHeader
         title="Governance, Controls & Metrics"
-        subtitle="An AI-assisted assessment covers board structure, risk & controls, ethics, compensation and ESG. Key Control Points and KPIs below continue to come from each process's Authority Matrix."
+        subtitle="An AI-assisted assessment covers board structure, risk & controls, ethics, compensation, ESG, data integrity and accessibility. Key Control Points and KPIs below continue to come from each process's Authority Matrix."
       />
 
       <div className="mb-4">

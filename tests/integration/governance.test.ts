@@ -17,6 +17,8 @@ const {
   generateGovernanceAssessment,
   setChecklistItemStatus,
   updatePolicyDraft,
+  addGovernancePolicy,
+  deleteGovernancePolicy,
   addGovernanceRisk,
   updateGovernanceRisk,
 } = await import("@/lib/actions/governance");
@@ -286,6 +288,117 @@ describe("setGovernanceProfile / generateGovernanceAssessment", () => {
 
     const allRisks = await prisma.governanceRisk.count({ where: { workspaceId: fixture.workspace.id } });
     expect(allRisks).toBe(1); // not duplicated by title
+  });
+});
+
+describe("Policies written by hand", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    mockRunGovernanceAssessment.mockReset();
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  it("adds a policy with no assessment behind it, and finds it on the workspace", async () => {
+    // The gap this closes: the Policy Library could only ever show what an
+    // assessment had drafted, so with no assessment run it was empty with no
+    // way to put anything in it.
+    const result = await addGovernancePolicy({
+      workspaceId: fixture.workspace.id,
+      title: "Data Retention Policy",
+      body: "1. Purpose\n2. Retention periods\n3. Deletion",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const policy = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: result.data.id } });
+    expect(policy.workspaceId).toBe(fixture.workspace.id);
+    expect(policy.checklistItemId).toBeNull();
+    expect(policy.handManaged).toBe(true);
+
+    // And it is reachable by the workspace-wide read the Policy Library does,
+    // which is the query that used to walk assessments instead.
+    const onWorkspace = await prisma.governancePolicyDraft.findMany({
+      where: { workspaceId: fixture.workspace.id },
+    });
+    expect(onWorkspace.map((p) => p.title)).toEqual(["Data Retention Policy"]);
+  });
+
+  it("edits a hand-written policy's title and body, and deletes it", async () => {
+    const added = await addGovernancePolicy({
+      workspaceId: fixture.workspace.id,
+      title: "Draft name",
+      body: "First cut.",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+
+    const edited = await updatePolicyDraft({
+      workspaceId: fixture.workspace.id,
+      policyId: added.data.id,
+      title: "Records Management Policy",
+      body: "A fuller second cut.",
+    });
+    expect(edited.ok).toBe(true);
+
+    const afterEdit = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: added.data.id } });
+    expect(afterEdit.title).toBe("Records Management Policy");
+    expect(afterEdit.body).toBe("A fuller second cut.");
+
+    const removed = await deleteGovernancePolicy({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+    expect(removed.ok).toBe(true);
+    expect(await prisma.governancePolicyDraft.findUnique({ where: { id: added.data.id } })).toBeNull();
+  });
+
+  it("refuses to touch a policy belonging to another workspace", async () => {
+    const other = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: other.adminUser.id } });
+    const theirs = await addGovernancePolicy({
+      workspaceId: other.workspace.id,
+      title: "Theirs",
+      body: "Not yours.",
+    });
+    expect(theirs.ok).toBe(true);
+    if (!theirs.ok) return;
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const edit = await updatePolicyDraft({
+      workspaceId: fixture.workspace.id,
+      policyId: theirs.data.id,
+      body: "Rewritten from the wrong workspace.",
+    });
+    expect(edit.ok).toBe(false);
+    if (!edit.ok) expect(edit.error).toBe("NOT_FOUND");
+
+    const remove = await deleteGovernancePolicy({
+      workspaceId: fixture.workspace.id,
+      policyId: theirs.data.id,
+    });
+    expect(remove.ok).toBe(false);
+    if (!remove.ok) expect(remove.error).toBe("NOT_FOUND");
+
+    await other.cleanup();
+  });
+
+  it("generates an assessment for a focus area added after the first five", async () => {
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+
+    for (const focusArea of ["DATA_INTEGRITY", "ACCESSIBILITY"] as const) {
+      const result = await generateGovernanceAssessment({ workspaceId: fixture.workspace.id, focusArea });
+      expect(result.ok, `${focusArea} should be a valid focus area`).toBe(true);
+    }
+
+    const stored = await prisma.governanceAssessment.findMany({ where: { workspaceId: fixture.workspace.id } });
+    expect(stored.map((a) => a.focusArea).sort()).toEqual(["ACCESSIBILITY", "DATA_INTEGRITY"]);
   });
 });
 

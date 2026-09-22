@@ -160,7 +160,7 @@ export async function generateGovernanceAssessment(
       const policy = policyTitle ? policyByTitle.get(policyTitle) : undefined;
       if (policy) {
         await tx.governancePolicyDraft.create({
-          data: { checklistItemId: created.id, title: policy.title, body: policy.body },
+          data: { workspaceId, checklistItemId: created.id, title: policy.title, body: policy.body },
         });
       }
 
@@ -269,13 +269,17 @@ export async function setChecklistItemStatus(
 }
 
 /**
- * Saves an edited policy draft (FR-006). Setting the body also sets status
- * to EDITED, which is what protects it from a later regeneration
- * (governance-findings.ts's isHandManaged) — SC-004.
+ * Saves an edited policy draft (FR-006). Setting the body also marks it
+ * hand-managed and sets status to EDITED, which is what protects it from a
+ * later regeneration (governance-findings.ts's isHandManaged) — SC-004.
+ *
+ * The title is editable too, so a policy written by hand can be renamed;
+ * omitting it leaves the drafted title alone.
  */
 const updatePolicyDraftSchema = z.object({
   workspaceId: z.string().min(1),
   policyId: z.string().min(1),
+  title: z.string().min(1).optional(),
   body: z.string().min(1),
 });
 
@@ -288,16 +292,79 @@ export async function updatePolicyDraft(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const policy = await prisma.governancePolicyDraft.findUnique({
-    where: { id: parsed.data.policyId },
-    include: { checklistItem: { include: { assessment: true } } },
-  });
-  if (!policy || policy.checklistItem.assessment.workspaceId !== parsed.data.workspaceId) return notFound();
+  // Read the workspace off the policy itself: one written by hand has no
+  // checklist item to reach an assessment through.
+  const policy = await prisma.governancePolicyDraft.findUnique({ where: { id: parsed.data.policyId } });
+  if (!policy || policy.workspaceId !== parsed.data.workspaceId) return notFound();
 
   await prisma.governancePolicyDraft.update({
     where: { id: parsed.data.policyId },
-    data: { body: parsed.data.body, status: "EDITED" },
+    data: {
+      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+      body: parsed.data.body,
+      status: "EDITED",
+      handManaged: true,
+    },
   });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+/**
+ * Writes a policy straight into the Policy Library, with no assessment
+ * behind it — the same parity addGovernanceRisk gives a hand-added risk
+ * (FR-012). A consultant who already knows the client needs a policy should
+ * not have to generate an assessment to get somewhere to put it.
+ */
+const addPolicySchema = z.object({
+  workspaceId: z.string().min(1),
+  title: z.string().min(1),
+  body: z.string().min(1),
+});
+
+export async function addGovernancePolicy(
+  input: z.infer<typeof addPolicySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = addPolicySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const policy = await prisma.governancePolicyDraft.create({
+    data: {
+      workspaceId: parsed.data.workspaceId,
+      title: parsed.data.title,
+      body: parsed.data.body,
+      status: "EDITED",
+      handManaged: true,
+    },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: policy.id });
+}
+
+/** Removes a policy from the library, whoever wrote it. */
+const deletePolicySchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+});
+
+export async function deleteGovernancePolicy(
+  input: z.infer<typeof deletePolicySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deletePolicySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const policy = await prisma.governancePolicyDraft.findUnique({ where: { id: parsed.data.policyId } });
+  if (!policy || policy.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  await prisma.governancePolicyDraft.delete({ where: { id: parsed.data.policyId } });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });

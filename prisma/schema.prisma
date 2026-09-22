@@ -176,6 +176,7 @@ model Workspace {
   phases                Phase[]
   governanceAssessments GovernanceAssessment[]
   governanceRisks       GovernanceRisk[]
+  governancePolicies    GovernancePolicyDraft[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -723,6 +724,8 @@ enum GovernanceFocusArea {
   ETHICS_POLICY
   COMPENSATION
   ESG
+  DATA_INTEGRITY
+  ACCESSIBILITY
 }
 
 enum GovernanceItemPhase {
@@ -769,7 +772,7 @@ model GovernanceAssessment {
   workspaceId String
   focusArea   GovernanceFocusArea
 
-  /// The five-pillar-framed executive summary from the most recent run.
+  /// The pillar-framed executive summary from the most recent run.
   summary String @db.Text
 
   workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -804,18 +807,31 @@ model GovernanceChecklistItem {
 /// One-to-one with the checklist item that recommended it. Its own status,
 /// separate from the item's: a consultant can mark the *item* done while the
 /// *policy* stays a draft they're still editing, or vice versa.
+/// A policy document: drafted by an assessment against a checklist item, or
+/// written by hand from the Policy Library with no checklist item behind it
+/// (`checklistItemId` null, `handManaged` true) — the same parity the Risk
+/// Register gives a hand-added risk. `workspaceId` is stored rather than
+/// reached through checklistItem -> assessment, because a hand-written policy
+/// has no assessment to reach it through.
 model GovernancePolicyDraft {
   id              String               @id @default(uuid())
-  checklistItemId String               @unique
+  workspaceId     String
+  checklistItemId String?              @unique
   title           String
   body            String               @db.Text
   status          GovernanceItemStatus @default(OPEN)
 
-  checklistItem GovernanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  /// Set once a person writes or edits this policy themselves, which is what
+  /// keeps a later assessment run from overwriting their words.
+  handManaged Boolean @default(false)
+
+  workspace     Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  checklistItem GovernanceChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([workspaceId])
   @@map("governance_policy_drafts")
 }
 

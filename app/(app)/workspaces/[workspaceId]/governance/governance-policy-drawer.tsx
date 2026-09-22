@@ -3,14 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCanEdit } from "../workspace-access";
-import { updatePolicyDraft } from "@/lib/actions/governance";
+import { deleteGovernancePolicy, updatePolicyDraft } from "@/lib/actions/governance";
 
 export type PolicyT = {
   id: string;
   title: string;
   body: string;
   status: "OPEN" | "EDITED" | "DONE" | "DISMISSED";
-  focusAreaLabel: string;
+  /** The focus area whose assessment drafted it, or null when written by hand. */
+  focusAreaLabel: string | null;
   updatedAt: string;
 };
 
@@ -41,8 +42,10 @@ export function GovernancePolicyDrawer({
   onClose: () => void;
 }) {
   const canEdit = useCanEdit();
+  const [title, setTitle] = useState(policy?.title ?? "");
   const [body, setBody] = useState(policy?.body ?? "");
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -53,12 +56,26 @@ export function GovernancePolicyDrawer({
     if (!policy) return;
     setError(null);
     startTransition(async () => {
-      const result = await updatePolicyDraft({ workspaceId, policyId: policy.id, body });
+      const result = await updatePolicyDraft({ workspaceId, policyId: policy.id, title, body });
       if (!result.ok) {
         setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : result.error);
         return;
       }
       setEditing(false);
+      router.refresh();
+    });
+  }
+
+  function remove() {
+    if (!policy) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteGovernancePolicy({ workspaceId, policyId: policy.id });
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not delete.") : result.error);
+        return;
+      }
+      onClose();
       router.refresh();
     });
   }
@@ -75,11 +92,20 @@ export function GovernancePolicyDrawer({
     >
       <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="font-mono text-[10px] font-bold uppercase tracking-wide text-indigo-600">
-              {policy.focusAreaLabel}
+              {policy.focusAreaLabel ?? "Added manually"}
             </div>
-            <h3 className="text-base font-bold text-slate-900">{policy.title}</h3>
+            {editing ? (
+              <input
+                aria-label="Policy title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="mt-0.5 w-full rounded-lg border border-slate-300 px-2 py-1 text-base font-bold text-slate-900"
+              />
+            ) : (
+              <h3 className="text-base font-bold text-slate-900">{policy.title}</h3>
+            )}
           </div>
           <span
             className={`flex-none rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase ${STATUS_STYLE[policy.status] ?? STATUS_STYLE["OPEN"]}`}
@@ -128,6 +154,35 @@ export function GovernancePolicyDrawer({
           >
             Close
           </button>
+          {canEdit &&
+            (confirmingDelete ? (
+              <span className="ml-auto flex items-center gap-2 text-xs text-slate-600">
+                Delete this policy?
+                <button
+                  type="button"
+                  onClick={remove}
+                  disabled={pending}
+                  className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
+                >
+                  {pending ? "Deleting…" : "Delete"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Keep
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="ml-auto text-xs font-semibold text-slate-500 hover:text-red-600"
+              >
+                Delete
+              </button>
+            ))}
           {error && <span className="text-xs font-medium text-red-600">{error}</span>}
         </div>
       </div>

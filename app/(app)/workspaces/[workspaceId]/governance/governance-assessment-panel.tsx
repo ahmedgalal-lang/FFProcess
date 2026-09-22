@@ -9,7 +9,18 @@ import { GovernanceRiskRegister, type RiskT } from "./governance-risk-register";
 import { GovernancePolicyLibrary } from "./governance-policy-library";
 import { GOVERNANCE_FOCUS_AREAS as FOCUS_AREAS } from "@/lib/domain/governance-focus-areas";
 
-const PILLARS = ["Accountability", "Transparency", "Fairness", "Responsibility", "Independence"] as const;
+/**
+ * Transparency and Fairness are assessed as one pillar carrying both halves,
+ * rather than two that kept producing near-identical findings: disclosure
+ * that reaches only some stakeholders is a fairness failure as much as a
+ * transparency one. The system prompt frames them the same way.
+ */
+const PILLARS = [
+  "Accountability",
+  "Transparency & Fairness",
+  "Responsibility",
+  "Independence",
+] as const;
 
 const PHASE_LABEL: Record<string, string> = { IMMEDIATE: "Immediate", NEAR_TERM: "Near-term", LONG_TERM: "Long-term" };
 const PHASE_ORDER = ["IMMEDIATE", "NEAR_TERM", "LONG_TERM"] as const;
@@ -98,11 +109,11 @@ export function GovernanceAssessmentPanel({
   return (
     <div className="flex flex-col gap-4">
       <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="mb-1 text-sm font-bold text-slate-900">Evaluated against five pillars</h2>
+        <h2 className="mb-1 text-sm font-bold text-slate-900">Evaluated against four pillars</h2>
         <p className="mb-3 text-xs text-slate-500">
           Every summary is framed against these, not left as an unstructured paragraph.
         </p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {PILLARS.map((pillar) => (
             <div key={pillar} className="rounded-lg border border-slate-200 bg-slate-50 py-2.5 text-center">
               <div className="text-[10.5px] font-bold text-slate-900">{pillar}</div>
@@ -245,7 +256,7 @@ export function GovernanceAssessmentPanel({
       )}
 
       <GovernanceRiskRegister workspaceId={workspaceId} risks={risks} />
-      <GovernancePolicyLibrary policies={allPolicies} onOpen={setOpenPolicyId} />
+      <GovernancePolicyLibrary workspaceId={workspaceId} policies={allPolicies} onOpen={setOpenPolicyId} />
 
       <GovernancePolicyDrawer
         key={openPolicy?.id ?? "none"}

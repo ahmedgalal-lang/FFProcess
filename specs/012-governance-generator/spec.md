@@ -10,7 +10,7 @@
 governance (risk management, compliance, data, etc..)" — followed by a supplied system
 prompt for a "Corporate Governance Evaluation & Generation Tool": inputs of Company
 Size, Industry/Sector & Jurisdiction, and Target Governance Focus; an evaluation
-framework of five pillars (Accountability, Transparency, Fairness, Responsibility,
+framework of four pillars (Accountability, Transparency & Fairness, Responsibility,
 Independence); and three output types (Executive Summary, phased Governance Checklist,
 Draft Policies), in an executive, non-generic tone mapped to the company's actual size
 and industry.
@@ -41,7 +41,7 @@ integration pattern.
 A consultant opens a new client's workspace, sets its governance profile — company
 size, industry/sector, jurisdiction — and asks for an assessment of one governance
 focus area (say, Risk & Internal Controls). The tool returns an executive summary
-scored against the five pillars, a checklist grouped into Immediate / Near-Term /
+scored against the four pillars, a checklist grouped into Immediate / Near-Term /
 Long-Term, and a list of draft policies it recommends starting.
 
 **Why this priority**: This is the feature. Everything else is what makes the output
@@ -59,7 +59,7 @@ stated size/industry rather than generic advice.
    list of recommended draft policies, all referencing the stated company size and
    industry rather than reading as generic advice.
 2. **Given** the same request, **When** the summary is shown, **Then** it is framed
-   against the five pillars (Accountability, Transparency, Fairness, Responsibility,
+   against the four pillars (Accountability, Transparency & Fairness, Responsibility,
    Independence) rather than as an unstructured paragraph.
 3. **Given** a workspace with no governance profile set yet, **When** a consultant
    tries to request an assessment, **Then** they are asked to set the profile first
@@ -177,7 +177,7 @@ the marked item is not silently reset or duplicated.
   records.
 - **FR-002**: The system MUST let a consultant request a governance assessment for one
   chosen focus area (Board Structure, Risk & Internal Controls, Ethics Policy,
-  Compensation, or ESG) at a time.
+  Compensation, ESG, Data Integrity, or Accessibility) at a time.
 - **FR-003**: The system MUST refuse to generate an assessment until the workspace's
   governance profile (size, industry, jurisdiction) is set, and MUST say why rather
   than generating a generic result silently.
@@ -206,9 +206,13 @@ the marked item is not silently reset or duplicated.
   owner, and a status that a consultant can set directly.
 - **FR-012**: A risk surfaced by an assessment MUST appear on the same Risk Register as
   one added by hand, with no functional difference between the two.
-- **FR-013**: The system MUST provide a Policy Library listing every draft policy across
-  every focus area in one place, each showing which focus area produced it and its
-  current status.
+- **FR-013**: The system MUST provide a Policy Library listing every policy across every
+  focus area in one place, each showing which focus area produced it — or that it was
+  added by hand — and its current status.
+- **FR-015**: A consultant MUST be able to write a policy directly into the Policy
+  Library, and to edit or delete any policy there, whether an assessment drafted it or
+  they wrote it themselves — the same parity FR-012 gives a hand-added risk. The
+  Library MUST NOT depend on an assessment having been run to hold anything.
 - **FR-014**: Re-running an assessment MUST reconcile against the Risk Register the same
   way it reconciles against the checklist (FR-007) — a risk already scored or reassigned
   by hand must not be silently overwritten, and a risk already accepted or closed must
@@ -257,12 +261,12 @@ the marked item is not silently reset or duplicated.
   organization as a whole, matching where the existing Governance page already sits
   (aggregated across every process in the workspace) rather than being attached to one
   process.
-- The supplied system prompt's five pillars and three output types are taken as given —
+- The supplied system prompt's pillars and three output types are taken close to as given —
   they are the one part of this request that was fully specified rather than left to
   design.
 - "Target Governance Focus" is one selection per run (mirroring how a consultant runs
   AI Process Review once per process, not once for every area at once), not a single
-  request covering all five areas simultaneously — keeps each run scoped and each
+  request covering every area simultaneously — keeps each run scoped and each
   output readable, and matches FR-002.
 - Regeneration reconciliation follows the same rule `review-findings.ts` already
   implements for AI Process Review (match by normalized title, don't recreate a

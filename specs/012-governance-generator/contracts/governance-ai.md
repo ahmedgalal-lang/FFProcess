@@ -40,7 +40,7 @@ export function runGovernanceAssessment(promptText: string): Promise<GovernanceA
 
 The pasted role/pillars/output-shape definition the user supplied, adapted only where
 the product's own vocabulary differs from the prompt's (e.g. "Target Governance Focus"
-→ the fixed five-area enum FR-002 already names). The five pillars and three
+→ the fixed focus-area enum FR-002 names). The four pillars and three
 deliverable types are asked for as given — no paraphrasing — per the spec's own
 Assumptions.
 

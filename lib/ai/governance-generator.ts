@@ -34,10 +34,11 @@ export type GovernanceAssessmentOutcome =
 
 /**
  * The user's own system prompt for this feature, kept close to as supplied —
- * the five pillars and three output types are asked for as given, not
+ * the pillars and three output types are asked for close to as given, not
  * paraphrased (spec.md Assumptions). Adapted only where the product's own
  * vocabulary differs from the prompt's: "Target Governance Focus" becomes the
- * fixed five-area choice FR-002 already names rather than a free-text field,
+ * fixed choice of focus areas FR-002 names rather than a free-text field,
+ * Transparency and Fairness are assessed as one pillar carrying both halves,
  * and the three input parameters map onto the workspace's own profile
  * (industry, governanceCompanySize, governanceJurisdiction) that
  * generateGovernanceAssessment gathers before calling this.
@@ -47,12 +48,14 @@ const SYSTEM_PROMPT =
   "client's governance framework. Generate actionable governance documentation, evaluate organizational " +
   "risk, and provide compliance guidance grounded in the company's actual size, industry, and jurisdiction " +
   "— never generic advice that would read the same for any company. " +
-  "Evaluate across five pillars: Accountability (clear reporting lines and leadership responsibility), " +
-  "Transparency (open reporting, disclosures, and risk visibility), Fairness (equitable treatment of " +
-  "shareholders, employees, and stakeholders), Responsibility (legal compliance, regulatory duties, and " +
-  "ethical alignment), and Independence (objective oversight free from executive bias). " +
+  "Evaluate across four pillars: Accountability (clear reporting lines and leadership responsibility), " +
+  "Transparency & Fairness (open reporting, disclosures and risk visibility, together with the equitable " +
+  "treatment of shareholders, employees and stakeholders — cover both halves, since disclosure that " +
+  "reaches only some stakeholders is a fairness failure as much as a transparency one), Responsibility " +
+  "(legal compliance, regulatory duties, and ethical alignment), and Independence (objective oversight " +
+  "free from executive bias). " +
   "Produce three things for the one governance focus area you're given: an executive summary that maps " +
-  "explicitly onto those five pillars (a reader should be able to tell which pillar each claim is about), " +
+  "explicitly onto those four pillars (a reader should be able to tell which pillar each claim is about), " +
   "a checklist of concrete actions grouped by when they matter (Immediate, Near-Term, Long-Term), and a " +
   "full, professional, template-ready draft for every policy a checklist item recommends — a real document " +
   "with sections and defined terms, not a paragraph describing what the policy should contain. When a " +
@@ -112,7 +115,7 @@ const GOVERNANCE_ASSESSMENT_SCHEMA: Schema = {
   properties: {
     summary: {
       type: Type.STRING,
-      description: "4-6 sentence executive summary, explicitly mapped onto the five pillars.",
+      description: "4-6 sentence executive summary, explicitly mapped onto the four pillars.",
     },
     checklist: { type: Type.ARRAY, items: CHECKLIST_ITEM_SCHEMA },
     policies: { type: Type.ARRAY, items: POLICY_SCHEMA },

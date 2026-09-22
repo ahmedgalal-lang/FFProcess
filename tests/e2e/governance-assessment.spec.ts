@@ -29,6 +29,7 @@ async function clearProfile() {
       [WORKSPACE]
     );
     await client.query(`DELETE FROM governance_risks WHERE "workspaceId" = $1`, [WORKSPACE]);
+    await client.query(`DELETE FROM governance_policy_drafts WHERE "workspaceId" = $1`, [WORKSPACE]);
   } finally {
     await client.end();
   }
@@ -112,4 +113,54 @@ test("a hand-added risk appears in the Risk Register with its derived level, ind
   await expect(row).toBeVisible();
   await expect(row).toContainText("Added manually");
   await expect(row.getByText("HIGH", { exact: true })).toBeVisible(); // the derived level chip
+});
+
+test("a policy can be written, edited and deleted by hand, with no assessment behind it", async ({ page }) => {
+  // Reported as "the policy part doesn't have anything, no add, no edit,
+  // nothing": the library could only show what an assessment had drafted, so
+  // with no assessment run it was empty with no way to put anything in it.
+  await signIn(page);
+  await page.goto(`/workspaces/${WORKSPACE}/governance`);
+
+  await page.getByRole("button", { name: "+ Add policy" }).click();
+  await page.getByPlaceholder("Policy title").fill("Data Retention Policy");
+  await page
+    .getByPlaceholder(/The policy itself/)
+    .fill("1. Purpose\n2. Retention periods\n3. Deletion and destruction");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  const row = page.getByRole("button", { name: /Data Retention Policy/ });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("Added manually");
+
+  // Opening it shows the document, and it can be edited from there.
+  await row.click();
+  const drawer = page.getByRole("dialog", { name: "Data Retention Policy" });
+  await expect(drawer).toContainText("Retention periods");
+  await drawer.getByRole("button", { name: "Edit" }).click();
+  await drawer.getByLabel("Policy title").fill("Records Management Policy");
+  await drawer.getByRole("button", { name: "Save" }).click();
+
+  // The rename reaches the library behind the still-open drawer.
+  const renamed = page.getByRole("dialog", { name: "Records Management Policy" });
+  await expect(renamed).toBeVisible();
+  await expect(page.getByRole("button", { name: /Records Management Policy/ })).toBeVisible();
+
+  // And deleting it, from the drawer, takes it out of the library.
+  await renamed.getByRole("button", { name: "Delete" }).click();
+  await renamed.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText(/No policies yet/)).toBeVisible();
+});
+
+test("the two focus areas added after the first five are offered as tabs", async ({ page }) => {
+  await signIn(page);
+  await page.goto(`/workspaces/${WORKSPACE}/governance`);
+
+  const tabs = page.getByRole("tablist", { name: "Governance focus area" });
+  await expect(tabs.getByRole("tab", { name: "Data Integrity" })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: "Accessibility" })).toBeVisible();
+
+  // Transparency and Fairness now read as one pillar, not two.
+  await expect(page.getByText("Evaluated against four pillars")).toBeVisible();
+  await expect(page.getByText("Transparency & Fairness", { exact: true })).toBeVisible();
 });

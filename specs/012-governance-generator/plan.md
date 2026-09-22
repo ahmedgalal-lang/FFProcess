@@ -102,8 +102,8 @@ A single interactive mockup (published as an Artifact, not committed to the repo
 
 1. The governance profile fields (company size, jurisdiction) sitting next to the
    workspace's existing industry.
-2. Focus-area selection (the five areas from the spec).
-3. An example assessment result — summary framed against the five pillars, a phased
+2. Focus-area selection (the focus areas from the spec).
+3. An example assessment result — summary framed against the four pillars, a phased
    checklist, and an opened draft policy — using realistic content for one worked
    example, in the same visual language (`Governance, Controls & Metrics` header style,
    the existing page's card/section conventions) the rest of the workspace already
