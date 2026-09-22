@@ -355,13 +355,13 @@ test.describe("Core workflows", () => {
     // Frequency left blank — the exact slip that used to save silently as
     // if nothing had ever been typed.
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Row 1 is missing a frequency")).toBeVisible();
     // Still in edit mode, with what was typed intact — not lost.
     await expect(page.getByLabel("Metric 1 for Vendor Onboarding")).toHaveValue("Vendor approval time");
 
     await page.getByLabel("Frequency 1 for Vendor Onboarding").fill("Quarterly");
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
 
     const row = page.locator("tr", { hasText: "Vendor approval time" });
     await expect(row).toContainText("3 days");

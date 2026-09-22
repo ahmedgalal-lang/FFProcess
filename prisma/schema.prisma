@@ -132,6 +132,13 @@ model Workspace {
   industry    String?
   description String?
 
+  /// Set alongside `industry` to ground a governance assessment in this
+  /// client's actual scale and legal context. Optional, like `industry` —
+  /// generateGovernanceAssessment refuses to run without both set rather than
+  /// this column being required, so an unrelated workspace edit never fails.
+  governanceCompanySize  String?
+  governanceJurisdiction String?
+
   /// This client's logo, shown in the workspace sidebar on every page of
   /// this workspace, as a data: URL (see validateLogoDataUrl for the size
   /// cap). Per-Workspace rather than per-Firm so each client engagement gets
@@ -162,11 +169,13 @@ model Workspace {
 
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 
-  members   Member[]
-  roles     Role[]
-  people    Person[]
-  processes Process[]
-  phases    Phase[]
+  members               Member[]
+  roles                 Role[]
+  people                Person[]
+  processes             Process[]
+  phases                Phase[]
+  governanceAssessments GovernanceAssessment[]
+  governanceRisks       GovernanceRisk[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -208,12 +217,13 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles     PersonRole[]
-  processSteps    ProcessStep[]    @relation("StepAssignedRole")
-  swimlaneSteps   ProcessStep[]    @relation("StepSwimlaneRole")
-  supportedSteps  ProcessStep[]    @relation("StepSupportingRoles")
-  raciAssignments RaciAssignment[]
-  authorityRules  AuthorityRule[]  @relation("AuthorityRuleRole")
+  personRoles      PersonRole[]
+  processSteps     ProcessStep[]    @relation("StepAssignedRole")
+  swimlaneSteps    ProcessStep[]    @relation("StepSwimlaneRole")
+  supportedSteps   ProcessStep[]    @relation("StepSupportingRoles")
+  raciAssignments  RaciAssignment[]
+  authorityRules   AuthorityRule[]  @relation("AuthorityRuleRole")
+  governanceRisks  GovernanceRisk[]
 
   createdAt DateTime @default(now())
 
@@ -233,8 +243,9 @@ model Person {
   manager   Person?   @relation("PersonManager", fields: [managerId], references: [id])
   reports   Person[]  @relation("PersonManager")
 
-  personRoles    PersonRole[]
-  authorityRules AuthorityRule[] @relation("AuthorityRulePerson")
+  personRoles     PersonRole[]
+  authorityRules  AuthorityRule[] @relation("AuthorityRulePerson")
+  governanceRisks GovernanceRisk[]
 
   createdAt DateTime @default(now())
 
@@ -697,4 +708,146 @@ model AuthorityRule {
 
   @@index([assignmentId, order])
   @@map("authority_rules")
+}
+
+// ============================================================================
+// AI Governance Assessment — profile-grounded, five-pillar-framed assessment
+// per focus area: a persisted summary, a phased checklist, draft policies,
+// and a workspace-wide Risk Register. Modeled directly on ReviewFinding's
+// persist-and-reconcile shape above (spec 012-governance-generator).
+// ============================================================================
+
+enum GovernanceFocusArea {
+  BOARD_STRUCTURE
+  RISK_CONTROLS
+  ETHICS_POLICY
+  COMPENSATION
+  ESG
+}
+
+enum GovernanceItemPhase {
+  IMMEDIATE
+  NEAR_TERM
+  LONG_TERM
+}
+
+/// Shared by checklist items and policy drafts. DONE only applies to a
+/// checklist item; a policy stops at EDITED, which is itself what protects
+/// it from being overwritten by a later run (see governance-findings.ts).
+enum GovernanceItemStatus {
+  OPEN
+  EDITED
+  DONE
+  DISMISSED
+}
+
+enum RiskLikelihood {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RiskImpact {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskStatus {
+  OPEN
+  MITIGATING
+  ACCEPTED
+  CLOSED
+}
+
+/// One run, for one workspace and one focus area. Re-running replaces
+/// `summary` but reconciles `items` rather than deleting and recreating them
+/// — see governance-findings.ts.
+model GovernanceAssessment {
+  id          String              @id @default(uuid())
+  workspaceId String
+  focusArea   GovernanceFocusArea
+
+  /// The five-pillar-framed executive summary from the most recent run.
+  summary String @db.Text
+
+  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items     GovernanceChecklistItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, focusArea])
+  @@map("governance_assessments")
+}
+
+model GovernanceChecklistItem {
+  id           String               @id @default(uuid())
+  assessmentId String
+  phase        GovernanceItemPhase
+  title        String
+  description  String               @db.Text
+  status       GovernanceItemStatus @default(OPEN)
+
+  assessment GovernanceAssessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  policy     GovernancePolicyDraft?
+  risks      GovernanceRisk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assessmentId])
+  @@map("governance_checklist_items")
+}
+
+/// One-to-one with the checklist item that recommended it. Its own status,
+/// separate from the item's: a consultant can mark the *item* done while the
+/// *policy* stays a draft they're still editing, or vice versa.
+model GovernancePolicyDraft {
+  id              String               @id @default(uuid())
+  checklistItemId String               @unique
+  title           String
+  body            String               @db.Text
+  status          GovernanceItemStatus @default(OPEN)
+
+  checklistItem GovernanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("governance_policy_drafts")
+}
+
+/// A tracked risk — from an assessment (`sourceItemId` set) or added by hand
+/// (null). Not scoped to one focus area: a risk found while assessing Risk &
+/// Controls stays on the register even if Board Structure is regenerated
+/// next. `handManaged` flips true the moment a consultant sets any field
+/// directly, which is what protects it from a later run's reconciliation
+/// (governance-findings.ts) — the same role GovernancePolicyDraft's EDITED
+/// status plays for a policy.
+model GovernanceRisk {
+  id            String         @id @default(uuid())
+  workspaceId   String
+  sourceItemId  String?
+  title         String
+  description   String         @db.Text
+  likelihood    RiskLikelihood
+  impact        RiskImpact
+  status        RiskStatus     @default(OPEN)
+  handManaged   Boolean        @default(false)
+  ownerRoleId   String?
+  ownerPersonId String?
+
+  workspace   Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// SetNull, not Cascade: the risk outlives the run that found it.
+  sourceItem  GovernanceChecklistItem? @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+  ownerRole   Role?                    @relation(fields: [ownerRoleId], references: [id])
+  ownerPerson Person?                  @relation(fields: [ownerPersonId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@map("governance_risks")
 }
