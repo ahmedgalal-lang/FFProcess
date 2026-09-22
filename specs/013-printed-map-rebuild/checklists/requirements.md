@@ -31,13 +31,19 @@
 
 ## Notes
 
-**On the one judgement call that could have been a clarification.** The obvious question to
-ask is "what should the new layout be — down the page, across it, in role columns?" It is
-deliberately *not* asked here, and not marked NEEDS CLARIFICATION, because it is a design
-decision that belongs to `/speckit-plan`: the spec's job is to say what a reader must be
-able to do with the printed map, and the planning phase's job is to find the arrangement
-that delivers it. Writing the answer into the spec would prejudge the rebuild the user
-asked for.
+**How the layout question was settled.** The first draft of this spec deliberately left the
+layout open, on the grounds that it was a `/speckit-plan` decision. Three candidates were
+then mocked up on the reported process at true page proportions
+(`claude.ai/artifact/1BsKVYKKyKFyc6Wx8v91kK`) and put to the consultant, who asked for two
+of them rather than one. So the spec now names two — **Flow** and **Roles** — and records
+the third as ruled out. What is still open, and still belongs to planning, is their internal
+geometry: row heights, the role ceiling, and how a branch is drawn.
+
+**Why two and not one.** They are not two versions of the same thing. Flow answers "what
+happens, in what order"; Roles answers "who owns this, and where does it change hands".
+Neither dominates: Roles is the better artefact for the second conversation, and pays for it
+in type size and a ceiling on roles. Shipping both, with a per-client choice, is what the
+consultant asked for and is recorded as FR-018 through FR-023.
 
 **Why the "before" numbers are in the spec.** Every success criterion is written against a
 measurement taken from the current build on a real reported shape
@@ -52,3 +58,8 @@ assumption rather than left implicit.
 **Named non-goals.** The interactive Process Map canvas (the consultant has already asked
 for it to be left alone) and the PPTX deck (a slide is a different shape from a page).
 Both are stated in Assumptions so the planning phase does not quietly widen scope.
+
+**One thing planning must not skip.** FR-023 — the role ceiling. Roles degrades as roles are
+added: 4 reads well, 6 is at the edge, and nothing stops a consultant creating 12. The spec
+requires predictable, stated behaviour past that ceiling rather than columns too narrow to
+read; the number itself, and what happens past it, is planning's to decide and document.

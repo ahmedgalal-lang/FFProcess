@@ -26,6 +26,24 @@ it does is a patch on that one decision:
 
 A reader ends up reconstructing the flow from annotations instead of following a line.
 
+## The shape of the answer: two layouts, not one
+
+Two arrangements were mocked up against the reported process and judged worth building —
+they answer different questions a client asks of the same map, and neither is strictly
+better than the other:
+
+- **Flow** — the process runs straight down the page, one step per row, each step given the
+  page's full width for its label. Branches spur off the spine and rejoin it. Reads like a
+  printed procedure; holds up at any number of roles.
+- **Roles** — a column per role, the process flowing down through them, so a hand-off from
+  one role to another reads as a sideways move. Reads like a swimlane; shows who owns what
+  at a glance, at the cost of narrower cards and a ceiling on how many roles fit.
+
+A consultant chooses which one a given client's pack prints with. A third candidate — keeping
+today's left-to-right rows and merely enlarging the cards — was mocked up and rejected: it
+keeps the shape that caused the trouble, so every row boundary still needs a long connector
+sweeping back across the page.
+
 These are the measurements from the reported shape, rebuilt as a fixture
 (`tests/fixtures/tender-process.ts` — 18 steps, 4 roles, two decisions that each fork):
 
@@ -146,8 +164,40 @@ sits below the ordering work.
 
 ---
 
+### User Story 5 - Choose how this client's map prints (Priority: P3)
+
+A consultant picks which of the two layouts a client's pack uses, and that choice sticks —
+the pack printed next quarter looks like the pack printed this quarter without anyone
+having to remember a setting. A consultant who has never touched the setting gets a
+sensible default rather than being asked to decide before they have seen either.
+
+**Why this priority**: either layout on its own is already a deliverable, and the whole
+point of the rebuild is met by shipping one. The choice is what makes the second one worth
+having, so it follows both — but it is what the consultant actually asked for, and it is
+not optional to the finished feature.
+
+**Independent Test**: set a client to each layout in turn, export, and confirm the map
+changes; reload and confirm the choice survived.
+
+**Acceptance Scenarios**:
+
+1. **Given** a client whose layout has never been set, **When** the report is exported,
+   **Then** the map prints in the default layout, with no prompt or empty state.
+2. **Given** a consultant viewing the report, **When** they switch the map layout,
+   **Then** the map redraws in the other layout without leaving the report.
+3. **Given** a consultant who set a client's layout last month, **When** they export that
+   client's pack today, **Then** it prints in the layout they chose.
+4. **Given** a consultant with read-only access, **When** they open the report, **Then**
+   they see the map in the client's chosen layout and are not offered the control.
+
+---
+
 ### Edge Cases
 
+- **A process with more roles than the Roles layout can show legibly.** The tender process
+  has 4; the design-and-build one has 6; nothing stops a consultant creating 12. There must
+  be a defined ceiling, and past it the product must do something predictable and say so,
+  rather than printing columns too narrow to read.
 - **A process with one step, or none.** The map must render something sensible rather than
   an empty framed box or an error.
 - **A step label far longer than any card should be** — a consultant pasting a paragraph
@@ -202,6 +252,21 @@ sits below the ordering work.
 - **FR-017**: Where a step's label is longer than the map can reasonably show, the amount
   shown MUST be bounded by a documented limit and MUST NOT cut mid-word.
 
+- **FR-018**: The product MUST offer two printed map layouts — **Flow** (the process running
+  down the page, one step per row) and **Roles** (a column per role, the process flowing down
+  through them).
+- **FR-019**: Both layouts MUST satisfy FR-001 through FR-017. A layout that cannot meet them
+  is not one of the two.
+- **FR-020**: A consultant MUST be able to choose which layout a client's map prints in, and
+  that choice MUST persist for that client between sessions.
+- **FR-021**: A client whose layout has never been set MUST print in a default layout,
+  without being prompted to choose.
+- **FR-022**: Choosing a layout MUST be gated the same as every other change to a client's
+  report — a read-only user sees the result but is not offered the control.
+- **FR-023**: Where a process has more roles than the Roles layout can draw legibly, the
+  product MUST behave predictably against a documented ceiling and tell the consultant what
+  it did, rather than printing unreadably narrow columns.
+
 ### Key Entities
 
 - **Step**: one box on the map — carries a label, the role responsible, its position in the
@@ -210,6 +275,8 @@ sits below the ordering work.
   "Locally"), which the map draws as a line or, when it cannot, represents some other way.
 - **Process**: the ordered set of steps and the connections between them, belonging to one
   workspace.
+- **Map layout choice**: which of the two layouts a client's printed map uses — one value per
+  client, remembered alongside the report arrangement that client already carries.
 
 ## Success Criteria *(mandatory)*
 
@@ -232,6 +299,10 @@ sits below the ordering work.
   process from first step to last, and can say for each decision what its branches are.
 - **SC-008**: The map still renders for every process already in the product — including
   hand-arranged ones — with no stored step position changed by exporting.
+- **SC-009**: SC-001 through SC-007 hold in **both** layouts, measured separately in each —
+  a layout that passes in one and not the other has not shipped.
+- **SC-010**: A consultant can change a client's map layout and see the map redraw without
+  leaving the report, and the choice survives a reload and a new session.
 
 ## Assumptions
 
@@ -240,9 +311,15 @@ sits below the ordering work.
 - **Page count is not itself a success criterion.** A rebuild that makes the map longer but
   readable is a better deliverable than today's 7 pages of unreadable map. A specific page
   budget would prejudge the layout, which is a planning decision.
-- **The layout approach is deliberately not specified here.** Whether the rebuilt map flows
-  down the page, across it, in role columns, or some other arrangement is a design decision
-  for the planning phase, to be chosen against these outcomes.
+- **The two layouts were chosen from mockups** drawn on the reported process at true page
+  proportions (`claude.ai/artifact/1BsKVYKKyKFyc6Wx8v91kK`). Their internal geometry — row
+  heights, column ceilings, how a branch is drawn — is still a planning decision; what is
+  settled is that there are two, and which two.
+- **Flow is the default.** It is legible at any number of roles, where Roles degrades as
+  roles are added, so it is the safer thing to hand someone who has not chosen.
+- **The choice is per client, not per process.** A pack is one document; a map that changed
+  layout between two processes inside it would read as a mistake. This also matches where
+  the report already keeps its per-client choices.
 - **The interactive Process Map canvas is out of scope**, as the consultant has already
   said it should stay as it is. Only the report's rendering changes.
 - **The PPTX deck's map is out of scope** unless the plan finds it can safely share the
