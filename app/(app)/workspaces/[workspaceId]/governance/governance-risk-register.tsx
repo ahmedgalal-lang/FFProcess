@@ -154,7 +154,7 @@ export function GovernanceRiskRegister({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-wide text-slate-600">
                 <th className="w-2/5 pb-2 pr-2">Risk</th>
                 <th className="pb-2 pr-2">Likelihood</th>
                 <th className="pb-2 pr-2">Impact</th>
@@ -209,7 +209,7 @@ export function GovernanceRiskRegister({
                       </span>
                     </td>
                     <td className="py-2.5 pr-2 font-semibold text-slate-700">
-                      {risk.ownerLabel ?? <span className="font-normal text-slate-400">— unassigned</span>}
+                      {risk.ownerLabel ?? <span className="font-normal text-slate-500">— unassigned</span>}
                     </td>
                     <td className="py-2.5">
                       {canEdit ? (

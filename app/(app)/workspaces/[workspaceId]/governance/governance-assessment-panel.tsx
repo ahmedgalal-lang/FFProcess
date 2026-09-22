@@ -167,7 +167,7 @@ export function GovernanceAssessmentPanel({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {grouped.map(({ phase, items }) => (
                 <div key={phase}>
-                  <h3 className="mb-2 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  <h3 className="mb-2 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wide text-slate-600">
                     {PHASE_LABEL[phase]}
                     <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-500">
                       {items.length}
@@ -216,7 +216,7 @@ export function GovernanceAssessmentPanel({
                             <button
                               type="button"
                               onClick={() => setItemStatus(item.id, "DISMISSED")}
-                              className="flex-none text-[10px] font-semibold text-slate-400 hover:text-slate-600"
+                              className="flex-none text-[10px] font-semibold text-slate-500 hover:text-slate-600"
                             >
                               Dismiss
                             </button>
@@ -225,7 +225,7 @@ export function GovernanceAssessmentPanel({
                       </li>
                     ))}
                     {items.length === 0 && (
-                      <li className="rounded-lg border border-dashed border-slate-200 px-2.5 py-4 text-center text-[11px] text-slate-400">
+                      <li className="rounded-lg border border-dashed border-slate-200 px-2.5 py-4 text-center text-[11px] text-slate-500">
                         Nothing here.
                       </li>
                     )}

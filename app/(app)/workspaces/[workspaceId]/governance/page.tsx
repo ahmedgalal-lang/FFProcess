@@ -189,7 +189,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         />
       </div>
 
-      <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
+      <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
         <div className="h-px flex-1 bg-slate-200" />
         Key Control Points &amp; KPIs, from each process&apos;s Authority Matrix
         <div className="h-px flex-1 bg-slate-200" />

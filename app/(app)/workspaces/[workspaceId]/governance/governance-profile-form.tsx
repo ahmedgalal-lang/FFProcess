@@ -93,8 +93,8 @@ export function GovernanceProfileForm({
       </div>
       <div className="mt-2.5 flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600">
-          <span className="font-mono text-[10px] font-bold text-slate-400">INDUSTRY</span>
-          {industry ?? <span className="italic text-slate-400">not set — edit on Workspace Settings</span>}
+          <span className="font-mono text-[10px] font-bold text-slate-600">INDUSTRY</span>
+          {industry ?? <span className="italic text-slate-600">not set — edit on Workspace Settings</span>}
         </span>
       </div>
       {canEdit && (
