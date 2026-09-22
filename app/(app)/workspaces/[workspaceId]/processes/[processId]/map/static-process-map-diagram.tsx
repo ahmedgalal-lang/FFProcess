@@ -744,8 +744,29 @@ export function StaticProcessMapDiagram({
             if (kind === "lane") return Number(n.style?.height ?? PRINT_LANE_HEIGHT);
             return NODE_HEIGHT[kind] ?? 0;
           };
-          const top = groupNodes.reduce((min, n) => Math.min(min, n.position.y), Infinity);
-          const bottom = groupNodes.reduce((max, n) => Math.max(max, n.position.y + heightOf(n)), -Infinity);
+          let top = groupNodes.reduce((min, n) => Math.min(min, n.position.y), Infinity);
+          let bottom = groupNodes.reduce((max, n) => Math.max(max, n.position.y + heightOf(n)), -Infinity);
+
+          // A same-row connector that has to detour around cards between its
+          // own ends — the rejection loop is the usual case — always routes
+          // through the band below its row, because routeConnectors only ever
+          // looks downward for a same-row corridor. When that row is the last
+          // one in this box (a page break fell right after it, which is how
+          // rowGroups exists at all), the corridor reaches toward space that,
+          // in the router's single unsplit layout, belonged to the row after
+          // it — now a different box — while this box was sized only from its
+          // own nodes' positions, which know nothing about a corridor an edge
+          // is merely drawn through. The result was a connector's curve
+          // silently cut off mid-sweep by the box's own overflow-hidden.
+          // Corridors go into the same search so the box is never smaller
+          // than what it actually draws.
+          for (const e of groupEdges) {
+            const route = (e.data as { route?: ConnectorRoute } | undefined)?.route;
+            if (route?.kind !== "routed") continue;
+            top = Math.min(top, route.corridorY);
+            bottom = Math.max(bottom, route.corridorY);
+          }
+
           const contentTop = Number.isFinite(top) ? top - EXTENT_SLACK : group.top;
           const contentHeight = Number.isFinite(bottom) ? bottom - contentTop + EXTENT_SLACK : group.height;
 

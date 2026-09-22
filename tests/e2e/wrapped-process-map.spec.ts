@@ -500,3 +500,40 @@ test("the report's rows fit far fewer pages without lane bands", async ({ page }
 
   await removeWideProcess();
 });
+
+test("a same-row connector that detours around cards is never clipped by its row-group box", async ({ page }) => {
+  // Reported as a large connector swooping under most of a row before being
+  // cut off where the next row began: this fixture's rejection loop (step 19
+  // back to step 16) has to detour around the two cards between them, which
+  // routes it through the band below its own row — and that row was the last
+  // one in its row-group box, a page break having fallen right after it. The
+  // box's height came only from its nodes' own positions, which know nothing
+  // about a corridor an edge is merely drawn through, so the box clipped the
+  // bottom of the curve with its own overflow-hidden.
+  await makeWideProcess();
+  await signIn(page);
+  await page.goto(`/reports/workspace-acme?ids=${WIDE_PROCESS_ID}`);
+  await page.waitForSelector(".report-paper");
+  await page.waitForTimeout(3000);
+
+  const loop = await page.evaluate(() => {
+    const flows = [...document.querySelectorAll(".react-flow")].slice(1);
+    for (const flow of flows) {
+      const edge = flow.querySelector('[data-id*="loop"]');
+      const path = edge?.querySelector<SVGPathElement>("path.react-flow__edge-path");
+      if (!path) continue;
+      const flowBox = flow.getBoundingClientRect();
+      const pathBox = path.getBoundingClientRect();
+      return { found: true, flowBottom: flowBox.bottom, pathBottom: pathBox.bottom };
+    }
+    return { found: false, flowBottom: 0, pathBottom: 0 };
+  });
+
+  expect(loop.found, "the fixture's rejection loop connector must be drawn somewhere").toBe(true);
+  expect(
+    loop.pathBottom,
+    "the connector's curve must stay inside its own row-group box, not get cut off by it"
+  ).toBeLessThanOrEqual(loop.flowBottom);
+
+  await removeWideProcess();
+});
