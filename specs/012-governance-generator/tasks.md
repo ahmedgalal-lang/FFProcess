@@ -62,9 +62,9 @@ has been.
 
 ## Phase 8: Polish
 
-- [ ] T027 Run the full suites — `pnpm test`, `pnpm test:e2e`, `pnpm lint`, `pnpm exec tsc --noEmit` — and report the counts. Do not edit any file while a run is in flight.
-- [ ] T028 Read the real rendered page (`pnpm dev`, sign in, `/workspaces/workspace-acme/governance`) against the approved mockup (https://claude.ai/artifact/WwGMgev9B2EF5zHhoViFjC) — spacing, status pill legibility, whether the draft policy reads as a document — the check nothing automated catches.
-- [ ] T029 Re-read `spec.md`'s success criteria one by one against what was actually measured, and record each one's result in `specs/012-governance-generator/checklists/requirements.md`. Any criterion not measured is not met.
+- [x] T027 Run the full suites — `pnpm test`, `pnpm test:e2e`, `pnpm lint`, `pnpm exec tsc --noEmit` — and report the counts. Do not edit any file while a run is in flight.
+- [x] T028 Read the real rendered page (`pnpm dev`, sign in, `/workspaces/workspace-acme/governance`) against the approved mockup (https://claude.ai/artifact/WwGMgev9B2EF5zHhoViFjC) — spacing, status pill legibility, whether the draft policy reads as a document — the check nothing automated catches.
+- [x] T029 Re-read `spec.md`'s success criteria one by one against what was actually measured, and record each one's result in `specs/012-governance-generator/checklists/requirements.md`. Any criterion not measured is not met.
 
 ## Dependencies
 
