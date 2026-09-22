@@ -381,13 +381,24 @@ export function wrapProcessMap(
   // a zero would be an infinite layout rather than a wrong one.
   const capacity = Math.max(MIN_ROW_CAPACITY, rowCapacity(options.boxWidth, spacing));
 
-  // The order the interactive map and the Steps List already show. This
-  // re-flows that order; it does not re-derive one from the connection graph,
-  // which would make the printed map disagree with the screen. The id breaks
-  // a tie so two steps at the same coordinates lay out the same way twice.
-  const ordered = [...steps].sort(
-    (a, b) => a.positionX - b.positionX || a.positionY - b.positionY || a.id.localeCompare(b.id)
-  );
+  // The order the caller was given the steps in — the Steps List's own
+  // `order` column, which every caller already queries by — not the order
+  // implied by where each card was dragged on the canvas.
+  //
+  // This used to re-sort by positionX on the theory that position "is" the
+  // Steps List order, which is true only until someone drags a card:
+  // dragging writes positionX/Y and nothing else, so the two fall out of
+  // step on the very first edit. From then on the row a step landed in, and
+  // the "Steps N–M" range printed above it, were decided by wherever it
+  // happened to sit on the canvas rather than by the sequence the process
+  // actually runs in — row ranges went non-contiguous and even ran backwards
+  // ("Steps 15–1"), and a connection between two steps that were adjacent in
+  // the process but far apart on the canvas was broken into a marked
+  // cross-row pair for no reason a reader could see. The printed map is a
+  // narrative document; it has to read in the order the process runs in,
+  // which is this array's own order, regardless of how the map looks on
+  // screen.
+  const ordered = steps;
 
   if (ordered.length === 0) {
     return { wrapped: false, rows: [], width: 0, height: 0, capacity };

@@ -197,22 +197,31 @@ describe("wrapProcessMap — capacity and rows", () => {
     expect(new Set(ids).size).toBe(22);
   });
 
-  it("takes the order the steps are already in, not the order they arrived", () => {
-    // Shuffled input, deliberate positions: the map must read left to right.
+  it("reads in the order the caller gave the steps, regardless of position", () => {
+    // The opposite of what this test asserted before: it used to re-sort by
+    // positionX and call that "the order the steps are already in", which is
+    // true of a freshly auto-laid-out process and false of a hand-arranged
+    // one — dragging a card only ever writes positionX/Y, never this step's
+    // place in the Steps List, so the two fall out of step on the first edit.
+    // The caller already queries steps in the Steps List's own order; the
+    // wrap must keep that order even when position disagrees with it.
     const shuffled = [
-      { id: "third", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 900, positionY: 0 },
-      { id: "first", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 100, positionY: 0 },
+      { id: "third", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 100, positionY: 0 },
+      { id: "first", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 900, positionY: 0 },
       { id: "second", assignedRoleId: "r1", swimlaneRoleId: null, positionX: 500, positionY: 0 },
     ];
     const layout = wrapProcessMap(shuffled, opts(1400));
-    expect(layout.rows[0]!.steps.map((s) => s.id)).toEqual(["first", "second", "third"]);
+    expect(layout.rows[0]!.steps.map((s) => s.id)).toEqual(["third", "first", "second"]);
   });
 
-  it("breaks a tie on position with the id, so the layout is stable", () => {
+  it("does not need position to break a tie, because position no longer orders anything", () => {
+    // Two steps at the same x used to need a tie-break to stay deterministic;
+    // now the input order is the only order there is, so two identical
+    // positions are simply not ambiguous.
     const tied = ["b", "a"].map((id) => ({
       id, assignedRoleId: "r1", swimlaneRoleId: null, positionX: 100, positionY: 0,
     }));
-    expect(wrapProcessMap(tied, opts(1400)).rows[0]!.steps.map((s) => s.id)).toEqual(["a", "b"]);
+    expect(wrapProcessMap(tied, opts(1400)).rows[0]!.steps.map((s) => s.id)).toEqual(["b", "a"]);
   });
 
   it("puts one step per column, centred, at whatever spacing it was given", () => {
@@ -501,6 +510,52 @@ describe("shortRoleName", () => {
   it("tolerates whitespace and an empty name", () => {
     expect(shortRoleName("   SECTOR OWNER  ")).toBe("SECTOR OWNER");
     expect(shortRoleName("")).toBe("");
+  });
+});
+
+describe("wrapProcessMap — a hand-arranged process still reads in order", () => {
+  const opts = { boxWidth: 1400, laneLabel: (id: string | null) => id ?? "Unassigned" };
+
+  // A step at the position a consultant dragged it to, deliberately out of
+  // step order — the shape a real hand-arranged map has, and the one nothing
+  // else in this file's fixtures produces: every other fixture lays steps out
+  // left to right in step order, because that is what auto-layout does, and
+  // so happened to never exercise the case where position and order disagree.
+  const arranged = (id: string, x: number) => ({
+    id,
+    assignedRoleId: "r1",
+    swimlaneRoleId: null,
+    positionX: x,
+    positionY: 0,
+  });
+
+  it("deals steps into rows by the order they were given, not by where they were dragged", () => {
+    // Reported from production: a hand-arranged map's row labels read "Steps
+    // 2-5", "Steps 15-1", "Steps 7-16", "Steps 11-1" — overlapping,
+    // non-contiguous, one of them descending. The wrap re-sorted its input by
+    // positionX before dealing it into rows, on the theory that position was
+    // "the order the interactive map and the Steps List already show" — which
+    // is false the instant a step is dragged: dragging only ever writes
+    // positionX/Y, never the step's own `order` column, so the two drift
+    // apart on the very first edit. The caller already queries steps in that
+    // column's order; the wrap must keep it, not re-derive a different one.
+    const steps = [
+      arranged("a", 900), // dragged to the far right
+      arranged("b", 100), // dragged to the far left
+      arranged("c", 500), // dragged to the middle
+    ];
+    const layout = wrapProcessMap(steps, opts);
+    expect(layout.rows[0]!.steps.map((s) => s.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps a row's own numbering monotonic and contiguous whatever the positions are", () => {
+    const steps = Array.from({ length: 9 }, (_, i) =>
+      // x deliberately reversed against the given order.
+      arranged(`s${i + 1}`, (8 - i) * 100)
+    );
+    const layout = wrapProcessMap(steps, opts);
+    const ids = layout.rows.flatMap((r) => r.steps.map((s) => s.id));
+    expect(ids).toEqual(steps.map((s) => s.id));
   });
 });
 
