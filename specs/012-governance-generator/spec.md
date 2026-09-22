@@ -92,7 +92,39 @@ client's own details) rather than a summary of what the policy should contain.
 
 ---
 
-### User Story 3 - Findings persist, and a stale one doesn't come back on its own (Priority: P2)
+### User Story 3 - Risks and policies live somewhere permanent, not buried in one run's checklist (Priority: P2)
+
+A risk a consultant identifies in week one is still a risk in week six, whichever focus
+area they last ran an assessment for — it needs a home of its own, scored and owned,
+not just a line in a checklist that could be several regenerations out of date. Every
+draft policy across every focus area needs to be findable in one place too, not only by
+remembering which checklist item first linked to it.
+
+**Why this priority**: Raised directly by the user after reviewing the first mockup —
+neither a risk register nor a cross-area policy list existed in the initial design, and
+both are core to what a governance framework actually is.
+
+**Independent Test**: Generate assessments for two different focus areas, then open a
+single Risk Register view and a single Policy Library view and confirm both show
+everything from both runs together, not one focus area at a time.
+
+**Acceptance Scenarios**:
+
+1. **Given** an assessment surfaces a risk, **When** the consultant looks at the Risk
+   Register, **Then** that risk appears there with a likelihood, an impact, an owner
+   field, and a status — independent of the focus area or run that surfaced it.
+2. **Given** a risk on the register, **When** a consultant scores or reassigns it by
+   hand, **Then** a later assessment run does not overwrite that change.
+3. **Given** draft policies from two different focus areas, **When** the consultant
+   opens the Policy Library, **Then** both appear in one list, each showing which focus
+   area it came from and its current status.
+4. **Given** a consultant identifies a risk that no assessment surfaced, **When** they
+   add it directly to the Risk Register, **Then** it is tracked exactly like an
+   AI-surfaced one, with no functional difference.
+
+---
+
+### User Story 4 - Findings persist, and a stale one doesn't come back on its own (Priority: P2)
 
 The assessment for a workspace is not a one-shot report: a consultant runs it early in
 an engagement, works through the checklist over weeks, and marks items done or not
@@ -130,7 +162,7 @@ the marked item is not silently reset or duplicated.
   a grounded result, so it has to ask for them rather than silently generating something
   generic.
 - **Re-running while a previous run is still being reviewed** — same reconciliation
-  rule as User Story 3, not a special case.
+  rule as User Story 4, not a special case.
 - **A draft policy the consultant has started editing**, then the assessment is
   re-run — must not overwrite an edited draft with a freshly generated one out from
   under the consultant, mirroring the "EDITED" status AI Process Review findings
@@ -169,6 +201,19 @@ the marked item is not silently reset or duplicated.
   MUST say so plainly, the same way AI Process Review and Template Generation already
   do, rather than erroring or silently doing nothing.
 
+- **FR-011**: The system MUST provide a Risk Register, independent of any single focus
+  area or assessment run, where a risk has a title, description, likelihood, impact, an
+  owner, and a status that a consultant can set directly.
+- **FR-012**: A risk surfaced by an assessment MUST appear on the same Risk Register as
+  one added by hand, with no functional difference between the two.
+- **FR-013**: The system MUST provide a Policy Library listing every draft policy across
+  every focus area in one place, each showing which focus area produced it and its
+  current status.
+- **FR-014**: Re-running an assessment MUST reconcile against the Risk Register the same
+  way it reconciles against the checklist (FR-007) — a risk already scored or reassigned
+  by hand must not be silently overwritten, and a risk already accepted or closed must
+  not silently reappear as open.
+
 ### Key Entities
 
 - **Governance Profile**: a workspace's company size and jurisdiction, alongside its
@@ -180,6 +225,9 @@ the marked item is not silently reset or duplicated.
   linked draft policy.
 - **Draft Policy**: a full policy document tied to a checklist item, editable, and
   preserved independently of later assessment runs.
+- **Risk**: a standing, scored entry on the workspace's Risk Register — likelihood,
+  impact, owner, and status — independent of any one focus area or run, whether it came
+  from an assessment or was added by hand.
 
 ## Success Criteria *(mandatory)*
 
@@ -195,6 +243,13 @@ the marked item is not silently reset or duplicated.
   item done, with no duplicate of it created, in 100% of cases.
 - **SC-004**: A draft policy a consultant has edited is never silently replaced by a
   regeneration.
+
+- **SC-005**: A risk surfaced in one focus area's assessment and a policy drafted in
+  another are both visible from a single Risk Register view and a single Policy
+  Library view respectively, without switching focus areas to find them.
+- **SC-006**: A risk a consultant has re-scored or reassigned by hand is never silently
+  overwritten by a later assessment run, in 100% of cases — the same guarantee SC-004
+  already makes for an edited policy draft.
 
 ## Assumptions
 

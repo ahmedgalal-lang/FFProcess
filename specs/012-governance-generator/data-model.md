@@ -113,6 +113,78 @@ type GovernanceAssessmentResult = {
 };
 ```
 
+## Two entities the first pass under-scoped
+
+Walking the mockup past the user surfaced a real gap: "risk aspects" and "policies" each
+need their own place, not just a spot inside one focus area's checklist.
+
+### `GovernanceRisk` — a register, not a checklist item
+
+A checklist item is a recommended *action*, closed by doing it. A risk is a standing
+*fact about the business*, closed only when it's genuinely mitigated or accepted — it
+needs its own lifecycle, its own likelihood/impact score, and to survive across
+assessment runs the way a checklist item already does, independent of any one focus
+area (a risk surfaced while assessing Risk & Controls is still a risk if the consultant
+later regenerates Board Structure).
+
+```prisma
+enum RiskLikelihood { LOW MEDIUM HIGH }
+enum RiskImpact { LOW MEDIUM HIGH CRITICAL }
+enum RiskStatus { OPEN MITIGATING ACCEPTED CLOSED }
+
+/// A tracked risk — from an assessment or added by hand (`sourceItemId` null).
+/// Not scoped to one focus area: a risk found while assessing Risk & Controls
+/// stays on the register even if Board Structure is regenerated next.
+model GovernanceRisk {
+  id          String          @id @default(uuid())
+  workspaceId String
+  title       String
+  description String          @db.Text
+  likelihood  RiskLikelihood
+  impact      RiskImpact
+  status      RiskStatus      @default(OPEN)
+  ownerRoleId String?
+  ownerPersonId String?
+
+  /// The checklist item that surfaced this, when it came from a run rather
+  /// than being added by hand. SetNull, not Cascade: the risk outlives the
+  /// run that found it.
+  sourceItemId String?
+
+  workspace   Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceItem  GovernanceChecklistItem? @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+  ownerRole   Role?                    @relation(fields: [ownerRoleId], references: [id])
+  ownerPerson Person?                  @relation(fields: [ownerPersonId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@map("governance_risks")
+}
+```
+
+`level` (Low/Medium/High shown as a chip) is derived from likelihood × impact at read
+time, the same way `deriveControlPoints` already derives the existing Governance page's
+Key Control Points from the Authority Matrix rather than storing a redundant column —
+one more place this feature follows a pattern already in the codebase instead of
+inventing one.
+
+**Reconciliation**: a risk surfaced by a run is matched by normalized title the same way
+`review-findings.ts` already matches checklist items (Decision 3) — a re-run doesn't
+duplicate a risk already on the register, and doesn't touch one a consultant has since
+re-scored or reassigned by hand.
+
+### Policy library — a view, not a new table
+
+No new table: `GovernancePolicyDraft` already carries everything the library lists
+(title, status, `updatedAt`) and already belongs to a checklist item, which belongs to
+an assessment, which names its focus area — the library is
+`GovernancePolicyDraft.findMany({ where: { checklistItem: { assessment: { workspaceId } } } })`,
+ordered by `updatedAt`. Same relationship the existing workspace Governance page already
+has to `AuthorityAssignment`: an aggregate read across an engagement's data, not a
+second copy of it.
+
 ## What this feature reads from existing domain code, unchanged
 
 - `lib/ai/gemini.ts` — `generateStructured`, `StructuredOutcome<T>`. No change.
