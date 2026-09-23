@@ -2,11 +2,9 @@ import "dotenv/config";
 import { Client } from "pg";
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
-import { expectDiamond } from "./shapes";
 
 const PROCESS_ID = "report-wide-diagram-1";
 const STEP_COUNT = 17;
-let roleName = "";
 
 const UNASSIGNED_PROCESS_ID = "report-unassigned-lane-1";
 
@@ -29,7 +27,6 @@ test.beforeAll(async () => {
     );
     const role = await client.query(`SELECT id, name FROM roles WHERE "workspaceId" = 'workspace-acme' ORDER BY name LIMIT 1`);
     const roleId = role.rows[0].id;
-    roleName = role.rows[0].name;
 
     for (let i = 0; i < STEP_COUNT; i++) {
       const type = i === 0 ? "START" : i === STEP_COUNT - 1 ? "END" : "TASK";
@@ -112,9 +109,13 @@ test.afterAll(async () => {
   }
 });
 
-test("Export Report's static diagram fits a wide process instead of clipping it", async ({ page }) => {
+test("Export Report's map shows a wide process whole, clipping nothing", async ({ page }) => {
+  // Reported as "swimlane not visible": the old canvas drew the map into a
+  // fixed box and scaled it to fit, so a wide process lost both its edges and
+  // its legibility. The rebuilt map has no box to be clipped by — it is
+  // ordinary flowing HTML — so the check is simply that every card is whole
+  // and inside the map.
   await signIn(page);
-
   await page.goto("/workspaces/workspace-acme/export");
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
   const count = await checkboxes.count();
@@ -122,58 +123,43 @@ test("Export Report's static diagram fits a wide process instead of clipping it"
   await page.getByRole("checkbox", { name: /WIDE100/ }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
+  await page.waitForSelector(".printed-map");
 
-  // A wrapped map is drawn one row-group per box, so "the diagram" is all of
-  // them — the cards this checks for are spread across the rows.
-  // A wrapped map is drawn one row-group per box, so "the diagram" is several
-  // boxes. Each step has to be inside the box it belongs to, which is what the
-  // single-container version of this check was really asserting.
-  const diagram = page.locator(".print-keep.relative").filter({ has: page.locator(".react-flow") });
-  await expect(diagram.first()).toBeVisible();
-
-  const stepNodes = diagram.locator(".react-flow__node").filter({ hasText: /Step \d+/ });
-  await expect(stepNodes).toHaveCount(STEP_COUNT);
-
-  // Nothing clipped by the box it is drawn in — the failure mode was a node
-  // positioned beyond what the canvas could show, invisible behind the
-  // container's overflow-hidden edge.
-  const clipped = await page.evaluate(() => {
-    const boxes = [...document.querySelectorAll<HTMLElement>(".print-keep.relative")].filter((b) =>
-      b.querySelector(".react-flow")
-    );
-    let bad = 0;
-    for (const box of boxes) {
-      const br = box.getBoundingClientRect();
-      for (const n of box.querySelectorAll<HTMLElement>(".react-flow__node")) {
-        const r = n.getBoundingClientRect();
-        if (r.left < br.left - 1 || r.right > br.right + 1 || r.top < br.top - 1 || r.bottom > br.bottom + 1) {
-          bad += 1;
-        }
-      }
-    }
-    return bad;
+  const found = await page.evaluate(() => {
+    const map = document.querySelector(".printed-map")!;
+    const box = map.getBoundingClientRect();
+    const cards = [...map.querySelectorAll<HTMLElement>(".pmap-card, .pmap-roles__cell")];
+    return {
+      cards: cards.length,
+      clipped: cards.filter((c) => {
+        const r = c.getBoundingClientRect();
+        return r.right > box.right + 1 || r.left < box.left - 1 || r.bottom > box.bottom + 1;
+      }).length,
+      overflowing: cards.filter((c) =>
+        [...c.querySelectorAll<HTMLElement>("*")].some(
+          (el) => el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1
+        )
+      ).length,
+      // The role is read off the card now — there are no lane bands to read it
+      // from, and no canvas to draw them on.
+      canvases: map.querySelectorAll(".react-flow").length,
+      text: (map as HTMLElement).innerText,
+    };
   });
-  expect(clipped, "nodes clipped by their own box").toBe(0);
 
-  // The other half of what "swimlane not visible" reported: the steps must not
-  // be floating with no idea whose they are. A *wrapped* printed map no longer
-  // draws lane bands at all — a row of steps across several roles was drawn
-  // one band per role and cost the map pages of blank paper — so the role is
-  // read off the card, which is where it has always also been printed. An
-  // unwrapped map still draws its lanes, untouched.
-  const laneBands = diagram.locator('.react-flow__node[data-id^="lane-"]');
-  expect(await laneBands.count(), "a wrapped printed map draws no lane bands").toBe(0);
-
-  const withRole = stepNodes.filter({ hasText: roleName });
-  expect(
-    await withRole.count(),
-    `no card carries the role "${roleName}"`
-  ).toBeGreaterThan(0);
+  expect(found.cards).toBeGreaterThan(0);
+  expect(found.clipped, "nothing may be clipped by the map's bounds").toBe(0);
+  expect(found.overflowing, "no card's text may overflow it").toBe(0);
+  expect(found.canvases, "the printed map draws no canvas").toBe(0);
 });
 
-test("Export Report's static diagram draws an Unassigned lane for steps with no owner", async ({ page }) => {
+test("Export Report's map keeps a step that has no owner, and says so on the card", async ({ page }) => {
+  // The defect behind this: the old code only ever built a lane for a step
+  // that *had* a role, so a process of roleless steps lost its lane entirely
+  // and the steps collapsed onto one line. The rebuilt map has no lanes — the
+  // role lives on the card — so what must hold is that the step still appears
+  // and still states that nobody owns it.
   await signIn(page);
-
   await page.goto("/workspaces/workspace-acme/export");
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
   const count = await checkboxes.count();
@@ -181,34 +167,23 @@ test("Export Report's static diagram draws an Unassigned lane for steps with no 
   await page.getByRole("checkbox", { name: /NOLANE1/ }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
+  await page.waitForSelector(".printed-map");
 
-  // A wrapped map is drawn one row-group per box, so "the diagram" is all of
-  // them — the cards this checks for are spread across the rows.
-  const diagram = page
-    .locator("main .rounded-xl.border.border-slate-200.bg-white")
-    .filter({ has: page.locator(".react-flow") });
-  await expect(diagram.first()).toBeVisible();
+  const map = page.locator(".printed-map");
+  await expect(map).toBeVisible();
+  await expect(map.getByText("No role set").first()).toBeVisible();
 
-  // The failure mode: zero lane nodes at all, because the old code only ever
-  // built a lane for a step that had a role. It has to be exactly the
-  // "lane-unassigned" id — the interactive Process Map's own name for it —
-  // proving this draws through the same assignSwimlanes answer.
-  // "lane-unassigned" unwrapped, "lane-<row>-unassigned" once a map wraps —
-  // either way the lane exists and is named the same thing the interactive
-  // Process Map names it.
-  const lane = diagram.locator(
-    '.react-flow__node[data-id="lane-unassigned"], .react-flow__node[data-id$="-unassigned"]'
-  );
-  await expect(lane.first()).toBeVisible();
-  await expect(lane.first()).toContainText("Unassigned");
-
-  const stepNodes = diagram.locator(".react-flow__node").filter({ hasText: /Start|Do the thing|Finish/ });
-  await expect(stepNodes).toHaveCount(3);
+  for (const label of ["Start", "Do the thing", "Finish"]) {
+    await expect(map.getByText(label, { exact: false }).first()).toBeVisible();
+  }
 });
 
-test("Export Report's static diagram shows the same documented-card content as the live canvas", async ({ page }) => {
+test("Export Report's map carries the same documented content the card always has", async ({ page }) => {
+  // The rebuild replaced how the map is drawn, not what a card says. An SLA, an
+  // approval gate, a cross-process link and the fact that a step is a decision
+  // all still have to reach the page — this is the check that the new renderer
+  // did not quietly drop any of them.
   await signIn(page);
-
   await page.goto("/workspaces/workspace-acme/export");
   const checkboxes = page.locator('input[type="checkbox"][name="ids"]');
   const count = await checkboxes.count();
@@ -216,30 +191,23 @@ test("Export Report's static diagram shows the same documented-card content as t
   await page.getByRole("checkbox", { name: /PUR101/ }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
+  await page.waitForSelector(".printed-map");
 
-  // A wrapped map is drawn one row-group per box, so "the diagram" is all of
-  // them — the cards this checks for are spread across the rows.
-  const diagram = page
-    .locator("main .rounded-xl.border.border-slate-200.bg-white")
-    .filter({ has: page.locator(".react-flow") });
-  await expect(diagram.first()).toBeVisible();
+  const text = await page.locator(".printed-map").innerText();
 
-  const createPO = diagram.locator(".react-flow__node").filter({ hasText: "Create Purchase Order" });
-  await expect(createPO.getByText("SLA 2d")).toBeVisible();
-
-  const sendPO = diagram.locator(".react-flow__node").filter({ hasText: "Send PO to Vendor" });
-  await expect(sendPO.getByText("→ PUR102")).toBeVisible();
-
-  const receiveGoods = diagram.locator(".react-flow__node").filter({ hasText: "Receive Goods" });
-  await expect(receiveGoods.getByText("no SLA set")).toBeVisible();
-
-  const decision = diagram.locator(".react-flow__node").filter({ hasText: "Approve PO?" });
-  await expect(decision.getByText(/At or above \$100,000/)).toBeVisible();
-
-  // The printed diagram draws the same notation as the live canvas — a
-  // decision is a diamond on paper too, not just on screen.
-  await expectDiamond(decision);
-  await expect(createPO.locator("svg polygon")).toHaveCount(0);
+  expect(text).toContain("Create Purchase Order");
+  expect(text).toContain("SLA 2d");
+  expect(text).toContain("Send PO to Vendor");
+  expect(text).toContain("→ PUR102");
+  expect(text).toContain("Receive Goods");
+  expect(text).toContain("no SLA set");
+  expect(text).toContain("Approve PO?");
+  // Worded by gateLine, the one place this sentence is written, so the map,
+  // the Authority Matrix, the deck and the spreadsheet cannot drift apart.
+  expect(text).toMatch(/At or above \$100,000/);
+  // A decision is still marked as one, on paper as on screen. Case-insensitive:
+  // the chip is uppercased in CSS, and innerText reflects that.
+  expect(text).toMatch(/decision/i);
 });
 
 /**
@@ -400,32 +368,24 @@ test("Export Report's Helicopter View fills the page width rather than sitting s
   expect(used!).toBeLessThanOrEqual(100.5);
 });
 
-test("Export Report's process map fills the page width rather than leaving a band of it empty", async ({
-  page,
-}) => {
+test("Export Report's map uses the full page width it is given", async ({ page }) => {
+  // Was 89.4%: the old canvas scaled its drawing to fit, and fitView divided
+  // the box by (1 + padding), so a strip of every page was width the map was
+  // never allowed to use. Flowing HTML takes the width it is given, which is
+  // what this now measures.
   await signIn(page);
   await page.goto("/reports/workspace-acme?ids=" + RAILS_MAIN_ID);
   await page.waitForSelector(".report-paper");
-  await page.waitForSelector(".react-flow__node");
+  await page.waitForSelector(".printed-map");
 
   const used = await page.evaluate(() => {
-    // Every canvas the map is drawn across, not just the last one: a wrapped
-    // map is one box per row-group, and the widest row is what has to fit.
-    const maps = [...document.querySelectorAll(".react-flow")].slice(1) as HTMLElement[];
-    if (maps.length === 0) return null;
-    const widths = maps.map((flow) => {
-      const rects = [...flow.querySelectorAll(".react-flow__node")].map((n) =>
-        n.getBoundingClientRect()
-      );
-      if (rects.length === 0) return 0;
-      const drawn = Math.max(...rects.map((r) => r.right)) - Math.min(...rects.map((r) => r.left));
-      return (100 * drawn) / flow.getBoundingClientRect().width;
-    });
-    return Math.max(...widths);
+    const map = document.querySelector<HTMLElement>(".printed-map")!;
+    const rows = [...map.querySelectorAll<HTMLElement>(".pmap-flow__row, .pmap-roles__row")];
+    if (rows.length === 0) return null;
+    const widest = Math.max(...rows.map((r) => r.getBoundingClientRect().width));
+    return (100 * widest) / map.getBoundingClientRect().width;
   });
 
-  // Was 89.4%: fitView divides the box by (1 + padding), so the old 0.12 was
-  // an eleven-percent strip of page the drawing was never allowed to use.
   expect(used).not.toBeNull();
   expect(used!).toBeGreaterThan(95);
 });

@@ -197,6 +197,8 @@
   letter-spacing: 0;
 }
 .pmap-card__ends { color: #b45309; font-weight: 600; }
+.pmap-card__sla { color: #475569; text-transform: none; letter-spacing: 0; }
+.pmap-card__gate { color: var(--pmap-decision); font-weight: 600; text-transform: none; letter-spacing: 0; }
 
 .pmap-card__links,
 .pmap-card__backref {

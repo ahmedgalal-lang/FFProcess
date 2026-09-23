@@ -1,3 +1,4 @@
+import { gateLine, type AuthorityDirection } from "@/lib/domain/authority-table";
 import {
   buildPrintMapLayout,
   type PrintConnectionInput,
@@ -12,7 +13,27 @@ export type PrintedMapStep = {
   label: string;
   assignedRole: { id: string; name: string } | null;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
+  /** The service level this step is held to, when one is set. */
+  slaDays: number | null;
+  /** The approval threshold this step gates on, with its direction. */
+  threshold: number | null;
+  direction?: AuthorityDirection;
 };
+
+/**
+ * What a card carries beyond its label and role, worded exactly as the Authority
+ * Matrix, the deck and the spreadsheet word it — `gateLine` is the one place
+ * that sentence is written, so the four cannot drift into four phrasings of one
+ * rule.
+ */
+export type PrintedMapStepDetail = { sla: string | null; gate: string | null };
+
+export function detailOf(step: PrintedMapStep): PrintedMapStepDetail {
+  return {
+    sla: step.slaDays != null ? `SLA ${step.slaDays}d` : "no SLA set",
+    gate: gateLine(step.threshold, step.direction),
+  };
+}
 
 export type PrintedMapConnection = {
   id: string;
@@ -86,6 +107,7 @@ export function PrintedProcessMap({
   });
 
   const linksByStepId = new Map(steps.map((s) => [s.id, s.links]));
+  const detailByStepId = new Map(steps.map((s) => [s.id, detailOf(s)]));
 
   return (
     <div className="printed-map">
@@ -95,9 +117,9 @@ export function PrintedProcessMap({
         </p>
       )}
       {outcome.layout === "FLOW" ? (
-        <FlowLayout outline={outcome.flow} linksByStepId={linksByStepId} />
+        <FlowLayout outline={outcome.flow} linksByStepId={linksByStepId} detailByStepId={detailByStepId} />
       ) : (
-        <RolesLayout grid={outcome.roles} linksByStepId={linksByStepId} />
+        <RolesLayout grid={outcome.roles} linksByStepId={linksByStepId} detailByStepId={detailByStepId} />
       )}
     </div>
   );

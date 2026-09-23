@@ -1,7 +1,8 @@
 import type { RolesGrid } from "@/lib/domain/print-map-layout";
-import type { PrintedMapStep } from "./printed-process-map";
+import type { PrintedMapStep, PrintedMapStepDetail } from "./printed-process-map";
 
 type LinksByStepId = Map<string, PrintedMapStep["links"]>;
+type DetailByStepId = Map<string, PrintedMapStepDetail>;
 
 /**
  * The process flowing down through a column per role, so a hand-off from one
@@ -21,9 +22,11 @@ type LinksByStepId = Map<string, PrintedMapStep["links"]>;
 export function RolesLayout({
   grid,
   linksByStepId,
+  detailByStepId,
 }: {
   grid: RolesGrid;
   linksByStepId: LinksByStepId;
+  detailByStepId: DetailByStepId;
 }) {
   const columns = grid.columns.length;
 
@@ -42,6 +45,7 @@ export function RolesLayout({
           const connector = grid.connectors.find((c) => c.fromRow === cell.row);
           const backs = grid.backReferences.filter((b) => b.fromOrder === cell.step.order);
           const links = linksByStepId.get(cell.step.id) ?? [];
+          const detail = detailByStepId.get(cell.step.id);
 
           return (
             <li
@@ -53,11 +57,13 @@ export function RolesLayout({
                 <span className="pmap-card__num">{cell.step.order}</span>
                 <div className="pmap-card__body">
                   <p className="pmap-card__label">{cell.step.label}</p>
-                  {cell.step.roleName === null && (
-                    <p className="pmap-card__meta">
+                  <p className="pmap-card__meta">
+                    {cell.step.roleName === null && (
                       <span className="pmap-card__unowned">No role set</span>
-                    </p>
-                  )}
+                    )}
+                    {detail?.sla && <span className="pmap-card__sla">{detail.sla}</span>}
+                    {detail?.gate && <span className="pmap-card__gate">{detail.gate}</span>}
+                  </p>
                   {links.length > 0 && (
                     <p className="pmap-card__links">
                       {links.map((link) => (

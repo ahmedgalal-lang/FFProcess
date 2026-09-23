@@ -1,7 +1,8 @@
 import type { BackReference, FlowOutline, FlowRow } from "@/lib/domain/print-map-layout";
-import type { PrintedMapStep } from "./printed-process-map";
+import type { PrintedMapStep, PrintedMapStepDetail } from "./printed-process-map";
 
 type LinksByStepId = Map<string, PrintedMapStep["links"]>;
+type DetailByStepId = Map<string, PrintedMapStepDetail>;
 
 /**
  * The process running straight down the page, one step to a row.
@@ -16,9 +17,11 @@ type LinksByStepId = Map<string, PrintedMapStep["links"]>;
 export function FlowLayout({
   outline,
   linksByStepId,
+  detailByStepId,
 }: {
   outline: FlowOutline;
   linksByStepId: LinksByStepId;
+  detailByStepId: DetailByStepId;
 }) {
   const backByStep = new Map<number, BackReference[]>();
   for (const back of outline.backReferences) {
@@ -45,6 +48,7 @@ export function FlowLayout({
           <FlowCard
             row={row}
             links={linksByStepId.get(row.step.id) ?? []}
+            detail={detailByStepId.get(row.step.id)}
             backReferences={backByStep.get(row.step.order) ?? []}
           />
         </li>
@@ -56,10 +60,12 @@ export function FlowLayout({
 function FlowCard({
   row,
   links,
+  detail,
   backReferences,
 }: {
   row: FlowRow;
   links: PrintedMapStep["links"];
+  detail: PrintedMapStepDetail | undefined;
   backReferences: BackReference[];
 }) {
   return (
@@ -74,6 +80,8 @@ function FlowCard({
           <span className="pmap-card__role">
             {row.step.roleName ?? <span className="pmap-card__unowned">No role set</span>}
           </span>
+          {detail?.sla && <span className="pmap-card__sla">{detail.sla}</span>}
+          {detail?.gate && <span className="pmap-card__gate">{detail.gate}</span>}
           {row.mergesFrom.length > 0 && (
             <span className="pmap-card__merge">
               joins {row.mergesFrom.map((n) => `step ${n}`).join(" and ")}
