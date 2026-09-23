@@ -4,7 +4,9 @@ import { useCanEdit } from "../../../workspace-access";
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addProcessStep, addProcessStepsBulk } from "@/lib/actions/process";
+import { addProcessStep, addProcessStepsBulk, createStepConnection } from "@/lib/actions/process";
+import { DecisionBranchEditor, seedBranchDrafts } from "./decision-branch-editor";
+import type { BranchDraft } from "@/lib/domain/decision-branches";
 
 type StepType = "START" | "TASK" | "DECISION" | "END";
 type RoleOption = { id: string; name: string };
@@ -43,6 +45,10 @@ export function AddStepForm({
   // at the bottom. "END" is the old behaviour, kept for when that's wanted.
   const [insertAfter, setInsertAfter] = useState<string>("AUTO");
   const [linkedProcessIds, setLinkedProcessIds] = useState<string[]>([]);
+  // A brand-new step has no outgoing connections yet, so its branch editor
+  // always starts from the empty default (Yes/No, both unset) — see
+  // seedBranchDrafts, which pads to two — rather than reading from anywhere.
+  const [branchDrafts, setBranchDrafts] = useState<BranchDraft[]>(() => seedBranchDrafts([]));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -77,9 +83,45 @@ export function AddStepForm({
             setError(result.error === "VALIDATION_ERROR" ? result.message ?? "Invalid step" : result.error);
             return;
           }
+
+          // A brand-new Decision has no id until the call above returns one,
+          // so its own branches — which point out of it, not into it — can
+          // only be created now, in this same handler (research.md Decision 3).
+          if (type === "DECISION") {
+            for (const draft of branchDrafts) {
+              if (draft.destination.kind === "unset") continue;
+              const branchResult =
+                draft.destination.kind === "existing"
+                  ? await createStepConnection({
+                      workspaceId,
+                      processId,
+                      fromStepId: result.data.id,
+                      toStepId: draft.destination.stepId,
+                      label: draft.label || undefined,
+                    })
+                  : await addProcessStep({
+                      workspaceId,
+                      processId,
+                      step: { type: "TASK", label: draft.destination.label, linkedProcessIds: [] },
+                      fromStepId: result.data.id,
+                      connectionLabel: draft.label || undefined,
+                    });
+              if (!branchResult.ok) {
+                setError(
+                  branchResult.error === "VALIDATION_ERROR"
+                    ? (branchResult.message ?? "The step was added, but a branch could not be created.")
+                    : branchResult.error
+                );
+                router.refresh(); // the decision step itself was created; show it
+                return;
+              }
+            }
+          }
+
           setLabel("");
           setConnectionLabel("");
           setLinkedProcessIds([]);
+          setBranchDrafts(seedBranchDrafts([]));
           router.refresh();
         });
       }}
@@ -157,6 +199,14 @@ export function AddStepForm({
           </select>
         </Field>
       </div>
+
+      {type === "DECISION" && (
+        <DecisionBranchEditor
+          drafts={branchDrafts}
+          onChange={setBranchDrafts}
+          stepOptions={steps.map((s) => ({ id: s.id, label: `[${STEP_TYPE_PREFIX[s.type]}] ${s.label}` }))}
+        />
+      )}
 
       {otherProcesses.length > 0 && (
         <div className="flex flex-col gap-1">

@@ -12,17 +12,17 @@
 
 ### User Story 1 - Decision steps get a real branch editor, other steps don't (Priority: P1)
 
-A consultant building out a process reaches a step that is genuinely a decision — "Approved?", "Over threshold?", "Client responds?" — and sets its Type to Decision. Instead of one free-text "connector label" field that looks identical to what every other step type shows, two boxes appear: one for what happens if the answer is Yes, one for what happens if it's No. For every other step type, nothing like this appears — Task, Start and End keep the single plain connector they have today.
+A consultant building out a process reaches a step that is genuinely a decision — "Approved?", "Over threshold?", "Client responds?" — and sets its Type to Decision. Two boxes appear on that same step's form: one for what happens if the answer is Yes, one for what happens if it's No — separate from, and in addition to, the plain field that already lets the consultant say what precedes this step. For every other step type, the two boxes never appear — Task, Start and End keep exactly the form they have today.
 
 **Why this priority**: This is the reported gap itself. Without it, a Decision step is visually and functionally indistinguishable from any other step's single connector, which is what prompted the request — "the yes and no in the decision is not implemented."
 
-**Independent Test**: Create a step, set its Type to Decision, confirm the two-box editor appears. Set another step's Type to Task (or Start, or End), confirm no such editor appears and the plain single-connector field is what's shown instead.
+**Independent Test**: Create a step, set its Type to Decision, confirm the two-box editor appears alongside the step's other fields. Set another step's Type to Task (or Start, or End), confirm no such editor appears anywhere on its form.
 
 **Acceptance Scenarios**:
 
-1. **Given** the step form with Type set to Task, **When** the consultant changes Type to Decision, **Then** the single free-text connector field is replaced by a two-box branch editor labeled for the Yes and No outcomes.
-2. **Given** the step form with Type set to Decision and the branch editor visible, **When** the consultant changes Type back to Task, **Then** the branch editor disappears and the plain single-connector field returns.
-3. **Given** a step whose Type is Task, Start, or End, **When** the consultant opens or edits that step, **Then** no Yes/No branch editor is ever shown for it.
+1. **Given** the step form with Type set to Task, **When** the consultant changes Type to Decision, **Then** a two-box branch editor labeled for the Yes and No outcomes appears in addition to the step's existing fields — including the single "connects from" field, which is left exactly as it is and keeps describing what precedes this step, a separate question from what the step itself branches to.
+2. **Given** the step form with Type set to Decision and the branch editor visible, **When** the consultant changes Type back to Task, **Then** the branch editor disappears; every other field, including "connects from," is unaffected by the change.
+3. **Given** a step whose Type is Task, Start, or End, **When** the consultant opens or edits that step, **Then** no Yes/No branch editor is ever shown for it — only the plain "connects from" field it already has.
 
 ---
 
@@ -61,7 +61,7 @@ Not every decision is a strict yes/no. A consultant modeling "Which region?" or 
 
 - What happens when a Decision step's branch editor is left with one or both boxes empty and the step is saved anyway? The step and its Type are saved regardless; an unfilled box simply means that branch does not exist yet and can be added later — a Decision is not required to have any particular number of connections to be saved, matching how every other step type already works.
 - What happens to a Decision step that already has connections carrying labels other than "Yes"/"No" (from before this feature, or added another way)? They must appear in the branch editor exactly as they are, editable in place — this feature does not rename, remove, or otherwise touch existing data, and existing arbitrary labels are not treated as invalid.
-- What happens when a consultant changes an existing step's Type away from Decision after it already has two or more outgoing connections? The connections are left exactly as they are; the plain single-connector field that a non-Decision step shows only concerns creating one new outgoing connection going forward; it does not delete or hide connections a Decision step already had.
+- What happens when a consultant changes an existing step's Type away from Decision after it already has two or more outgoing connections? The connections are left exactly as they are; only the branch editor disappears. Nothing about the step's own outgoing connections is deleted, and the plain "connects from" field (which never described them in the first place) is unaffected.
 - What happens when a consultant sets both the Yes and No branches to the same destination step? This is allowed — a decision that funnels to the same next step regardless of outcome is a legitimate shape (the outcome may still matter elsewhere, e.g. for reporting), and the two connections are simply created with their own labels to the same target.
 - What happens when a consultant picks the Decision step itself as a branch's destination? This is allowed rather than rejected — a decision that can send its own outcome back to itself (e.g. "No → ask again") is an unusual but legitimate shape, the same reasoning as looping back to an earlier step in general (User Story 2, Acceptance Scenario 3).
 - What happens when a branch's destination step is later deleted? The connection is removed along with it, the same as any other connection to a deleted step today — no special handling is introduced for a branch connection.
@@ -70,8 +70,8 @@ Not every decision is a strict yes/no. A consultant modeling "Which region?" or 
 
 ### Functional Requirements
 
-- **FR-001**: The step form MUST show the Yes/No branch editor only when the step's Type is Decision, and MUST show the existing plain single-connector field for every other Type (Task, Start, End).
-- **FR-002**: Changing a step's Type to Decision MUST reveal the branch editor immediately, without a separate confirmation step; changing it away from Decision MUST hide the branch editor and restore the plain connector field.
+- **FR-001**: The step form MUST show the Yes/No branch editor only when the step's Type is Decision, in addition to the plain "connects from" field every type already shows (which describes what precedes the step — a separate question from what the step, if it is a Decision, branches to). No other Type (Task, Start, End) ever shows the branch editor.
+- **FR-002**: Changing a step's Type to Decision MUST reveal the branch editor immediately, without a separate confirmation step; changing it away from Decision MUST hide the branch editor. The plain "connects from" field is never hidden or replaced by this feature, for any Type.
 - **FR-003**: The branch editor MUST present exactly two boxes by default, one for each of the step's two most common outcomes, each independently letting the consultant choose its destination.
 - **FR-004**: Each box's default label MUST be "Yes" and "No" respectively, and the consultant MUST be able to rename either label to something else (e.g., "Approved" / "Rejected") without changing what the box does.
 - **FR-005**: For each box, the consultant MUST be able to choose one of two kinds of destination: create a brand-new step (naming it inline) or select a step that already exists in the process.
@@ -88,7 +88,7 @@ Not every decision is a strict yes/no. A consultant modeling "Which region?" or 
 
 ### Key Entities
 
-- **Process Step**: An existing entity; its Type field (Task/Decision/Start/End) is what gates whether the branch editor or the plain connector field is shown. No new fields are needed on it.
+- **Process Step**: An existing entity; its Type field (Task/Decision/Start/End) is what gates whether the branch editor is shown alongside the step's other fields. No new fields are needed on it.
 - **Step Connection**: An existing entity (from-step, to-step, optional label). A Decision step's branches are simply its own outgoing connections; each branch box in the editor corresponds to one connection, and "adding a branch" means creating one, "removing a branch" means deleting one, and renaming a branch means updating its label. No new fields or entities are needed.
 
 ## Success Criteria *(mandatory)*

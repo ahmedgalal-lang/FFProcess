@@ -6,16 +6,19 @@
 
 ## Summary
 
-Replace the Steps List's one free-text "Connector label" field — shown identically for every
-step type — with a real two-branch editor that appears only when a step's Type is Decision.
-Each branch (Yes/No by default, renamable, and extendable beyond two) can target a brand-new
-step or an existing one, including looping back to an earlier step. The feature adds no new
-server action, schema, or pure domain module: a branch is exactly a `StepConnection` from a
-Decision step, and every mutation the editor needs — create a connection, delete one, create
-a step with its own incoming connection — is already an `EDITOR`-gated action. What's new is
-purely the UI: a type-conditional editor in both the add-step form and the per-row editor,
-staging its boxes locally and reconciling them against the step's existing outgoing
-connections on Save, the same pattern the Steps List already uses for a step's one incoming
+Add a real two-branch editor to the Steps List, shown only when a step's Type is Decision —
+alongside its existing fields, not replacing them: the plain "connects from" field every step
+type already has describes what precedes a step, a separate question from what a Decision
+branches to, and stays exactly as it is for every type. Each branch (Yes/No by default,
+renamable, and extendable beyond two) can target a brand-new step or an existing one,
+including looping back to an earlier step. The feature adds no new server action or schema —
+a branch is exactly a `StepConnection` from a Decision step, and every mutation the editor
+needs — create a connection, delete one, create a step with its own incoming connection — is
+already an `EDITOR`-gated action. It does add one small pure domain module (reconciling staged
+branch boxes against a step's existing outgoing connections). What's otherwise new is purely
+the UI: a type-conditional editor in both the add-step form and the per-row editor, staging
+its boxes locally and reconciling them against the step's existing outgoing connections on
+Save, the same pattern the Steps List already uses for a step's one incoming
 connection.
 
 ## Technical Context

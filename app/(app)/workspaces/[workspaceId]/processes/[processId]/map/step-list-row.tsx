@@ -3,15 +3,19 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useCanEdit } from "../../../workspace-access";
 import {
   updateProcessStep,
   deleteProcessStep,
   createStepConnection,
   deleteStepConnection,
+  addProcessStep,
   moveProcessStep,
   setStepMilestone,
 } from "@/lib/actions/process";
 import { STEP_GAP_DESCRIPTIONS, STEP_GAP_LABELS, type StepGap } from "@/lib/domain/step-readiness";
+import { DecisionBranchEditor, seedBranchDrafts } from "./decision-branch-editor";
+import { reconcileBranchDrafts, type BranchDraft } from "@/lib/domain/decision-branches";
 
 const TYPE_STYLES: Record<string, string> = {
   START: "bg-emerald-50 text-emerald-700",
@@ -54,6 +58,7 @@ export function StepListRow({
   step,
   predecessor,
   incomingConnection,
+  outgoingConnections,
   roles,
   stepOptions,
   otherProcesses,
@@ -66,10 +71,13 @@ export function StepListRow({
   step: StepT;
   predecessor: StepOption | undefined;
   incomingConnection: ConnectionT | undefined;
+  /** This step's own outgoing connections — a Decision's branches (FR-009). */
+  outgoingConnections: ConnectionT[];
   roles: RoleRef[];
   stepOptions: StepOption[];
   otherProcesses: ProcessOption[];
 }) {
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +89,9 @@ export function StepListRow({
   const [roleId, setRoleId] = useState(step.assignedRole?.id ?? "");
   const [fromStepId, setFromStepId] = useState(predecessor?.id ?? "");
   const [connectionLabel, setConnectionLabel] = useState(incomingConnection?.label ?? "");
+  const [branchDrafts, setBranchDrafts] = useState<BranchDraft[]>(() =>
+    seedBranchDrafts(outgoingConnections.map((c) => ({ id: c.id, toStepId: c.toStepId, label: c.label })))
+  );
   const [detailedAction, setDetailedAction] = useState(step.detailedAction.join("\n"));
   const [exceptionHandling, setExceptionHandling] = useState(step.exceptionHandling ?? "");
   const [linkedProcessIds, setLinkedProcessIds] = useState<string[]>(step.links.map((l) => l.targetProcessId));
@@ -120,6 +131,9 @@ export function StepListRow({
     setRoleId(step.assignedRole?.id ?? "");
     setFromStepId(predecessor?.id ?? "");
     setConnectionLabel(incomingConnection?.label ?? "");
+    setBranchDrafts(
+      seedBranchDrafts(outgoingConnections.map((c) => ({ id: c.id, toStepId: c.toStepId, label: c.label })))
+    );
     setDetailedAction(step.detailedAction.join("\n"));
     setExceptionHandling(step.exceptionHandling ?? "");
     setLinkedProcessIds(step.links.map((l) => l.targetProcessId));
@@ -175,6 +189,42 @@ export function StepListRow({
           });
           if (!created.ok) {
             setError(created.error === "VALIDATION_ERROR" ? (created.message ?? "Invalid connector") : created.error);
+            return;
+          }
+        }
+      }
+
+      if (type === "DECISION") {
+        const operations = reconcileBranchDrafts(
+          outgoingConnections.map((c) => ({ id: c.id, toStepId: c.toStepId, label: c.label })),
+          branchDrafts
+        );
+        for (const op of operations) {
+          const opResult =
+            op.kind === "delete"
+              ? await deleteStepConnection({ workspaceId, processId, connectionId: op.connectionId })
+              : op.kind === "createToExisting"
+                ? await createStepConnection({
+                    workspaceId,
+                    processId,
+                    fromStepId: step.id,
+                    toStepId: op.toStepId,
+                    label: op.label || undefined,
+                  })
+                : await addProcessStep({
+                    workspaceId,
+                    processId,
+                    step: { type: "TASK", label: op.newStepLabel, linkedProcessIds: [] },
+                    fromStepId: step.id,
+                    connectionLabel: op.label || undefined,
+                  });
+          if (!opResult.ok) {
+            setError(
+              opResult.error === "VALIDATION_ERROR"
+                ? (opResult.message ?? "A branch could not be saved.")
+                : opResult.error
+            );
+            router.refresh(); // whatever did apply is real; reflect it
             return;
           }
         }
@@ -258,6 +308,13 @@ export function StepListRow({
             />
           </Field>
         </div>
+        {type === "DECISION" && (
+          <DecisionBranchEditor
+            drafts={branchDrafts}
+            onChange={setBranchDrafts}
+            stepOptions={stepOptions.map((s) => ({ id: s.id, label: `[${STEP_TYPE_PREFIX[s.type]}] ${s.label}` }))}
+          />
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Detailed Action (Export Report — one action per line)">
             <textarea
@@ -328,29 +385,33 @@ export function StepListRow({
   return (
     <div className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
       <div className="flex flex-none flex-col items-center gap-0.5">
-        <button
-          type="button"
-          onClick={() => move("UP")}
-          disabled={pending || isFirst}
-          aria-label={`Move ${step.label} up`}
-          title="Move up"
-          className="rounded text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
-        >
-          ▲
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => move("UP")}
+            disabled={pending || isFirst}
+            aria-label={`Move ${step.label} up`}
+            title="Move up"
+            className="rounded text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
+          >
+            ▲
+          </button>
+        )}
         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 font-mono text-xs font-bold text-indigo-700">
           {index + 1}
         </div>
-        <button
-          type="button"
-          onClick={() => move("DOWN")}
-          disabled={pending || isLast}
-          aria-label={`Move ${step.label} down`}
-          title="Move down"
-          className="rounded text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
-        >
-          ▼
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => move("DOWN")}
+            disabled={pending || isLast}
+            aria-label={`Move ${step.label} down`}
+            title="Move down"
+            className="rounded text-[10px] leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:invisible"
+          >
+            ▼
+          </button>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -408,7 +469,7 @@ export function StepListRow({
         {error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
       </div>
       <div className="flex flex-none items-start gap-1.5">
-        {confirmingDelete ? (
+        {!canEdit ? null : confirmingDelete ? (
           <>
             <span className="self-center text-xs text-slate-500">Delete this step?</span>
             <button

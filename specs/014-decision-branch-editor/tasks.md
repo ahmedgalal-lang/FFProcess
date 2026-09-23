@@ -19,7 +19,7 @@ redesign.
 
 ## Phase 1: Foundational — the reconciliation function (blocks every slice)
 
-- [ ] T001 Write `tests/unit/decision-branches.test.ts` against the contract in
+- [X] T001 Write `tests/unit/decision-branches.test.ts` against the contract in
       [data-model.md](./data-model.md) / research.md Decision 4:
       `reconcileBranchDrafts(existing: StepConnection[], staged: BranchDraft[])` — a staged
       box matching an existing connection's destination and label is a no-op; a box matching
@@ -27,13 +27,13 @@ redesign.
       connection; a box with no matching existing connection produces a create; an existing
       connection with no matching staged box produces a delete; a box with `destination.kind
       === "unset"` produces nothing. Confirm these fail before T002 exists.
-- [ ] T002 Implement `lib/domain/decision-branches.ts`: `reconcileBranchDrafts`, plus the
+- [X] T002 Implement `lib/domain/decision-branches.ts`: `reconcileBranchDrafts`, plus the
       `BranchDraft` type from data-model.md. Pure — no DOM, no Prisma, no network.
-- [ ] T003 Extend the same test file for the edge cases: two staged boxes targeting the same
+- [X] T003 Extend the same test file for the edge cases: two staged boxes targeting the same
       destination (both survive independently — spec Edge Cases); a box targeting the
       Decision step itself (treated like any other destination, no special-casing per
       research.md Decision 5); staged/existing order does not affect the result.
-- [ ] T004 Make T001/T003 pass, then mutation-check: swap the create/delete branches, drop
+- [X] T004 Make T001/T003 pass, then mutation-check: swap the create/delete branches, drop
       the label-change detection, drop the unset-box skip — confirm each is caught by the
       tests, then restore.
 
@@ -49,12 +49,12 @@ keeps the plain single connector. Each box can target a new step or an existing 
 the No box with an existing earlier step, save, and see both connections on the Steps List
 and the live canvas — then confirm a Task/Start/End step never shows this editor at all.
 
-- [ ] T005 [P] [US1] Fix the pre-existing gap: add `useCanEdit()` to
+- [X] T005 [P] [US1] Fix the pre-existing gap: add `useCanEdit()` to
       `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/step-list-row.tsx` and
       hide Edit/Delete/Move-up/Move-down/Mark-milestone for a non-editor, matching the
       pattern `step-form.tsx`'s `AddStepForm` already uses. This is a prerequisite for
       FR-015 to mean anything for the branch editor built on top of this row.
-- [ ] T006 [US1] Build
+- [X] T006 [US1] Build
       `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/decision-branch-editor.tsx`:
       renders one box per `BranchDraft` (two by default, labeled "Yes"/"No" — FR-003/FR-004),
       each with an editable label, a kind toggle ("create a new step" / "link to an existing
@@ -63,28 +63,34 @@ and the live canvas — then confirm a Task/Start/End step never shows this edit
       the `stepOptions` list already computed in `map-view.tsx`). Takes the current
       `BranchDraft[]` and an `onChange` callback — no server calls of its own (research.md
       Decision 3).
-- [ ] T007 [US1] Wire `step-form.tsx`: when `type === "DECISION"`, render
-      `decision-branch-editor.tsx` in place of the plain "Connects from"/"Connector label"
-      fields (FR-001/FR-002); on submit, call `addProcessStep` for the Decision step itself,
-      then for each non-unset staged branch call either `addProcessStep` (new-step kind,
-      `fromStepId` = the id `addProcessStep` just returned) or `createStepConnection`
-      (existing-step kind) — sequential awaits in the same submit handler (research.md
-      Decision 3). A step form left with Type other than Decision is unchanged (still uses
-      the plain fields, still calls `addProcessStep` exactly as it does today).
-- [ ] T008 [US1] Wire `step-list-row.tsx`'s edit mode: same type-conditional swap; on Save,
+- [X] T007 [US1] Wire `step-form.tsx`: when `type === "DECISION"`, render
+      `decision-branch-editor.tsx` **alongside** the existing "Connects from"/"Connector
+      label" fields, which are left exactly as they are for every Type — they describe what
+      precedes this step, a separate question from what a Decision branches to (FR-001/FR-002
+      — corrected from an earlier "replace" framing once `addProcessStep`'s `fromStepId`/
+      `connectionLabel` were traced through and confirmed to always describe the *incoming*
+      edge, never the current step's own outgoing branches). On submit, call `addProcessStep`
+      for the Decision step itself (exactly as today, including its own optional incoming
+      connection), then for each non-unset staged branch call either `addProcessStep`
+      (new-step kind, `fromStepId` = the id `addProcessStep` just returned) or
+      `createStepConnection` (existing-step kind) — sequential awaits in the same submit
+      handler (research.md Decision 3). A step form left with Type other than Decision is
+      entirely unchanged.
+- [X] T008 [US1] Wire `step-list-row.tsx`'s edit mode: same additive, type-conditional render
+      (branch editor alongside the unchanged "Connects from" field, not replacing it); on Save,
       after `updateProcessStep` succeeds, call `reconcileBranchDrafts` (T002) against the
       row's current outgoing connections and the staged `BranchDraft[]`, then apply the
       resulting creates (`createStepConnection`/`addProcessStep`) and deletes
       (`deleteStepConnection`) — mirroring how the row already applies its one incoming
       connection's change today.
-- [ ] T009 [US2] Extend
+- [X] T009 [US2] Extend
       `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/map-view.tsx`: compute
       `outgoingConnectionsOf` (a `Map<stepId, ConnectionT[]>`, mirroring the existing
       `incomingConnectionOf`) from the process's already-loaded `connections`, and pass a
       Decision row its own outgoing connections so `step-list-row.tsx` can pre-populate the
       branch editor from what already exists (FR-009) — including connections carrying a
       label other than "Yes"/"No" from before this feature (FR-014).
-- [ ] T010 [US1+US2] Write
+- [X] T010 [US1+US2] Write
       `tests/e2e/decision-branch-editor.spec.ts` against the tender-style fixture or a
       dedicated one: Type=Task shows the plain connector field, not the branch editor;
       setting Type to Decision reveals the two-box editor immediately; setting it back to
@@ -108,11 +114,11 @@ editable and removable.
 own label and destination; reopen the editor later and confirm all three are shown, each
 editable and removable on its own.
 
-- [ ] T011 [US3] Extend `decision-branch-editor.tsx` (T006) with a "+ Add another outcome"
+- [X] T011 [US3] Extend `decision-branch-editor.tsx` (T006) with a "+ Add another outcome"
       control that appends a `BranchDraft` with an empty, freely-editable label (not
       defaulted to "Yes"/"No" — FR-010) and its own destination picker, and a remove control
       per box beyond the first two (FR-011).
-- [ ] T012 [US3] Extend `tests/e2e/decision-branch-editor.spec.ts`: add a third branch on a
+- [X] T012 [US3] Extend `tests/e2e/decision-branch-editor.spec.ts`: add a third branch on a
       Decision step that already has Yes/No, confirm all three connections persist, and that
       reopening the editor later shows all three, independently editable and removable
       (spec User Story 3, Acceptance Scenario 2).
@@ -123,11 +129,20 @@ editable and removable on its own.
 
 - [ ] T013 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
       `pnpm exec playwright test` and report counts. Do not edit while a run is in flight.
-- [ ] T014 Blast-radius check: `process-map-canvas.tsx` and
+- [X] T014 Blast-radius check: `process-map-canvas.tsx` and
       `app/reports/[workspaceId]/printed-map/**` must be unchanged by this feature (FR-013) —
       confirm via `git diff` against those paths showing nothing from this feature's commits.
-- [ ] T015 Run [quickstart.md](./quickstart.md)'s manual validation end to end, including its
-      Viewer check (step 6), and record the result.
+- [X] T015 Run [quickstart.md](./quickstart.md)'s manual validation end to end, including its
+      Viewer check (step 6), and record the result. Steps 1, 2, 3 and 6 are each the direct
+      subject of one `tests/e2e/decision-branch-editor.spec.ts` test and were run and passed
+      (5/5) both individually and together. Step 5 (printed/live rendering unaffected) is
+      covered two ways: T014's diff (zero changes to either renderer) and the live-canvas
+      edge-label assertion in the "Yes branch to a new step..." test. Step 4 (arbitrary
+      pre-existing labels survive) holds by construction — `seedBranchDrafts` passes a stored
+      connection's `label` straight through with no transformation — and the same code path
+      is what the FR-009 test exercises, just with "Yes"/"No" as the labels in play; there is
+      no branch in `seedBranchDrafts` or `reconcileBranchDrafts` that treats "Yes"/"No" as
+      special versus any other string, so this was not felt to need a separate redundant test.
 
 ## Dependencies
 

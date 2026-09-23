@@ -55,6 +55,14 @@ export function MapView({
   const router = useRouter();
   const incomingConnectionOf = new Map<string, ConnectionT>();
   for (const c of connections) incomingConnectionOf.set(c.toStepId, c);
+  // A Decision step's branches (spec 014) — every connection leaving it, not
+  // just the one incoming connector every row already tracks.
+  const outgoingConnectionsOf = new Map<string, ConnectionT[]>();
+  for (const c of connections) {
+    const list = outgoingConnectionsOf.get(c.fromStepId) ?? [];
+    list.push(c);
+    outgoingConnectionsOf.set(c.fromStepId, list);
+  }
   const stepById = new Map(steps.map((s) => [s.id, s]));
 
   return (
@@ -140,6 +148,7 @@ export function MapView({
                 step={step}
                 predecessor={predecessor}
                 incomingConnection={incomingConnection}
+                outgoingConnections={outgoingConnectionsOf.get(step.id) ?? []}
                 roles={roles}
                 stepOptions={stepOptions}
                 otherProcesses={otherProcesses}

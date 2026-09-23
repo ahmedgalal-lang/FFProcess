@@ -12,8 +12,10 @@
    Sign in → Acme Industrial → Purchase-to-Pay → Process Map → Steps List → Add step.
    - Leave Type as Task: the plain single "Connects from" / "Connector label" fields show,
      no Yes/No editor.
-   - Change Type to Decision: the branch editor appears in its place, with a Yes box and a
-     No box. Change Type back to Task: the editor disappears, the plain fields return.
+   - Change Type to Decision: the branch editor appears alongside those same fields (still
+     there, unchanged — "Connects from" is a separate question from what the decision itself
+     branches to), with a Yes box and a No box. Change Type back to Task: only the branch
+     editor disappears.
    - Open Edit on an existing Task, Start, or End step: no branch editor is offered there
      either.
 
