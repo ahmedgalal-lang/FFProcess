@@ -269,6 +269,135 @@ export async function setChecklistItemStatus(
 }
 
 /**
+ * Adds a governance action straight to a focus area's checklist, with no
+ * assessment run behind it — the same parity addGovernancePolicy and
+ * addGovernanceRisk give a hand-written policy or risk. A consultant who
+ * already knows what a client needs to do next should not have to run an AI
+ * assessment first to have somewhere to put it.
+ *
+ * A checklist item's assessmentId is required (unlike a policy's optional
+ * checklistItemId), so this upserts the focus area's assessment shell —
+ * summary "" — the first time it gets a hand-written item before ever being
+ * generated. No extra protection is needed against a later regenerate:
+ * partitionNewChecklistItems already treats every existing title as tracked
+ * regardless of who created it (governance-findings.ts).
+ */
+const addChecklistItemSchema = z.object({
+  workspaceId: z.string().min(1),
+  focusArea: z.enum(FOCUS_AREAS),
+  phase: z.enum(["IMMEDIATE", "NEAR_TERM", "LONG_TERM"]),
+  title: z.string().min(1),
+  description: z.string().min(1),
+});
+
+export async function addGovernanceChecklistItem(
+  input: z.infer<typeof addChecklistItemSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = addChecklistItemSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const { workspaceId, focusArea, phase, title, description } = parsed.data;
+
+  const item = await prisma.$transaction(async (tx) => {
+    const assessment = await tx.governanceAssessment.upsert({
+      where: { workspaceId_focusArea: { workspaceId, focusArea: focusArea as GovernanceFocusArea } },
+      update: {},
+      create: { workspaceId, focusArea: focusArea as GovernanceFocusArea, summary: "" },
+    });
+
+    return tx.governanceChecklistItem.create({
+      data: { assessmentId: assessment.id, phase: phase as GovernanceItemPhase, title, description },
+    });
+  });
+
+  revalidatePath(`/workspaces/${workspaceId}/governance`);
+  return ok({ id: item.id });
+}
+
+/**
+ * Edits a checklist item's phase, title, or description by hand. Status is
+ * untouched here — setChecklistItemStatus owns that — so editing an item's
+ * text never reopens a DONE one or un-dismisses a DISMISSED one.
+ */
+const updateChecklistItemSchema = z.object({
+  workspaceId: z.string().min(1),
+  itemId: z.string().min(1),
+  phase: z.enum(["IMMEDIATE", "NEAR_TERM", "LONG_TERM"]).optional(),
+  title: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+});
+
+export async function updateGovernanceChecklistItem(
+  input: z.infer<typeof updateChecklistItemSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateChecklistItemSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const item = await prisma.governanceChecklistItem.findUnique({
+    where: { id: parsed.data.itemId },
+    include: { assessment: true },
+  });
+  if (!item || item.assessment.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  const fields = parsed.data;
+
+  await prisma.governanceChecklistItem.update({
+    where: { id: parsed.data.itemId },
+    data: {
+      ...(fields.phase !== undefined ? { phase: fields.phase as GovernanceItemPhase } : {}),
+      ...(fields.title !== undefined ? { title: fields.title } : {}),
+      ...(fields.description !== undefined ? { description: fields.description } : {}),
+    },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.itemId });
+}
+
+/**
+ * Removes a checklist item outright — distinct from setChecklistItemStatus's
+ * Dismiss, which keeps the row (and the reason a re-run won't recreate it)
+ * around. A manually-added item that turned out to be a mistake has no such
+ * history worth keeping.
+ *
+ * Cascades to the item's own linked policy draft, exactly as the schema
+ * already does for a generated item (GovernancePolicyDraft.checklistItem is
+ * onDelete: Cascade); a linked risk survives (SetNull), same as it does for
+ * a generated item's deletion.
+ */
+const deleteChecklistItemSchema = z.object({
+  workspaceId: z.string().min(1),
+  itemId: z.string().min(1),
+});
+
+export async function deleteGovernanceChecklistItem(
+  input: z.infer<typeof deleteChecklistItemSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteChecklistItemSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const item = await prisma.governanceChecklistItem.findUnique({
+    where: { id: parsed.data.itemId },
+    include: { assessment: true },
+  });
+  if (!item || item.assessment.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  await prisma.governanceChecklistItem.delete({ where: { id: parsed.data.itemId } });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.itemId });
+}
+
+/**
  * Saves an edited policy draft (FR-006). Setting the body also marks it
  * hand-managed and sets status to EDITED, which is what protects it from a
  * later regeneration (governance-findings.ts's isHandManaged) — SC-004.

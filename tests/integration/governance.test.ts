@@ -16,6 +16,9 @@ const {
   setGovernanceProfile,
   generateGovernanceAssessment,
   setChecklistItemStatus,
+  addGovernanceChecklistItem,
+  updateGovernanceChecklistItem,
+  deleteGovernanceChecklistItem,
   updatePolicyDraft,
   addGovernancePolicy,
   deleteGovernancePolicy,
@@ -402,6 +405,171 @@ describe("Policies written by hand", () => {
   });
 });
 
+describe("Checklist items written by hand", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    mockRunGovernanceAssessment.mockReset();
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  it("adds a checklist item with no assessment behind it, creating the assessment shell", async () => {
+    // The gap this closes: the checklist could only ever hold what an
+    // assessment run had generated, so a focus area nobody had generated yet
+    // had nowhere to put a governance action a consultant already knew about.
+    const result = await addGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      focusArea: "BOARD_STRUCTURE",
+      phase: "IMMEDIATE",
+      title: "Appoint an audit committee chair",
+      description: "The board has no named chair for the audit committee.",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const item = await prisma.governanceChecklistItem.findUniqueOrThrow({
+      where: { id: result.data.id },
+      include: { assessment: true },
+    });
+    expect(item.phase).toBe("IMMEDIATE");
+    expect(item.status).toBe("OPEN");
+    expect(item.assessment.workspaceId).toBe(fixture.workspace.id);
+    expect(item.assessment.focusArea).toBe("BOARD_STRUCTURE");
+    // No AI ever ran for this focus area — the shell it needed carries no summary.
+    expect(item.assessment.summary).toBe("");
+  });
+
+  it("adds a second item to a focus area that already has an assessment, without creating a second one", async () => {
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+    const generated = await generateGovernanceAssessment({
+      workspaceId: fixture.workspace.id,
+      focusArea: "RISK_CONTROLS",
+    });
+    expect(generated.ok).toBe(true);
+
+    const added = await addGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      focusArea: "RISK_CONTROLS",
+      phase: "NEAR_TERM",
+      title: "Schedule a penetration test",
+      description: "Nothing in the generated checklist covers this.",
+    });
+    expect(added.ok).toBe(true);
+
+    const assessments = await prisma.governanceAssessment.findMany({
+      where: { workspaceId: fixture.workspace.id, focusArea: "RISK_CONTROLS" },
+    });
+    expect(assessments).toHaveLength(1);
+    // The AI-written summary from the earlier generate is untouched by the upsert.
+    expect(assessments[0]!.summary).toBe(outcome().data.summary);
+  });
+
+  it("edits a hand-written item's phase, title and description, and deletes it", async () => {
+    const added = await addGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      focusArea: "ETHICS_POLICY",
+      phase: "IMMEDIATE",
+      title: "Draft title",
+      description: "First cut.",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+
+    const edited = await updateGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      itemId: added.data.id,
+      phase: "LONG_TERM",
+      title: "Publish a whistleblower policy",
+      description: "A fuller second cut.",
+    });
+    expect(edited.ok).toBe(true);
+
+    const afterEdit = await prisma.governanceChecklistItem.findUniqueOrThrow({ where: { id: added.data.id } });
+    expect(afterEdit.phase).toBe("LONG_TERM");
+    expect(afterEdit.title).toBe("Publish a whistleblower policy");
+    expect(afterEdit.description).toBe("A fuller second cut.");
+    // Editing text is not the same action as marking status — it must not move.
+    expect(afterEdit.status).toBe("OPEN");
+
+    const removed = await deleteGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId: added.data.id });
+    expect(removed.ok).toBe(true);
+    expect(await prisma.governanceChecklistItem.findUnique({ where: { id: added.data.id } })).toBeNull();
+  });
+
+  it("refuses to touch a checklist item belonging to another workspace", async () => {
+    const other = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: other.adminUser.id } });
+    const theirs = await addGovernanceChecklistItem({
+      workspaceId: other.workspace.id,
+      focusArea: "COMPENSATION",
+      phase: "IMMEDIATE",
+      title: "Theirs",
+      description: "Not yours.",
+    });
+    expect(theirs.ok).toBe(true);
+    if (!theirs.ok) return;
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const edit = await updateGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      itemId: theirs.data.id,
+      title: "Rewritten from the wrong workspace",
+    });
+    expect(edit.ok).toBe(false);
+    if (!edit.ok) expect(edit.error).toBe("NOT_FOUND");
+
+    const remove = await deleteGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      itemId: theirs.data.id,
+    });
+    expect(remove.ok).toBe(false);
+    if (!remove.ok) expect(remove.error).toBe("NOT_FOUND");
+
+    await other.cleanup();
+  });
+
+  it("survives a regenerate that returns a different item with the same title", async () => {
+    // The same title-tracking protection FR-014 already gives an AI-surfaced
+    // item covers a hand-added one too: partitionNewChecklistItems treats
+    // every existing title as tracked, regardless of who created the row.
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    const added = await addGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      focusArea: "RISK_CONTROLS",
+      phase: "IMMEDIATE",
+      title: "Establish a risk committee",
+      description: "Written by hand before any assessment ran.",
+    });
+    expect(added.ok).toBe(true);
+
+    mockRunGovernanceAssessment.mockResolvedValue(outcome()); // its checklist also names "Establish a risk committee"
+    const regenerated = await generateGovernanceAssessment({
+      workspaceId: fixture.workspace.id,
+      focusArea: "RISK_CONTROLS",
+    });
+    expect(regenerated.ok).toBe(true);
+
+    const items = await prisma.governanceChecklistItem.findMany({
+      where: { assessment: { workspaceId: fixture.workspace.id, focusArea: "RISK_CONTROLS" } },
+    });
+    const risk = items.filter((i) => i.title === "Establish a risk committee");
+    expect(risk).toHaveLength(1);
+    expect(risk[0]!.description).toBe("Written by hand before any assessment ran.");
+  });
+});
+
 describe("Governance access gating", () => {
   let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
 
@@ -432,6 +600,13 @@ describe("Governance access gating", () => {
         description: "d",
         likelihood: "LOW",
         impact: "LOW",
+      }),
+      addGovernanceChecklistItem({
+        workspaceId: fixture.workspace.id,
+        focusArea: "RISK_CONTROLS",
+        phase: "IMMEDIATE",
+        title: "t",
+        description: "d",
       }),
     ]);
     for (const result of results) {

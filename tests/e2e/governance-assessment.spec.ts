@@ -30,6 +30,10 @@ async function clearProfile() {
     );
     await client.query(`DELETE FROM governance_risks WHERE "workspaceId" = $1`, [WORKSPACE]);
     await client.query(`DELETE FROM governance_policy_drafts WHERE "workspaceId" = $1`, [WORKSPACE]);
+    // Checklist items cascade-delete with their assessment; nothing in this
+    // file ever calls the real model (GEMINI_API_KEY is unset here), so every
+    // assessment row still around is one a hand-add test left behind.
+    await client.query(`DELETE FROM governance_assessments WHERE "workspaceId" = $1`, [WORKSPACE]);
   } finally {
     await client.end();
   }
@@ -92,6 +96,41 @@ test("generating with GEMINI_API_KEY unset shows the AI-unavailable message, not
 
   // Still the empty state — no assessment was fabricated or partially saved.
   await expect(page.getByText(/No assessment generated yet/)).toBeVisible();
+});
+
+test("a checklist item can be added by hand from the empty state, edited, and deleted", async ({ page }) => {
+  // Reported alongside the policy gap: the checklist could only ever hold
+  // what an AI run had generated, so a focus area nobody had generated yet —
+  // or ever would, on a deployment with no model configured — had nowhere to
+  // put a governance action a consultant already knew about.
+  await signIn(page);
+  await page.goto(`/workspaces/${WORKSPACE}/governance`);
+
+  await expect(page.getByText(/No assessment generated yet/)).toBeVisible();
+  await page.getByRole("button", { name: "+ Add a checklist item by hand" }).click();
+  await page.getByPlaceholder("Action title").fill("Schedule a penetration test");
+  await page.getByPlaceholder("What to do, and why it matters").fill("Nothing today tests the perimeter.");
+  await page.getByLabel("When").selectOption("NEAR_TERM");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  // The empty state is gone, replaced by the checklist with the new item
+  // filed under the phase it was given.
+  await expect(page.getByText(/No assessment generated yet/)).toHaveCount(0);
+  await expect(page.getByText("Schedule a penetration test")).toBeVisible();
+
+  // Editing changes the text and can move it to a different phase column —
+  // status is untouched by this, unlike Dismiss/Mark done.
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByLabel("Action title").fill("Commission a third-party penetration test");
+  await page.getByLabel("When").selectOption("IMMEDIATE");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Commission a third-party penetration test")).toBeVisible();
+  await expect(page.getByText("Schedule a penetration test")).toHaveCount(0);
+
+  // Deleting removes it outright — distinct from Dismiss, which keeps it.
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("Commission a third-party penetration test")).toHaveCount(0);
 });
 
 test("a hand-added risk appears in the Risk Register with its derived level, independent of any assessment", async ({
