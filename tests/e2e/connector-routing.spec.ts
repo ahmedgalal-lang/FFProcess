@@ -120,44 +120,6 @@ function sharesLine(a: [number, number][], b: [number, number][], tolerance: num
   return shared >= minRun;
 }
 
-/**
- * The report page draws the map across several canvases — one per row-group of
- * a wrapped map — and opens with the org chart, which is not a process map.
- * This reads every canvas that has both step cards and connectors in it.
- */
-async function readAllMaps(page: import("@playwright/test").Page) {
-  return page.evaluate(() => {
-    const CARD = ".react-flow__node-task, .react-flow__node-decision, .react-flow__node-terminal, .react-flow__node-compact";
-    const out: { boxes: Box[]; wires: Wire[]; zoom: number }[] = [];
-    for (const flow of Array.from(document.querySelectorAll<HTMLElement>(".react-flow"))) {
-      const viewport = flow.querySelector<HTMLElement>(".react-flow__viewport");
-      if (!viewport) continue;
-      const zoom = new DOMMatrix(getComputedStyle(viewport).transform).a || 1;
-      const boxes: Box[] = [];
-      for (const el of Array.from(flow.querySelectorAll<HTMLElement>(CARD))) {
-        const r = el.getBoundingClientRect();
-        if (r.width === 0 || r.height === 0) continue;
-        boxes.push({ id: el.getAttribute("data-id") ?? "", left: r.left, right: r.right, top: r.top, bottom: r.bottom });
-      }
-      const wires: Wire[] = [];
-      for (const el of Array.from(flow.querySelectorAll<SVGGElement>(".react-flow__edge"))) {
-        const path = el.querySelector<SVGPathElement>("path.react-flow__edge-path");
-        if (!path) continue;
-        const length = path.getTotalLength();
-        const ctm = path.getScreenCTM();
-        if (!ctm || !Number.isFinite(length) || length === 0) continue;
-        const points: [number, number][] = [];
-        for (let i = 0; i <= 220; i++) {
-          const p = path.getPointAtLength((length * i) / 220).matrixTransform(ctm);
-          points.push([p.x, p.y]);
-        }
-        wires.push({ id: el.getAttribute("data-id") ?? "", points });
-      }
-      if (boxes.length > 0 && wires.length > 0) out.push({ boxes, wires, zoom });
-    }
-    return out;
-  });
-}
 
 /** The same two measurements, over whatever canvases are on the page. */
 function measure(boxes: Box[], wires: Wire[], zoom: number) {
@@ -219,29 +181,30 @@ test("no two connectors are drawn along the same line", async ({ page }) => {
   expect(pairs, `connector pairs sharing a line:\n${pairs.join("\n")}`).toEqual([]);
 });
 
-test("the printed map is routed by the same rules as the screen", async ({ page }) => {
-  // Screen and print consume one router, so they cannot disagree about how a
-  // connector is routed. What is worth measuring is that the print diagram's
-  // own geometry — compact cards, a serpentine wrap, its own lane gutter —
-  // still comes out clean, because it feeds the router different numbers.
+test("the printed map is no longer drawn by the router at all", async ({ page }) => {
+  // This used to assert that screen and print consumed one router, so they
+  // could not disagree about how a connector was routed. Spec 013 ended that
+  // contract deliberately: the printed map is now server-rendered HTML with no
+  // canvas and no measured routing, because routing a wide drawing onto a
+  // narrow page is what shrank its type to five points and clipped its cards.
+  //
+  // What still has to hold is the split — the report draws no canvas, and the
+  // interactive map still does, routed exactly as before.
   await signIn(page);
   await page.goto(`/reports/${WORKSPACE}?ids=${TANGLED_PROCESS_ID}`);
   await page.waitForSelector(".report-paper");
-  await page.waitForSelector(".react-flow__edge-path");
-  await page.waitForTimeout(1500);
+  await page.waitForSelector(".printed-map");
 
-  const canvases = await page.evaluate(() => document.querySelectorAll(".react-flow").length);
-  // The first React Flow on a report page is the org chart; the map follows.
-  expect(canvases).toBeGreaterThan(1);
+  const onReport = await page.evaluate(() => ({
+    maps: document.querySelectorAll(".printed-map").length,
+    // The org chart is still a canvas; the map must not be.
+    canvasesInsideAMap: document.querySelectorAll(".printed-map .react-flow").length,
+    routedEdges: document.querySelectorAll(".printed-map .react-flow__edge-path").length,
+  }));
 
-  const found = await readAllMaps(page);
-  expect(found.length).toBeGreaterThan(0);
-  const offenders: string[] = [];
-  for (const map of found) {
-    const { crossings, pairs } = measure(map.boxes, map.wires, map.zoom);
-    offenders.push(...crossings, ...pairs);
-  }
-  expect(offenders, `printed map:\n${offenders.join("\n")}`).toEqual([]);
+  expect(onReport.maps).toBeGreaterThan(0);
+  expect(onReport.canvasesInsideAMap, "the printed map draws no canvas").toBe(0);
+  expect(onReport.routedEdges, "and no routed edges").toBe(0);
 });
 
 test("a step that is dragged takes its connectors with it", async ({ page }) => {
