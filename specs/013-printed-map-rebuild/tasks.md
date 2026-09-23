@@ -47,14 +47,14 @@ Pure rendering is not, and is covered by the measured e2e instead.
 - [ ] T019 [US5] Add `ReportMapLayout` enum and `Workspace.reportMapLayout` (default `FLOW`) to `prisma/schema.prisma`; migrate. Additive, no backfill.
 - [ ] T020 [US5] Build `lib/actions/report-map-layout.ts`'s `setReportMapLayout` per [the contract](./contracts/map-layout-action.md) — Zod-validated, `EDITOR`-gated, one workspace.
 - [ ] T021 [US5] Add the **Map layout** control to the report toolbar beside Spacing, rendered only when the viewer may edit; read `workspace.reportMapLayout` in the report's existing query.
-- [ ] T022 [US5] Write `tests/integration/report-map-layout.test.ts`: the action persists, refuses a VIEWER, refuses an unknown layout, and does not touch another workspace.
-- [ ] T023 [US5] Extend `tests/e2e/viewer-read-only.spec.ts` — a Viewer sees the map in the client's chosen layout and is not offered the control.
+- [x] T022 [US5] Write `tests/integration/report-map-layout.test.ts`: the action persists, refuses a VIEWER, refuses an unknown layout, and does not touch another workspace. Mutation-checked (weakened the EDITOR gate to VIEWER; the refusal test caught it; restored).
+- [x] T023 [US5] A Viewer sees the map in the client's chosen layout and is not offered the control — covered by `tests/e2e/report-map-layout.spec.ts` rather than an extension of `viewer-read-only.spec.ts`: the layout control's own lifecycle (switch, reload, new session, then the Viewer gate) reads as one story, and splitting the gate check into the unrelated file would separate it from the persistence it is guarding.
 
 ## Phase 6: Polish
 
-- [ ] T024 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`, `pnpm exec playwright test` and report counts. Do not edit while a run is in flight.
-- [ ] T025 Blast-radius check per [quickstart](./quickstart.md) §5: `wrapped-process-map.spec.ts`, `connector-routing.spec.ts` and `core-workflows.spec.ts` must be unchanged — the canvas and the deck are out of scope.
-- [ ] T026 Read the real exported PDF for the tender fixture and the 6-role fixture, and record each success criterion's measured result in `checklists/requirements.md`. A criterion not measured is not met.
+- [x] T024 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`, `pnpm exec playwright test` and report counts. Do not edit while a run is in flight. Lint clean; `tsc --noEmit` clean; `pnpm test` 663/663; `playwright test` 157/157 (full suite, pre-T022/T023 addition) plus 2 + 5 more from this pass, all green.
+- [x] T025 Blast-radius check per [quickstart](./quickstart.md) §5: `wrapped-process-map.spec.ts` and `core-workflows.spec.ts` are unchanged since the rebuild; `connector-routing.spec.ts` has one deliberate, already-committed edit — the printed-map half of "the printed map is routed by the same rules as the screen" was rewritten to assert the opposite (the printed map now draws no canvas and no routed edges), because spec 013 ended that contract on purpose. The interactive canvas half of the same file is untouched, and every test in it still passes.
+- [x] T026 Read the real exported PDF for the tender fixture and the 6-role fixture, and record each success criterion's measured result in `checklists/requirements.md`. A criterion not measured is not met. See the "T026 — Success criteria, measured" section there; SC-010 had no test until this pass and now does (`report-map-layout.spec.ts` + `report-map-layout.test.ts`).
 
 ## Dependencies
 
