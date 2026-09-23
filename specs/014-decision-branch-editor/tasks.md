@@ -127,7 +127,7 @@ editable and removable on its own.
 
 ## Phase 4: Polish
 
-- [ ] T013 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
+- [X] T013 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
       `pnpm exec playwright test` and report counts. Do not edit while a run is in flight.
 - [X] T014 Blast-radius check: `process-map-canvas.tsx` and
       `app/reports/[workspaceId]/printed-map/**` must be unchanged by this feature (FR-013) —
