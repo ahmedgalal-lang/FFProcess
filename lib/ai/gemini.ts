@@ -69,7 +69,46 @@ export async function generateStructured<T>(params: {
       return { ok: false, reason: "REQUEST_FAILED", message: params.malformedMessage };
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "AI request failed.";
-    return { ok: false, reason: "REQUEST_FAILED", message };
+    return { ok: false, reason: "REQUEST_FAILED", message: describeGeminiError(error) };
   }
+}
+
+/**
+ * A human message for whatever the SDK threw.
+ *
+ * The SDK's own `ApiError.message` is not prose — it's `JSON.stringify` of
+ * the raw HTTP error body (`throwErrorIfNotOK` in `@google/genai`), so an
+ * overloaded model surfaced as `{"error":{"code":503,"message":"...",
+ * "status":"UNAVAILABLE"}}` straight through to a consultant's screen. This
+ * unwraps that body — Google's own `error.message` field when it's there —
+ * and falls back to a status-keyed message for the cases worth telling apart
+ * (overloaded, rate-limited) so at least those read as sentences rather than
+ * a stack of JSON.
+ */
+function describeGeminiError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+
+  let code: number | undefined;
+  let status: string | undefined;
+  let detail: string | undefined;
+  try {
+    const parsed = JSON.parse(raw) as { error?: { code?: number; status?: string; message?: string } };
+    code = parsed.error?.code;
+    status = parsed.error?.status;
+    detail = parsed.error?.message;
+  } catch {
+    // Not JSON — whatever `raw` already is stays the fallback below.
+  }
+
+  if (code === 503 || status === "UNAVAILABLE") {
+    return "The AI model is temporarily overloaded. Please try again in a moment.";
+  }
+  if (code === 429 || status === "RESOURCE_EXHAUSTED") {
+    return "The AI service has hit its rate limit. Please try again shortly.";
+  }
+  if (code === 401 || code === 403 || status === "PERMISSION_DENIED" || status === "UNAUTHENTICATED") {
+    return "This deployment's AI credentials were rejected. Contact an administrator.";
+  }
+
+  return detail || raw || "AI request failed.";
 }
