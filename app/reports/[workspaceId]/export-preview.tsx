@@ -4,9 +4,11 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Source_Serif_4 } from "next/font/google";
 import { StaticOrgChart } from "../../(app)/workspaces/[workspaceId]/org/chart/static-org-chart";
-import { StaticProcessMapDiagram } from "../../(app)/workspaces/[workspaceId]/processes/[processId]/map/static-process-map-diagram";
+import { PrintedProcessMap } from "./printed-map/printed-process-map";
+import "./printed-map/printed-map.css";
 import { StaticMilestoneRails } from "../../(app)/workspaces/[workspaceId]/helicopter/static-milestone-rails";
 import { paginate } from "@/lib/domain/report-pagination";
+import { setReportMapLayout } from "@/lib/actions/report-map-layout";
 import { mixHex, readableInkOn } from "@/lib/domain/color-contrast";
 import type { RaciCode, StepType } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
@@ -35,6 +37,16 @@ const DENSITY_OPTIONS = [
 ] as const;
 
 type DensityId = (typeof DENSITY_OPTIONS)[number]["id"];
+
+/**
+ * The two printed map layouts (spec 013). Flow is the default because it is
+ * legible at any number of roles, where Roles degrades as roles are added — so
+ * it is the safer thing to give a client nobody has chosen for.
+ */
+const MAP_LAYOUT_OPTIONS = [
+  { id: "FLOW", label: "Flow", hint: "The process runs down the page, one step per row" },
+  { id: "ROLES", label: "Roles", hint: "A column per role, so hand-offs read as sideways moves" },
+] as const;
 
 // The cover's one deliberate serif moment — self-hosted via next/font so the
 // PDF/print render never depends on a live network fetch for it.
@@ -152,6 +164,8 @@ export function ExportPreview({
   unphasedActivityCount,
   railProcesses,
   arrangement,
+  mapLayout: initialMapLayout,
+  canEdit,
 }: {
   workspaceId: string;
   companyName: string;
@@ -167,11 +181,23 @@ export function ExportPreview({
   unphasedActivityCount: number;
   railProcesses: RailProcess[];
   arrangement: ResolvedArrangement;
+  mapLayout: "FLOW" | "ROLES";
+  /** Whether this viewer may change the client's settings — the layout control is theirs alone. */
+  canEdit: boolean;
 }) {
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
   const pptxHref = `/api/export/report/${workspaceId}?${processes.map((p) => `ids=${p.id}`).join("&")}`;
 
   const [density, setDensity] = useState<DensityId>("default");
+
+  /* Unlike Spacing, this one is the client's and persists. It is held in state
+     as well so the map redraws immediately rather than after the round trip. */
+  const [mapLayout, setMapLayout] = useState<"FLOW" | "ROLES">(initialMapLayout);
+
+  function chooseMapLayout(layout: "FLOW" | "ROLES") {
+    setMapLayout(layout);
+    void setReportMapLayout({ workspaceId, layout });
+  }
 
   /**
    * Where the PDF will break, so the preview can say so.
@@ -410,6 +436,29 @@ export function ExportPreview({
             ))}
           </div>
         </div>
+        {canEdit && (
+          <div className="flex items-center gap-[8px]">
+            <span className="text-[12px] font-semibold text-slate-500">Map layout</span>
+            <div className="flex overflow-hidden rounded-[8px] border border-slate-300">
+              {MAP_LAYOUT_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => chooseMapLayout(option.id)}
+                  aria-pressed={mapLayout === option.id}
+                  title={option.hint}
+                  className={`border-slate-300 px-[10px] py-[7px] text-[12px] font-semibold not-first:border-l ${
+                    mapLayout === option.id
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <a
           href={pptxHref}
           className="rounded-[8px] border border-slate-300 bg-white px-[16px] py-[8px] text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
@@ -525,6 +574,7 @@ export function ExportPreview({
                       workspaceId={workspaceId}
                       process={process}
                       arrangement={arrangement}
+                      mapLayout={mapLayout}
                     />
                   ))}
                 </Fragment>
@@ -694,10 +744,12 @@ function ProcessReportSection({
   workspaceId,
   process,
   arrangement,
+  mapLayout,
 }: {
   workspaceId: string;
   process: ExportProcessData;
   arrangement: ResolvedArrangement;
+  mapLayout: "FLOW" | "ROLES";
 }) {
   const matrixRoleNameById = new Map(process.matrixRoles.map((r) => [r.id, r.name]));
 
@@ -788,6 +840,7 @@ function ProcessReportSection({
                     // rather than splitting it, which is why the pair is
                     // pinned: there is only ever one table shape.
                     withRules: printed.some((b) => b.id === "rules"),
+                    mapLayout,
                     // The Workflow sub-heading only earns its place when Scope
                     // printed above it; on its own the diagram needs no label.
                     labelWorkflow: printed.some((b) => b.id === "scope") && !isBlockEmpty("scope", process),
@@ -907,6 +960,7 @@ type BlockContext = {
   labelWorkflow: boolean;
   stepOwnerLabel: (row: ExportProcessData["combinedRows"][number]) => string;
   withRules?: boolean;
+  mapLayout: "FLOW" | "ROLES";
 };
 
 /**
@@ -965,13 +1019,13 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
     </>
   ),
 
-  diagram: ({ process, workspaceId, labelWorkflow }) => (
+  diagram: ({ process, labelWorkflow, mapLayout }) => (
     <>
       {labelWorkflow && <SubHeading>Workflow</SubHeading>}
-      <StaticProcessMapDiagram
-        workspaceId={workspaceId}
+      <PrintedProcessMap
         steps={process.steps}
         connections={process.connections}
+        layout={mapLayout}
       />
     </>
   ),

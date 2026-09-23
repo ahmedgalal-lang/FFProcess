@@ -31,8 +31,20 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
   // the other.
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { reportArrangement: true },
+    select: { reportArrangement: true, reportMapLayout: true },
   });
 
-  return <ExportPreview {...data} arrangement={resolveArrangement(workspace?.reportArrangement)} />;
+  // The layout control changes a client's settings, so only an editor is
+  // offered it — the action enforces the same gate server-side, which is what
+  // actually protects it (Constitution Principle V).
+  const editorAccess = await requireWorkspaceAccess(workspaceId, "EDITOR");
+
+  return (
+    <ExportPreview
+      {...data}
+      arrangement={resolveArrangement(workspace?.reportArrangement)}
+      mapLayout={workspace?.reportMapLayout ?? "FLOW"}
+      canEdit={editorAccess.ok}
+    />
+  );
 }

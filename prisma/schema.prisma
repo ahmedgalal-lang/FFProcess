@@ -166,6 +166,7 @@ model Workspace {
   /// section added to the product later appears for every client instead of
   /// being silently hidden from the ones already arranged.
   reportArrangement Json?
+  reportMapLayout   ReportMapLayout @default(FLOW)
 
   firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
 
@@ -349,6 +350,22 @@ model ProcessCategory {
 
   @@unique([firmId, name])
   @@map("process_categories")
+}
+
+/// Which layout a client's printed process map uses (spec 013 FR-018).
+/// A column of its own rather than a field inside reportArrangement: that blob
+/// is a versioned arrangement of sections and blocks with its own catalogue and
+/// resolver, and a map layout is not an arrangement of anything. The default is
+/// what makes FR-021 free — an unset client has no "never chosen" state to
+/// handle anywhere in the code, it simply reads FLOW.
+enum ReportMapLayout {
+  /// The process runs down the page, one step per row, each given the page's
+  /// full width for its label. Legible at any number of roles.
+  FLOW
+
+  /// A column per role, the process flowing down through them, so a hand-off
+  /// reads as a sideways move. Falls back to FLOW above the role ceiling.
+  ROLES
 }
 
 enum StepType {

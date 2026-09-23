@@ -1,0 +1,333 @@
+/*
+ * The printed process map.
+ *
+ * Two rules hold the whole rebuild together, and breaking either one brings
+ * back the defect it replaced:
+ *
+ *   1. Nothing here sets a fixed height, and nothing sets overflow: hidden.
+ *      A card grows to fit its label, which is why no label is ever cut.
+ *   2. Everything is sized in rem, against the root font-size the report's
+ *      Spacing control already scales. The map is finally part of the document
+ *      rather than a drawing pasted into it.
+ */
+
+.printed-map {
+  --pmap-line: #94a3b8;
+  --pmap-rule: 1.5px;
+  --pmap-rail-w: 1.6rem;
+  --pmap-indent: 1.5rem;
+  --pmap-radius: 0.4rem;
+  --pmap-decision: #b45309;
+  --pmap-decision-bg: #fffbeb;
+  --pmap-terminal: #0f766e;
+  --pmap-terminal-bg: #f0fdfa;
+}
+
+.printed-map__fallback {
+  margin: 0 0 0.7rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #fcd34d;
+  border-left: 3px solid #d97706;
+  border-radius: 0.25rem;
+  background: #fffbeb;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #78350f;
+}
+
+/* ---------------------------------------------------------------- Flow ---- */
+
+.pmap-flow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pmap-flow__row {
+  display: grid;
+  grid-template-columns: var(--pmap-rail-w) 1fr;
+  align-items: stretch;
+  /* A page break may fall between two rows — that costs the reader nothing,
+     because the next row simply continues down the next page — but never
+     through one. */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pmap-flow__row[data-indent="1"] .pmap-card { margin-left: var(--pmap-indent); }
+.pmap-flow__row[data-indent="2"] .pmap-card { margin-left: calc(var(--pmap-indent) * 2); }
+
+/* The spine: one unbroken line down the left of the whole map. */
+.pmap-flow__rail {
+  position: relative;
+  display: block;
+}
+
+.pmap-flow__rail::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: var(--pmap-rule);
+  background: var(--pmap-line);
+  transform: translateX(-50%);
+}
+
+/* The first row's spine starts at the card, not above it; the last row's stops
+   there. Otherwise the line hangs off both ends of the map. */
+.pmap-flow__row[data-rail="first"] .pmap-flow__rail::before { top: 50%; }
+.pmap-flow__row[data-rail="last"] .pmap-flow__rail::before { bottom: 50%; }
+
+/* A spur: the rail leaves the spine and turns right into the indented card. */
+.pmap-flow__row[data-rail="branch"] .pmap-flow__rail::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 50%;
+  width: var(--pmap-indent);
+  border-left: var(--pmap-rule) solid var(--pmap-line);
+  border-bottom: var(--pmap-rule) solid var(--pmap-line);
+  border-bottom-left-radius: var(--pmap-radius);
+}
+
+/* A merge: paths converge back onto the spine. */
+.pmap-flow__row[data-rail="merge"] .pmap-flow__rail::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 50%;
+  width: var(--pmap-indent);
+  border-left: var(--pmap-rule) solid var(--pmap-line);
+  border-top: var(--pmap-rule) solid var(--pmap-line);
+  border-top-left-radius: var(--pmap-radius);
+  transform: translateY(0);
+}
+
+/* The branch's own label, riding on the elbow that carries it. */
+.pmap-flow__branch-label {
+  position: absolute;
+  left: calc(50% + 0.3rem);
+  top: 0.1rem;
+  z-index: 1;
+  padding: 0 0.2rem;
+  background: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--pmap-decision);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- Cards ---- */
+
+.pmap-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.15rem 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.25rem;
+  background: #fff;
+  /* No height, no overflow rule: the card is as tall as what it holds. */
+}
+
+.pmap-flow__row[data-kind="decision"] .pmap-card,
+.pmap-roles__cell[data-kind="decision"] {
+  border-color: var(--pmap-decision);
+  background: var(--pmap-decision-bg);
+}
+
+.pmap-flow__row[data-kind="start"] .pmap-card,
+.pmap-flow__row[data-kind="end"] .pmap-card,
+.pmap-roles__cell[data-kind="start"],
+.pmap-roles__cell[data-kind="end"] {
+  border-color: var(--pmap-terminal);
+  background: var(--pmap-terminal-bg);
+}
+
+.pmap-card__num {
+  flex: 0 0 auto;
+  min-width: 1.25rem;
+  padding: 0.05rem 0.25rem;
+  border-radius: 0.2rem;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.pmap-card__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pmap-card__label {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #0f172a;
+  /* Wraps. This one line is what replaced eighteen truncated cards. */
+  overflow-wrap: break-word;
+}
+
+.pmap-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin: 0.1rem 0 0;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: #475569;
+}
+
+.pmap-card__role { text-transform: uppercase; letter-spacing: 0.04em; }
+.pmap-card__unowned { font-style: italic; color: #64748b; text-transform: none; letter-spacing: 0; }
+.pmap-card__merge { color: #0f766e; font-weight: 600; }
+.pmap-card__branch {
+  color: var(--pmap-decision);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pmap-card__ends { color: #b45309; font-weight: 600; }
+
+.pmap-card__links,
+.pmap-card__backref {
+  margin: 0.15rem 0 0;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: #4338ca;
+}
+
+.pmap-card__link { margin-right: 0.5rem; }
+
+.pmap-card__backref { color: #b45309; }
+.pmap-card__backref-arrow { margin-right: 0.15rem; }
+
+.pmap-card__kind {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.2rem;
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+/* --------------------------------------------------------------- Roles ---- */
+
+.pmap-roles {
+  --pmap-gap: 0.4rem;
+}
+
+.pmap-roles__head {
+  display: grid;
+  grid-template-columns: repeat(var(--pmap-columns), 1fr);
+  gap: var(--pmap-gap);
+  margin-bottom: 0.3rem;
+  border-bottom: 1.5px solid #cbd5e1;
+  padding-bottom: 0.2rem;
+}
+
+.pmap-roles__role {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #475569;
+  overflow-wrap: break-word;
+}
+
+.pmap-roles__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pmap-roles__row {
+  display: grid;
+  grid-template-columns: repeat(var(--pmap-columns), 1fr);
+  gap: var(--pmap-gap);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pmap-roles__cell {
+  grid-column: var(--pmap-col);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.25rem;
+  background: #fff;
+}
+
+.pmap-roles__cell .pmap-card__label { font-size: 0.68rem; }
+
+/* The hop into the next row, spanning the columns it crosses. A grid item, so
+   no measurement is needed to know where it goes. */
+.pmap-roles__connector {
+  position: relative;
+  grid-column: var(--pmap-from) / var(--pmap-to);
+  height: 0.85rem;
+}
+
+.pmap-roles__connector::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: var(--pmap-rule);
+  background: var(--pmap-line);
+}
+
+.pmap-roles__connector[data-direction="right"]::before,
+.pmap-roles__connector[data-direction="left"]::before {
+  inset: 0;
+  width: auto;
+  background: none;
+  border-bottom: var(--pmap-rule) solid var(--pmap-line);
+}
+
+.pmap-roles__connector[data-direction="right"]::before {
+  border-left: var(--pmap-rule) solid var(--pmap-line);
+  border-bottom-left-radius: var(--pmap-radius);
+}
+
+.pmap-roles__connector[data-direction="left"]::before {
+  border-right: var(--pmap-rule) solid var(--pmap-line);
+  border-bottom-right-radius: var(--pmap-radius);
+}
+
+.pmap-roles__connector-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 0.2rem;
+  background: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--pmap-decision);
+  white-space: nowrap;
+}
+
+@media print {
+  .pmap-card,
+  .pmap-roles__cell {
+    /* Backgrounds are already forced on by the report's own print rules; this
+       keeps the borders from being dropped by a printer's "economy" mode. */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
