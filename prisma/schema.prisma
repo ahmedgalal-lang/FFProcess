@@ -789,8 +789,15 @@ model GovernanceAssessment {
   workspaceId String
   focusArea   GovernanceFocusArea
 
-  /// The pillar-framed executive summary from the most recent run.
+  /// The pillar-framed executive summary from the most recent run, or a
+  /// consultant's own rewrite of it.
   summary String @db.Text
+
+  /// Set once a person edits the summary themselves. Protects it from
+  /// generateGovernanceAssessment's regenerate the same way a policy's
+  /// EDITED status and a risk's own handManaged flag already protect
+  /// theirs — see governance-findings.ts's isHandManaged.
+  summaryHandEdited Boolean @default(false)
 
   workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   items     GovernanceChecklistItem[]

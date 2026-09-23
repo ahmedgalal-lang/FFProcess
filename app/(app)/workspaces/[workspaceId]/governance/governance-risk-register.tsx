@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCanEdit } from "../workspace-access";
-import { addGovernanceRisk, updateGovernanceRisk } from "@/lib/actions/governance";
+import { addGovernanceRisk, updateGovernanceRisk, deleteGovernanceRisk } from "@/lib/actions/governance";
 import { deriveRiskLevel } from "@/lib/domain/governance-risk";
 
 export type RiskT = {
@@ -45,6 +45,7 @@ export function GovernanceRiskRegister({
 }) {
   const canEdit = useCanEdit();
   const [adding, setAdding] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -72,6 +73,16 @@ export function GovernanceRiskRegister({
     startTransition(async () => {
       const result = await updateGovernanceRisk({ workspaceId, riskId, [field]: value });
       if (result.ok) router.refresh();
+    });
+  }
+
+  function removeRisk(riskId: string) {
+    startTransition(async () => {
+      const result = await deleteGovernanceRisk({ workspaceId, riskId });
+      if (result.ok) {
+        setConfirmingDeleteId(null);
+        router.refresh();
+      }
     });
   }
 
@@ -161,6 +172,7 @@ export function GovernanceRiskRegister({
                 <th className="pb-2 pr-2">Level</th>
                 <th className="pb-2 pr-2">Owner</th>
                 <th className="pb-2">Status</th>
+                {canEdit && <th className="pb-2 pl-2" aria-label="Remove" />}
               </tr>
             </thead>
             <tbody>
@@ -229,6 +241,39 @@ export function GovernanceRiskRegister({
                         </span>
                       )}
                     </td>
+                    {canEdit && (
+                      <td className="py-2.5 pl-2 text-right">
+                        {confirmingDeleteId === risk.id ? (
+                          <span className="flex items-center justify-end gap-1.5 whitespace-nowrap text-[10px] text-slate-600">
+                            Delete?
+                            <button
+                              type="button"
+                              onClick={() => removeRisk(risk.id)}
+                              disabled={pending}
+                              className="rounded bg-red-600 px-1.5 py-0.5 font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingDeleteId(null)}
+                              className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Keep
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingDeleteId(risk.id)}
+                            aria-label={`Delete risk: ${risk.title}`}
+                            className="text-[10px] font-semibold text-slate-400 hover:text-red-600"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

@@ -24,6 +24,8 @@ const {
   deleteGovernancePolicy,
   addGovernanceRisk,
   updateGovernanceRisk,
+  deleteGovernanceRisk,
+  updateGovernanceSummary,
 } = await import("@/lib/actions/governance");
 const { prisma } = await import("@/lib/db/client");
 
@@ -266,6 +268,84 @@ describe("setGovernanceProfile / generateGovernanceAssessment", () => {
     expect(allRisks).toBe(1);
   });
 
+  it("does not overwrite a hand-edited summary on regenerate, but still refreshes the checklist", async () => {
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+
+    const first = await generateGovernanceAssessment({ workspaceId: fixture.workspace.id, focusArea: "RISK_CONTROLS" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const edited = await updateGovernanceSummary({
+      workspaceId: fixture.workspace.id,
+      assessmentId: first.data.assessmentId,
+      summary: "A consultant's own rewrite of the summary.",
+    });
+    expect(edited.ok).toBe(true);
+
+    // Regenerate, with a model response carrying a different summary and one
+    // genuinely new checklist item — the hand edit must survive while the
+    // rest of the run still lands.
+    mockRunGovernanceAssessment.mockResolvedValue(
+      outcome({
+        summary: "A fresh AI summary that must not overwrite the hand-edited one.",
+        checklist: [
+          {
+            phase: "near_term",
+            title: "Adopt a new whistleblower channel",
+            description: "A second finding from this run.",
+            policyTitle: null,
+            riskTitle: null,
+          },
+        ],
+      })
+    );
+    const regenerated = await generateGovernanceAssessment({
+      workspaceId: fixture.workspace.id,
+      focusArea: "RISK_CONTROLS",
+    });
+    expect(regenerated.ok).toBe(true);
+
+    const assessmentAfter = await prisma.governanceAssessment.findUniqueOrThrow({
+      where: { id: first.data.assessmentId },
+    });
+    expect(assessmentAfter.summary).toBe("A consultant's own rewrite of the summary.");
+    expect(assessmentAfter.summaryHandEdited).toBe(true);
+
+    // The checklist still refreshed — protection is scoped to the summary alone.
+    const items = await prisma.governanceChecklistItem.findMany({ where: { assessmentId: first.data.assessmentId } });
+    expect(items.map((i) => i.title)).toContain("Adopt a new whistleblower channel");
+  });
+
+  it("refuses to touch a summary belonging to another workspace", async () => {
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+    const generated = await generateGovernanceAssessment({
+      workspaceId: fixture.workspace.id,
+      focusArea: "RISK_CONTROLS",
+    });
+    expect(generated.ok).toBe(true);
+    if (!generated.ok) return;
+
+    const other = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: other.adminUser.id } });
+    const edit = await updateGovernanceSummary({
+      workspaceId: other.workspace.id,
+      assessmentId: generated.data.assessmentId,
+      summary: "Rewritten from the wrong workspace.",
+    });
+    expect(edit.ok).toBe(false);
+    if (!edit.ok) expect(edit.error).toBe("NOT_FOUND");
+
+    await other.cleanup();
+  });
+
   it("a hand-added risk survives a regenerate that returns a different risk with the same title", async () => {
     await prisma.workspace.update({
       where: { id: fixture.workspace.id },
@@ -291,6 +371,44 @@ describe("setGovernanceProfile / generateGovernanceAssessment", () => {
 
     const allRisks = await prisma.governanceRisk.count({ where: { workspaceId: fixture.workspace.id } });
     expect(allRisks).toBe(1); // not duplicated by title
+  });
+
+  it("deletes a risk outright, whether it was hand-added or AI-surfaced", async () => {
+    const handAdded = await addGovernanceRisk({
+      workspaceId: fixture.workspace.id,
+      title: "Single supplier for a critical component",
+      description: "No qualified backup vendor.",
+      likelihood: "HIGH",
+      impact: "HIGH",
+    });
+    expect(handAdded.ok).toBe(true);
+    if (!handAdded.ok) return;
+
+    const removed = await deleteGovernanceRisk({ workspaceId: fixture.workspace.id, riskId: handAdded.data.id });
+    expect(removed.ok).toBe(true);
+    expect(await prisma.governanceRisk.findUnique({ where: { id: handAdded.data.id } })).toBeNull();
+  });
+
+  it("refuses to delete a risk belonging to another workspace", async () => {
+    const other = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: other.adminUser.id } });
+    const theirs = await addGovernanceRisk({
+      workspaceId: other.workspace.id,
+      title: "Theirs",
+      description: "Not yours.",
+      likelihood: "LOW",
+      impact: "LOW",
+    });
+    expect(theirs.ok).toBe(true);
+    if (!theirs.ok) return;
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const remove = await deleteGovernanceRisk({ workspaceId: fixture.workspace.id, riskId: theirs.data.id });
+    expect(remove.ok).toBe(false);
+    if (!remove.ok) expect(remove.error).toBe("NOT_FOUND");
+    expect(await prisma.governanceRisk.findUnique({ where: { id: theirs.data.id } })).not.toBeNull();
+
+    await other.cleanup();
   });
 });
 
@@ -608,6 +726,8 @@ describe("Governance access gating", () => {
         title: "t",
         description: "d",
       }),
+      deleteGovernanceRisk({ workspaceId: fixture.workspace.id, riskId: "does-not-matter" }),
+      updateGovernanceSummary({ workspaceId: fixture.workspace.id, assessmentId: "does-not-matter", summary: "x" }),
     ]);
     for (const result of results) {
       expect(result.ok).toBe(false);

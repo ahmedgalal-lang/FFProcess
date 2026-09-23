@@ -9,6 +9,7 @@ import {
   addGovernanceChecklistItem,
   updateGovernanceChecklistItem,
   deleteGovernanceChecklistItem,
+  updateGovernanceSummary,
 } from "@/lib/actions/governance";
 import { GovernancePolicyDrawer, type PolicyT } from "./governance-policy-drawer";
 import { GovernanceRiskRegister, type RiskT } from "./governance-risk-register";
@@ -76,6 +77,8 @@ export function GovernanceAssessmentPanel({
   const [addingItem, setAddingItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState("");
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -169,6 +172,22 @@ export function GovernanceAssessmentPanel({
     });
   }
 
+  function saveSummary() {
+    if (!assessment) return;
+    const summary = summaryDraft.trim();
+    if (!summary) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await updateGovernanceSummary({ workspaceId, assessmentId: assessment.id, summary });
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : result.error);
+        return;
+      }
+      setEditingSummary(false);
+      router.refresh();
+    });
+  }
+
   const grouped = PHASE_ORDER.map((phase) => ({
     phase,
     items: (assessment?.items ?? []).filter((i) => i.phase === phase && i.status !== "DISMISSED"),
@@ -202,6 +221,7 @@ export function GovernanceAssessmentPanel({
                   setAddingItem(false);
                   setEditingItemId(null);
                   setConfirmingDeleteId(null);
+                  setEditingSummary(false);
                 }}
                 className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
                   focusArea === f.value
@@ -237,12 +257,59 @@ export function GovernanceAssessmentPanel({
         {error && <p className="mt-2 text-xs font-medium text-red-600">{error}</p>}
       </section>
 
-      {assessment && assessment.summary.trim() !== "" && (
+      {assessment && (assessment.summary.trim() !== "" || canEdit) && (
         <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-bold text-slate-900">Executive summary — {focusLabel}</h2>
-          <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600">
-            {assessment.summary}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-sm font-bold text-slate-900">Executive summary — {focusLabel}</h2>
+            {canEdit && !editingSummary && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSummaryDraft(assessment.summary);
+                  setError(null);
+                  setEditingSummary(true);
+                }}
+                className="flex-none text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+              >
+                {assessment.summary.trim() ? "Edit" : "Write one by hand"}
+              </button>
+            )}
+          </div>
+          {editingSummary ? (
+            <div className="mt-2 flex flex-col gap-2">
+              <textarea
+                value={summaryDraft}
+                onChange={(e) => setSummaryDraft(e.target.value)}
+                rows={6}
+                aria-label="Executive summary"
+                className="w-full rounded-lg border border-slate-300 p-2.5 text-[13px] leading-relaxed text-slate-800"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={saveSummary}
+                  disabled={pending}
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+                >
+                  {pending ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingSummary(false)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                {error && <span className="text-xs font-medium text-red-600">{error}</span>}
+              </div>
+            </div>
+          ) : assessment.summary.trim() !== "" ? (
+            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600">
+              {assessment.summary}
+            </p>
+          ) : (
+            <p className="mt-2 text-[13px] italic text-slate-400">No summary yet.</p>
+          )}
         </section>
       )}
 

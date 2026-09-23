@@ -98,6 +98,35 @@ test("generating with GEMINI_API_KEY unset shows the AI-unavailable message, not
   await expect(page.getByText(/No assessment generated yet/)).toBeVisible();
 });
 
+test("an executive summary can be written by hand and edited, and survives a regenerate", async ({ page }) => {
+  await signIn(page);
+  await page.goto(`/workspaces/${WORKSPACE}/governance`);
+
+  // No assessment yet for the default tab — add a checklist item by hand to
+  // get an assessment shell (summary "") to write a summary onto, since this
+  // deployment has no GEMINI_API_KEY to generate a real one against.
+  await page.getByRole("button", { name: "+ Add a checklist item by hand" }).click();
+  await page.getByPlaceholder("Action title").fill("Draft a risk appetite statement");
+  await page.getByPlaceholder("What to do, and why it matters").fill("Nothing today states one.");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Draft a risk appetite statement")).toBeVisible();
+
+  // Scoped to the summary section itself — "Edit"/"Save" also appear on the
+  // checklist item just added, with the identical exact text.
+  const summarySection = page.locator("section", { hasText: "Executive summary" });
+  await summarySection.getByRole("button", { name: "Write one by hand" }).click();
+  await summarySection.getByLabel("Executive summary").fill("A consultant's own first cut of the summary.");
+  await summarySection.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(summarySection.getByText("A consultant's own first cut of the summary.")).toBeVisible();
+
+  // Editing it again reaches "Edit", not "Write one by hand", now that it has content.
+  await summarySection.getByRole("button", { name: "Edit", exact: true }).click();
+  await summarySection.getByLabel("Executive summary").fill("A fuller, revised summary.");
+  await summarySection.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(summarySection.getByText("A fuller, revised summary.")).toBeVisible();
+  await expect(summarySection.getByText("A consultant's own first cut of the summary.")).toHaveCount(0);
+});
+
 test("a checklist item can be added by hand from the empty state, edited, and deleted", async ({ page }) => {
   // Reported alongside the policy gap: the checklist could only ever hold
   // what an AI run had generated, so a focus area nobody had generated yet —
@@ -152,6 +181,12 @@ test("a hand-added risk appears in the Risk Register with its derived level, ind
   await expect(row).toBeVisible();
   await expect(row).toContainText("Added manually");
   await expect(row.getByText("HIGH", { exact: true })).toBeVisible(); // the derived level chip
+
+  // And it can be removed outright — distinct from setting its status to
+  // Closed, which would keep it (and its history) on the register.
+  await row.getByRole("button", { name: /Delete risk/ }).click();
+  await row.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.locator("tr", { hasText: "Single supplier for critical components" })).toHaveCount(0);
 });
 
 test("a policy can be written, edited and deleted by hand, with no assessment behind it", async ({ page }) => {

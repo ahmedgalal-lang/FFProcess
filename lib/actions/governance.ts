@@ -140,9 +140,13 @@ export async function generateGovernanceAssessment(
   const riskByTitle = new Map(newRisks.map((r) => [normalizeFindingTitle(r.title), r] as const));
 
   const assessmentId = await prisma.$transaction(async (tx) => {
+    // A hand-edited summary is left exactly as the consultant wrote it — the
+    // same protection updatePolicyDraft's EDITED status already gives a
+    // policy, just carried on its own flag rather than reusing that enum
+    // (an assessment's summary has no other status to piggyback on).
     const assessment = await tx.governanceAssessment.upsert({
       where: { workspaceId_focusArea: { workspaceId, focusArea: focusArea as GovernanceFocusArea } },
-      update: { summary: outcome.data.summary },
+      update: existingAssessment?.summaryHandEdited ? {} : { summary: outcome.data.summary },
       create: { workspaceId, focusArea: focusArea as GovernanceFocusArea, summary: outcome.data.summary },
     });
 
@@ -232,6 +236,45 @@ function buildGovernancePrompt(params: {
     );
   }
   return lines.join("\n");
+}
+
+/**
+ * Rewrites a focus area's executive summary by hand. Marks it hand-edited,
+ * which is what protects it from generateGovernanceAssessment's regenerate —
+ * a later run still refreshes the checklist/policies/risks as usual, it just
+ * stops touching the summary once a consultant has put their own words in it.
+ *
+ * Unlike a checklist item or a policy, an assessment always exists once a
+ * focus area has been generated at least once (its summary is what this
+ * edits) — there is no "write one by hand with no assessment behind it"
+ * case, since generating is the only thing that gives a focus area a summary
+ * worth editing in the first place.
+ */
+const updateSummarySchema = z.object({
+  workspaceId: z.string().min(1),
+  assessmentId: z.string().min(1),
+  summary: z.string().min(1),
+});
+
+export async function updateGovernanceSummary(
+  input: z.infer<typeof updateSummarySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = updateSummarySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const assessment = await prisma.governanceAssessment.findUnique({ where: { id: parsed.data.assessmentId } });
+  if (!assessment || assessment.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  await prisma.governanceAssessment.update({
+    where: { id: parsed.data.assessmentId },
+    data: { summary: parsed.data.summary, summaryHandEdited: true },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.assessmentId });
 }
 
 /**
@@ -575,6 +618,36 @@ export async function updateGovernanceRisk(
       handManaged: true,
     },
   });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.riskId });
+}
+
+/**
+ * Removes a risk from the register outright — distinct from setting its
+ * status to CLOSED, which keeps it (and its history) around. A risk added
+ * by mistake, or an AI-surfaced one that turns out not to apply, has no
+ * such history worth keeping. Whoever surfaced it (an assessment run or a
+ * consultant's own hand) is treated the same, matching deleteGovernancePolicy.
+ */
+const deleteRiskSchema = z.object({
+  workspaceId: z.string().min(1),
+  riskId: z.string().min(1),
+});
+
+export async function deleteGovernanceRisk(
+  input: z.infer<typeof deleteRiskSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteRiskSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const risk = await prisma.governanceRisk.findUnique({ where: { id: parsed.data.riskId } });
+  if (!risk || risk.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  await prisma.governanceRisk.delete({ where: { id: parsed.data.riskId } });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.riskId });

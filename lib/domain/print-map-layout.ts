@@ -87,7 +87,13 @@ export type FlowOutline = {
   drawnConnectionIds: string[];
 };
 
-export type RolesCell = { step: PrintStepInput; column: number; row: number };
+export type RolesCell = {
+  step: PrintStepInput;
+  column: number;
+  row: number;
+  /** The `order` of every step converging here, when this step is a merge — mirrors FlowRow.mergesFrom. */
+  mergesFrom: number[];
+};
 
 export type RolesConnector = {
   connectionId: string;
@@ -302,10 +308,24 @@ function buildRolesGrid(
     }
   }
 
+  // Every connection landing on a step, regardless of whether the grid draws
+  // it as an adjacent-row connector or names it as a back-reference — the
+  // same inbound set FlowRow.mergesFrom is computed from, so a merge reads
+  // the same way in both layouts.
+  const incoming = new Map<string, PrintConnectionInput[]>();
+  for (const connection of connections) {
+    (incoming.get(connection.toStepId) ?? incoming.set(connection.toStepId, []).get(connection.toStepId)!).push(
+      connection
+    );
+  }
+
   const rowOf = new Map<string, number>();
   const cells: RolesCell[] = steps.map((step, row) => {
     rowOf.set(step.id, row);
-    return { step, column: columnOf.get(step.roleName ?? NO_ROLE_COLUMN)!, row };
+    const inbound = incoming.get(step.id) ?? [];
+    const mergesFrom =
+      inbound.length > 1 ? inbound.map((c) => byId.get(c.fromStepId)!.order).sort((a, b) => a - b) : [];
+    return { step, column: columnOf.get(step.roleName ?? NO_ROLE_COLUMN)!, row, mergesFrom };
   });
 
   const connectors: RolesConnector[] = [];

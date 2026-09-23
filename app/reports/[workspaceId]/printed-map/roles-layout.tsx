@@ -63,6 +63,11 @@ export function RolesLayout({
                     )}
                     {detail?.sla && <span className="pmap-card__sla">{detail.sla}</span>}
                     {detail?.gate && <span className="pmap-card__gate">{detail.gate}</span>}
+                    {cell.mergesFrom.length > 0 && (
+                      <span className="pmap-card__merge">
+                        joins {cell.mergesFrom.map((n) => `step ${n}`).join(" and ")}
+                      </span>
+                    )}
                   </p>
                   {links.length > 0 && (
                     <p className="pmap-card__links">

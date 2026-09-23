@@ -140,6 +140,14 @@ test.describe("the rebuilt printed map", () => {
     expect(map.text).toMatch(/joins step \d+ and step \d+/);
   });
 
+  test("ROLES: the converging paths are named too, not just drawn", async ({ page }) => {
+    await setLayout(WORKSPACE, "ROLES");
+    await signIn(page);
+    const map = await measureMap(page, TENDER_PROCESS_ID);
+
+    expect(map.text).toMatch(/joins step \d+ and step \d+/);
+  });
+
   test("a process with more roles than the ceiling prints in Flow, and says why", async ({ page }) => {
     // The Roles layout is defined only to five columns; the design-and-build
     // process has six. It must fall back and explain, not print unreadably

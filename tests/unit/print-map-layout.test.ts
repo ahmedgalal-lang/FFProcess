@@ -284,6 +284,21 @@ describe("buildPrintMapLayout — ROLES", () => {
     expect(outcome.roles.cells.map((c) => c.row)).toEqual([...Array(10).keys()]);
   });
 
+  it("names a merge the same way Flow does, for the step both paths converge on", () => {
+    // Step 9 in TENDER_LINKS is where the Locally/Internationally split
+    // (from decision 6) rejoins — the same merge FlowRow.mergesFrom asserts
+    // on for this fixture (see the FLOW describe block above).
+    const outcome = buildPrintMapLayout({ steps: TENDER_STEPS, connections: TENDER_LINKS, requested: "ROLES" });
+    if (outcome.layout !== "ROLES") throw new Error("expected ROLES");
+
+    const merge = outcome.roles.cells.find((c) => c.step.order === 9)!;
+    expect(merge.mergesFrom).toEqual([7, 8]);
+
+    // No other cell claims to be a merge.
+    const others = outcome.roles.cells.filter((c) => c.step.order !== 9);
+    expect(others.every((c) => c.mergesFrom.length === 0)).toBe(true);
+  });
+
   it("gives a roleless step a column of its own rather than dropping it", () => {
     const steps = [step(1, "Owned", { roleName: "CEO" }), step(2, "Unowned", { roleName: null })];
     const outcome = buildPrintMapLayout({ steps, connections: [link(1, 2)], requested: "ROLES" });
