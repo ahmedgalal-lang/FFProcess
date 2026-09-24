@@ -265,6 +265,7 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
           exceptionHandling: s.exceptionHandling,
           assignedRole: s.assignedRole ? { id: s.assignedRole.id, name: s.assignedRole.name } : null,
           swimlaneRole: s.swimlaneRole ? { id: s.swimlaneRole.id, name: s.swimlaneRole.name } : null,
+          joinRequiresAll: s.joinRequiresAll,
           links: s.links.map((l) => ({
             id: l.id,
             targetProcessId: l.targetProcessId,

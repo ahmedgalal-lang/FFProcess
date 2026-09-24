@@ -65,7 +65,7 @@ export function RolesLayout({
                     {detail?.gate && <span className="pmap-card__gate">{detail.gate}</span>}
                     {cell.mergesFrom.length > 0 && (
                       <span className="pmap-card__merge">
-                        joins {cell.mergesFrom.map((n) => `step ${n}`).join(" and ")}
+                        {mergeWording(cell.step.joinRequiresAll, cell.mergesFrom)}
                       </span>
                     )}
                   </p>
@@ -130,3 +130,18 @@ const KIND_LABEL: Record<string, string> = {
   end: "End",
   task: "",
 };
+
+/**
+ * The unmarked case reads exactly as it always has — by order number, "joins
+ * step X and step Y" — unchanged appearance for every process that hasn't
+ * used the join requirement (spec 015 FR-007). "Requires all" instead names
+ * every predecessor (FR-008), since a reader with no other explanation needs
+ * to tell the two kinds of convergence apart by what they actually require.
+ */
+function mergeWording(joinRequiresAll: boolean, mergesFrom: { order: number; label: string }[]): string {
+  if (!joinRequiresAll) return `joins ${mergesFrom.map((m) => `step ${m.order}`).join(" and ")}`;
+  const names = mergesFrom.map((m) => m.label);
+  const verb = names.length === 2 ? "needs both" : "needs all of";
+  const joined = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+  return `${verb} ${joined}`;
+}

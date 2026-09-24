@@ -4,6 +4,7 @@ import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
 import { makeTenderProcess, removeTenderProcess, TENDER_PROCESS_ID } from "../fixtures/tender-process";
 import { makeWideProcess, removeWideProcess, WIDE_PROCESS_ID } from "../fixtures/wide-process";
+import { makeStepJoinProcess, removeStepJoinProcess, JOIN_PROCESS_ID } from "../fixtures/step-join-process";
 
 /**
  * The rebuilt printed map (spec 013), measured rather than eyeballed.
@@ -222,4 +223,53 @@ test.describe("the rebuilt printed map", () => {
       await cleanup.end();
     }
   });
+});
+
+/**
+ * The step join requirement's printed-report wording (spec 015 User Story 3):
+ * a "requires all" convergence must read differently from an ordinary
+ * either/or one, naming its predecessors by label — while every other merge
+ * in the same report keeps reading exactly as it always has, by number.
+ */
+test.describe("the step join requirement, on the printed report", () => {
+  test.beforeEach(makeStepJoinProcess);
+  test.afterAll(async () => {
+    await removeStepJoinProcess();
+    await setLayout(WORKSPACE, "FLOW");
+  });
+
+  async function markEndAsRequiresAll() {
+    const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+    await client.connect();
+    try {
+      await client.query(`UPDATE process_steps SET "joinRequiresAll" = true WHERE id = $1`, [
+        `${JOIN_PROCESS_ID}-end`,
+      ]);
+    } finally {
+      await client.end();
+    }
+  }
+
+  for (const layout of ["FLOW", "ROLES"] as const) {
+    test(`${layout}: an unmarked convergence still reads "joins step X and step Y"`, async ({ page }) => {
+      await setLayout(WORKSPACE, layout);
+      await signIn(page);
+      const map = await measureMap(page, JOIN_PROCESS_ID);
+
+      expect(map.text).toMatch(/joins step \d+ and step \d+/);
+      expect(map.text).not.toMatch(/needs (both|all of)/i);
+    });
+
+    test(`${layout}: a "requires all" convergence names its predecessors, by label`, async ({ page }) => {
+      await markEndAsRequiresAll();
+      await setLayout(WORKSPACE, layout);
+      await signIn(page);
+      const map = await measureMap(page, JOIN_PROCESS_ID);
+
+      expect(map.text).toMatch(/needs both[\s\S]*Legal sign-off[\s\S]*Client sign-off/);
+      // The wording changed for this one step; the unmarked convergence
+      // wording is gone entirely, since the process's only merge is this one.
+      expect(map.text).not.toMatch(/joins step \d+ and step \d+/);
+    });
+  }
 });

@@ -19,6 +19,7 @@ type StepT = {
   swimlaneRole: RoleRef | null;
   reviewNotes: string | null;
   milestone: boolean;
+  joinRequiresAll: boolean;
   gaps: StepGap[];
   detailedAction: string[];
   exceptionHandling: string | null;
@@ -53,8 +54,13 @@ export function MapView({
   const [arrangeError, setArrangeError] = useState<string | null>(null);
   const [arranging, startArranging] = useTransition();
   const router = useRouter();
-  const incomingConnectionOf = new Map<string, ConnectionT>();
-  for (const c of connections) incomingConnectionOf.set(c.toStepId, c);
+  // Every connection landing on a step — a step's predecessors, not just one (spec 015 FR-001).
+  const incomingConnectionsOf = new Map<string, ConnectionT[]>();
+  for (const c of connections) {
+    const list = incomingConnectionsOf.get(c.toStepId) ?? [];
+    list.push(c);
+    incomingConnectionsOf.set(c.toStepId, list);
+  }
   // A Decision step's branches (spec 014) — every connection leaving it, not
   // just the one incoming connector every row already tracks.
   const outgoingConnectionsOf = new Map<string, ConnectionT[]>();
@@ -129,11 +135,11 @@ export function MapView({
       ) : (
         <div className="flex flex-col gap-2">
           {steps.map((step, i) => {
-            const incomingConnection = incomingConnectionOf.get(step.id);
-            const predecessorStep = incomingConnection ? stepById.get(incomingConnection.fromStepId) : undefined;
-            const predecessor = predecessorStep
-              ? { id: predecessorStep.id, label: predecessorStep.label, type: predecessorStep.type }
-              : undefined;
+            const incomingConnections = incomingConnectionsOf.get(step.id) ?? [];
+            const predecessors = incomingConnections
+              .map((c) => stepById.get(c.fromStepId))
+              .filter((s): s is StepT => s !== undefined)
+              .map((s) => ({ id: s.id, label: s.label, type: s.type }));
             const stepOptions = steps
               .filter((s) => s.id !== step.id)
               .map((s) => ({ id: s.id, label: s.label, type: s.type }));
@@ -146,8 +152,8 @@ export function MapView({
                 isFirst={i === 0}
                 isLast={i === steps.length - 1}
                 step={step}
-                predecessor={predecessor}
-                incomingConnection={incomingConnection}
+                predecessors={predecessors}
+                incomingConnections={incomingConnections}
                 outgoingConnections={outgoingConnectionsOf.get(step.id) ?? []}
                 roles={roles}
                 stepOptions={stepOptions}

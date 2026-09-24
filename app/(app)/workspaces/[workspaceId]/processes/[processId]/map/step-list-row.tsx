@@ -16,6 +16,8 @@ import {
 import { STEP_GAP_DESCRIPTIONS, STEP_GAP_LABELS, type StepGap } from "@/lib/domain/step-readiness";
 import { DecisionBranchEditor, seedBranchDrafts } from "./decision-branch-editor";
 import { reconcileBranchDrafts, type BranchDraft } from "@/lib/domain/decision-branches";
+import { PredecessorEditor, seedPredecessorDrafts } from "./predecessor-editor";
+import { reconcilePredecessorDrafts, type PredecessorDraft } from "@/lib/domain/predecessor-editor";
 
 const TYPE_STYLES: Record<string, string> = {
   START: "bg-emerald-50 text-emerald-700",
@@ -40,6 +42,7 @@ type StepT = {
   assignedRole: RoleRef | null;
   reviewNotes: string | null;
   milestone: boolean;
+  joinRequiresAll: boolean;
   gaps: StepGap[];
   detailedAction: string[];
   exceptionHandling: string | null;
@@ -56,8 +59,8 @@ export function StepListRow({
   isFirst,
   isLast,
   step,
-  predecessor,
-  incomingConnection,
+  predecessors,
+  incomingConnections,
   outgoingConnections,
   roles,
   stepOptions,
@@ -69,8 +72,10 @@ export function StepListRow({
   isFirst: boolean;
   isLast: boolean;
   step: StepT;
-  predecessor: StepOption | undefined;
-  incomingConnection: ConnectionT | undefined;
+  /** Every step feeding into this one, resolved for display (spec 015 FR-001) — not just one. */
+  predecessors: StepOption[];
+  /** This step's own incoming connections — every predecessor, not just one (FR-001). */
+  incomingConnections: ConnectionT[];
   /** This step's own outgoing connections — a Decision's branches (FR-009). */
   outgoingConnections: ConnectionT[];
   roles: RoleRef[];
@@ -87,8 +92,10 @@ export function StepListRow({
   const [label, setLabel] = useState(step.label);
   const [type, setType] = useState<StepType>(step.type);
   const [roleId, setRoleId] = useState(step.assignedRole?.id ?? "");
-  const [fromStepId, setFromStepId] = useState(predecessor?.id ?? "");
-  const [connectionLabel, setConnectionLabel] = useState(incomingConnection?.label ?? "");
+  const [predecessorDrafts, setPredecessorDrafts] = useState<PredecessorDraft[]>(() =>
+    seedPredecessorDrafts(incomingConnections.map((c) => ({ id: c.id, fromStepId: c.fromStepId, label: c.label })))
+  );
+  const [joinRequiresAll, setJoinRequiresAll] = useState(step.joinRequiresAll);
   const [branchDrafts, setBranchDrafts] = useState<BranchDraft[]>(() =>
     seedBranchDrafts(outgoingConnections.map((c) => ({ id: c.id, toStepId: c.toStepId, label: c.label })))
   );
@@ -129,8 +136,10 @@ export function StepListRow({
     setLabel(step.label);
     setType(step.type);
     setRoleId(step.assignedRole?.id ?? "");
-    setFromStepId(predecessor?.id ?? "");
-    setConnectionLabel(incomingConnection?.label ?? "");
+    setPredecessorDrafts(
+      seedPredecessorDrafts(incomingConnections.map((c) => ({ id: c.id, fromStepId: c.fromStepId, label: c.label })))
+    );
+    setJoinRequiresAll(step.joinRequiresAll);
     setBranchDrafts(
       seedBranchDrafts(outgoingConnections.map((c) => ({ id: c.id, toStepId: c.toStepId, label: c.label })))
     );
@@ -158,39 +167,34 @@ export function StepListRow({
           .filter(Boolean),
         exceptionHandling,
         linkedProcessIds,
+        joinRequiresAll,
       });
       if (!result.ok) {
         setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Invalid step") : result.error);
         return;
       }
 
-      const connectionChanged =
-        fromStepId !== (predecessor?.id ?? "") || connectionLabel !== (incomingConnection?.label ?? "");
-
-      if (connectionChanged) {
-        if (incomingConnection) {
-          const deleted = await deleteStepConnection({
-            workspaceId,
-            processId,
-            connectionId: incomingConnection.id,
-          });
-          if (!deleted.ok) {
-            setError("Could not update the connector");
-            return;
-          }
-        }
-        if (fromStepId) {
-          const created = await createStepConnection({
-            workspaceId,
-            processId,
-            fromStepId,
-            toStepId: step.id,
-            label: connectionLabel || undefined,
-          });
-          if (!created.ok) {
-            setError(created.error === "VALIDATION_ERROR" ? (created.message ?? "Invalid connector") : created.error);
-            return;
-          }
+      const predecessorOperations = reconcilePredecessorDrafts(
+        incomingConnections.map((c) => ({ id: c.id, fromStepId: c.fromStepId, label: c.label })),
+        predecessorDrafts
+      );
+      for (const op of predecessorOperations) {
+        const opResult =
+          op.kind === "delete"
+            ? await deleteStepConnection({ workspaceId, processId, connectionId: op.connectionId })
+            : await createStepConnection({
+                workspaceId,
+                processId,
+                fromStepId: op.fromStepId,
+                toStepId: step.id,
+                label: op.label || undefined,
+              });
+        if (!opResult.ok) {
+          setError(
+            opResult.error === "VALIDATION_ERROR" ? (opResult.message ?? "A predecessor could not be saved.") : opResult.error
+          );
+          router.refresh(); // whatever did apply is real; reflect it
+          return;
         }
       }
 
@@ -285,29 +289,20 @@ export function StepListRow({
               ))}
             </select>
           </Field>
-          <Field label="Connects from">
-            <select
-              value={fromStepId}
-              onChange={(e) => setFromStepId(e.target.value)}
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
-            >
-              <option value="">— entry point —</option>
-              {stepOptions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  [{STEP_TYPE_PREFIX[s.type]}] {s.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Connector label">
-            <input
-              value={connectionLabel}
-              onChange={(e) => setConnectionLabel(e.target.value)}
-              placeholder="Yes / No"
-              className="w-28 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
-            />
-          </Field>
         </div>
+        <PredecessorEditor
+          drafts={predecessorDrafts}
+          onChange={setPredecessorDrafts}
+          stepOptions={stepOptions.map((s) => ({ id: s.id, label: `[${STEP_TYPE_PREFIX[s.type]}] ${s.label}` }))}
+        />
+        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+          <input
+            type="checkbox"
+            checked={joinRequiresAll}
+            onChange={(e) => setJoinRequiresAll(e.target.checked)}
+          />
+          Requires all predecessors
+        </label>
         {type === "DECISION" && (
           <DecisionBranchEditor
             drafts={branchDrafts}
@@ -444,9 +439,7 @@ export function StepListRow({
           )}
         </div>
         <div className="mt-1 text-xs text-slate-500">
-          {predecessor
-            ? `Connects from: ${predecessor.label}${incomingConnection?.label ? ` (${incomingConnection.label})` : ""}`
-            : "Entry point — no predecessor"}
+          {predecessorSummary(predecessors, step.joinRequiresAll)}
         </div>
         {step.reviewNotes && (
           <div className="mt-2 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 px-2.5 py-1.5 text-xs text-indigo-800">
@@ -546,6 +539,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+/** Joins names the way running prose does: "A", "A and B", "A, B, and C". */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+}
+
+function predecessorSummary(predecessors: StepOption[], joinRequiresAll: boolean): string {
+  if (predecessors.length === 0) return "Entry point — no predecessor";
+  // The rule has no visible effect until there are two or more predecessors
+  // to actually require all of (spec 015 Edge Cases).
+  if (joinRequiresAll && predecessors.length > 1) {
+    const verb = predecessors.length === 2 ? "Needs both" : "Needs all of";
+    return `${verb}: ${joinNames(predecessors.map((p) => p.label))}`;
+  }
+  return `Connects from: ${joinNames(predecessors.map((p) => p.label))}`;
 }
 
 function StarIcon({ filled }: { filled: boolean }) {

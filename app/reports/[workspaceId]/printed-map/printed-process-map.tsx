@@ -12,6 +12,8 @@ export type PrintedMapStep = {
   type: "START" | "TASK" | "DECISION" | "END";
   label: string;
   assignedRole: { id: string; name: string } | null;
+  /** Whether this step needs every one of its predecessors, not just one (spec 015). */
+  joinRequiresAll: boolean;
   links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
   /** The service level this step is held to, when one is set. */
   slaDays: number | null;
@@ -89,6 +91,7 @@ export function PrintedProcessMap({
     label: step.label,
     roleName: step.assignedRole?.name ?? null,
     kind: kindOf(step.type),
+    joinRequiresAll: step.joinRequiresAll,
   }));
 
   const layoutConnections: PrintConnectionInput[] = connections.map(

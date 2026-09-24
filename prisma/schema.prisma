@@ -434,6 +434,13 @@ model ProcessStep {
   /// default: a milestone means something only because most steps aren't one.
   milestone Boolean @default(false)
 
+  /// Whether this step needs every one of its predecessors done, not just one
+  /// — a real join rather than an ordinary either/or convergence. Off by
+  /// default: an unmarked convergence has always meant "either is enough,"
+  /// and every process that exists before this field does must keep reading
+  /// that way.
+  joinRequiresAll Boolean @default(false)
+
   /// This step's procedure for the Export Report — edited inline in the
   /// Process Map's Steps List view, one action per line; the report just
   /// displays it read-only.

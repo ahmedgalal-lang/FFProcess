@@ -29,6 +29,7 @@ function step(
     // exactly what one of the cases below is testing.
     roleName: "roleName" in opts ? (opts.roleName ?? null) : "Analyst",
     kind: opts.kind ?? "task",
+    joinRequiresAll: opts.joinRequiresAll ?? false,
   };
 }
 
@@ -156,8 +157,34 @@ describe("buildPrintMapLayout — FLOW", () => {
     const merge = flow.rows.find((r) => r.step.order === 9)!;
 
     expect(merge.rail).toBe("merge");
-    expect(merge.mergesFrom).toEqual([7, 8]);
+    expect(merge.mergesFrom).toEqual([
+      { order: 7, label: "Contract drafting" },
+      { order: 8, label: "Outsourcing legal firm" },
+    ]);
     expect(merge.indent).toBe(0);
+  });
+
+  it("carries a merge step's own joinRequiresAll through to its row, with real predecessor labels available either way (spec 015)", () => {
+    const steps = [
+      step(1, "Start", { kind: "start" }),
+      step(2, "Legal sign-off"),
+      step(3, "Client sign-off"),
+      step(4, "Countersign", { joinRequiresAll: true }),
+    ];
+    const links = [link(1, 2), link(1, 3), link(2, 4), link(3, 4)];
+    const flow = flowOf(steps, links);
+    const merge = flow.rows.find((r) => r.step.order === 4)!;
+
+    expect(merge.step.joinRequiresAll).toBe(true);
+    expect(merge.mergesFrom).toEqual([
+      { order: 2, label: "Legal sign-off" },
+      { order: 3, label: "Client sign-off" },
+    ]);
+
+    // A step left at the default carries the flag through as false, not
+    // merely absent.
+    const other = flow.rows.find((r) => r.step.order === 2)!;
+    expect(other.step.joinRequiresAll).toBe(false);
   });
 
   it("accounts for every connection — drawn or back-referenced, none dropped", () => {
@@ -292,7 +319,10 @@ describe("buildPrintMapLayout — ROLES", () => {
     if (outcome.layout !== "ROLES") throw new Error("expected ROLES");
 
     const merge = outcome.roles.cells.find((c) => c.step.order === 9)!;
-    expect(merge.mergesFrom).toEqual([7, 8]);
+    expect(merge.mergesFrom).toEqual([
+      { order: 7, label: "Contract drafting" },
+      { order: 8, label: "Outsourcing legal firm" },
+    ]);
 
     // No other cell claims to be a merge.
     const others = outcome.roles.cells.filter((c) => c.step.order !== 9);

@@ -95,6 +95,8 @@ export type ExportProcessData = {
     exceptionHandling: string | null;
     assignedRole: { id: string; name: string } | null;
     swimlaneRole: { id: string; name: string } | null;
+    /** Whether this step needs every one of its predecessors, not just one (spec 015). */
+    joinRequiresAll: boolean;
     links: { id: string; targetProcessId: string; targetProcess: { code: string; name: string } }[];
     slaDays: number | null;
     threshold: number | null;
@@ -753,10 +755,21 @@ function ProcessReportSection({
 }) {
   const matrixRoleNameById = new Map(process.matrixRoles.map((r) => [r.id, r.name]));
 
-  function stepOwnerLabel(row: ExportProcessData["combinedRows"][number]): string {
-    const accountableRoleId = Object.entries(row.raci).find(([, code]) => code === "ACCOUNTABLE")?.[0];
+  // RACI's Accountable and the Authority matrix's approver both live on the
+  // combined matrix row, keyed by Activity, so a step with no Activity of its
+  // own — or one whose Activity carries neither — has no `row` answer at all.
+  // The step's own "Assigned role" (set directly on the step, independent of
+  // either matrix) is the last fallback rather than being skipped outright:
+  // without it, a step owner entered the only place the Steps List actually
+  // offers printed as empty, even though it was "added in the process step".
+  function stepOwnerLabel(
+    row: ExportProcessData["combinedRows"][number] | undefined,
+    step: ExportProcessData["steps"][number]
+  ): string {
+    const accountableRoleId = row ? Object.entries(row.raci).find(([, code]) => code === "ACCOUNTABLE")?.[0] : undefined;
     if (accountableRoleId) return matrixRoleNameById.get(accountableRoleId) ?? "—";
-    return row.approverLabel ?? "—";
+    if (row?.approverLabel) return row.approverLabel;
+    return step.assignedRole?.name ?? "—";
   }
 
   // Only steps that actually carry documentation appear as narrative cards —
@@ -958,7 +971,10 @@ type BlockContext = {
   workspaceId: string;
   documentedSteps: ExportProcessData["steps"];
   labelWorkflow: boolean;
-  stepOwnerLabel: (row: ExportProcessData["combinedRows"][number]) => string;
+  stepOwnerLabel: (
+    row: ExportProcessData["combinedRows"][number] | undefined,
+    step: ExportProcessData["steps"][number]
+  ) => string;
   withRules?: boolean;
   mapLayout: "FLOW" | "ROLES";
 };
@@ -1043,7 +1059,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
             <div className="flex items-baseline justify-between gap-3">
               <span className="font-semibold text-slate-900">{step.label}</span>
               <span className="text-xs text-slate-500">
-                Step Owner: {row ? stepOwnerLabel(row) : (step.assignedRole?.name ?? "—")}
+                Step Owner: {stepOwnerLabel(row, step)}
               </span>
             </div>
             <div className="mt-1 grid grid-cols-2 gap-4">

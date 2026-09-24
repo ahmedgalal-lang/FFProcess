@@ -760,6 +760,9 @@ const updateStepSchema = z.object({
   // field existed, or edited by a caller that doesn't send it, shouldn't
   // silently lose whatever it was already linked to.
   linkedProcessIds: z.array(z.string().min(1)).optional(),
+  // Whether this step needs every predecessor done, not just one (spec 015).
+  // Undefined leaves the existing value untouched, same reasoning as above.
+  joinRequiresAll: z.boolean().optional(),
 });
 
 /**
@@ -811,6 +814,7 @@ export async function updateProcessStep(
       ...(parsed.data.exceptionHandling !== undefined
         ? { exceptionHandling: parsed.data.exceptionHandling || null }
         : {}),
+      ...(parsed.data.joinRequiresAll !== undefined ? { joinRequiresAll: parsed.data.joinRequiresAll } : {}),
     },
   });
 

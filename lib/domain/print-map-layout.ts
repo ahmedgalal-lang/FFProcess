@@ -35,6 +35,8 @@ export type PrintStepInput = {
   label: string;
   roleName: string | null;
   kind: PrintStepKind;
+  /** Whether this step needs every one of its predecessors, not just one (spec 015). */
+  joinRequiresAll: boolean;
 };
 
 export type PrintConnectionInput = {
@@ -66,8 +68,8 @@ export type FlowRow = {
   branchLabel: string | null;
   /** Nothing leaves this step: a terminated branch, or the end of the process. */
   endsHere: boolean;
-  /** The `order` of every step converging here, when this row is a merge. */
-  mergesFrom: number[];
+  /** Every step converging here, when this row is a merge — empty otherwise. */
+  mergesFrom: { order: number; label: string }[];
 };
 
 /** A connection no rail can draw — a loop, or a jump the layout cannot span. */
@@ -91,8 +93,8 @@ export type RolesCell = {
   step: PrintStepInput;
   column: number;
   row: number;
-  /** The `order` of every step converging here, when this step is a merge — mirrors FlowRow.mergesFrom. */
-  mergesFrom: number[];
+  /** Every step converging here, when this step is a merge — mirrors FlowRow.mergesFrom. */
+  mergesFrom: { order: number; label: string }[];
 };
 
 export type RolesConnector = {
@@ -242,8 +244,9 @@ function buildFlowOutline(
 
     const mergesFrom = inbound.length > 1
       ? inbound
-          .map((c) => byId.get(c.fromStepId)!.order)
-          .sort((a, b) => a - b)
+          .map((c) => byId.get(c.fromStepId)!)
+          .map((s) => ({ order: s.order, label: s.label }))
+          .sort((a, b) => a.order - b.order)
       : [];
 
     const leaves = outgoing.get(step.id) ?? [];
@@ -324,7 +327,12 @@ function buildRolesGrid(
     rowOf.set(step.id, row);
     const inbound = incoming.get(step.id) ?? [];
     const mergesFrom =
-      inbound.length > 1 ? inbound.map((c) => byId.get(c.fromStepId)!.order).sort((a, b) => a - b) : [];
+      inbound.length > 1
+        ? inbound
+            .map((c) => byId.get(c.fromStepId)!)
+            .map((s) => ({ order: s.order, label: s.label }))
+            .sort((a, b) => a.order - b.order)
+        : [];
     return { step, column: columnOf.get(step.roleName ?? NO_ROLE_COLUMN)!, row, mergesFrom };
   });
 
