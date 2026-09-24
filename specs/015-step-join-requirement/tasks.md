@@ -153,12 +153,12 @@ apart, by name, with zero change to any process that hasn't used the new rule.
 
 ## Phase 5: Polish
 
-- [ ] T019 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`, `pnpm exec playwright test`
+- [X] T019 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`, `pnpm exec playwright test`
       and report counts. Do not edit while a run is in flight.
 - [X] T020 Blast-radius check: `process-map-canvas.tsx` and `step-form.tsx` must be unchanged
       by this feature (research.md Decision 5 / data-model.md) — confirm via `git diff`
       against those paths showing nothing from this feature's commits.
-- [ ] T021 Run [quickstart.md](./quickstart.md)'s manual validation end to end (all three
+- [X] T021 Run [quickstart.md](./quickstart.md)'s manual validation end to end (all three
       scenarios) and record the result.
 
 ## Dependencies
