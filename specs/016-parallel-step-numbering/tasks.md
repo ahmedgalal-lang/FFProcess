@@ -138,14 +138,14 @@ spec 013-015 already built.
 
 ## Phase 5: Polish
 
-- [ ] T016 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
+- [X] T016 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
       `pnpm exec playwright test` and report counts. Do not edit while a run is in
       flight.
-- [ ] T017 Blast-radius check: `process-map-canvas.tsx`, `step-form.tsx`, and every
+- [X] T017 Blast-radius check: `process-map-canvas.tsx`, `step-form.tsx`, and every
       place that already names a step by label rather than number (spec 015's "needs
       both X and Y" wording, `governance-*`, unrelated report sections) must be unchanged
       by this feature — confirm via `git diff` against those paths.
-- [ ] T018 Run [quickstart.md](./quickstart.md)'s manual validation end to end (all four
+- [X] T018 Run [quickstart.md](./quickstart.md)'s manual validation end to end (all four
       scenarios) and record the result.
 
 ## Dependencies
