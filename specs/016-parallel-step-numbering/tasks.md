@@ -10,7 +10,7 @@ rendering.
 
 ## Phase 1: Foundational — the numbering function (blocks every slice)
 
-- [ ] T001 Write `tests/unit/parallel-step-numbering.test.ts` against the contract in
+- [X] T001 Write `tests/unit/parallel-step-numbering.test.ts` against the contract in
       [data-model.md](./data-model.md): a plain process (no `joinRequiresAll`) labels
       every step `String(order)` unchanged; two direct predecessors of a
       `joinRequiresAll` step, contiguous and mutually unreachable, label as
@@ -23,12 +23,12 @@ rendering.
       that predecessor plainly; two independent `joinRequiresAll` steps each with their
       own parallel pair label independently, each from its own base. Confirm these fail
       before T002 exists.
-- [ ] T002 Implement `lib/domain/parallel-step-numbering.ts`: `computeStepNumberLabels`
+- [X] T002 Implement `lib/domain/parallel-step-numbering.ts`: `computeStepNumberLabels`
       per data-model.md's internal shape — directed, cycle-safe reachability; per-join
       candidate-set exclusion (research.md Decision 3); contiguity check (Decision 2);
       single ordered walk assigning labels and advancing the base counter once per group,
       not once per member. Pure — no DOM, no Prisma, no network.
-- [ ] T003 Make T001 pass, then mutation-check: swap `a`/`b` assignment order, drop the
+- [X] T003 Make T001 pass, then mutation-check: swap `a`/`b` assignment order, drop the
       pairwise-exclusion check (treat every predecessor as groupable), drop the
       contiguity check, and skip advancing the counter once per consumed group (advance
       once per member instead) — confirm each mutation is caught by the tests, then
@@ -47,41 +47,41 @@ sequence continues correctly afterward.
 `joinRequiresAll` step; confirm both letter, in that order, on the Steps List and on
 each printed layout, and the very next step reads the next whole number.
 
-- [ ] T004 [US1] Add `numberLabel: string` to `PrintStepInput` in
+- [X] T004 [US1] Add `numberLabel: string` to `PrintStepInput` in
       `lib/domain/print-map-layout.ts`; add `numberLabel: string` to each
       `FlowRow.mergesFrom` / `RolesCell.mergesFrom` entry (alongside the existing
       `order`/`label`); add `toNumberLabel: string` and `fromNumberLabel: string` to
       `BackReference` (alongside the existing `toOrder`/`fromOrder`). Populate all three
       from `byId.get(...)!.numberLabel`, the same already-resolved lookup `order`/`label`
       already come from — no new pass over the data.
-- [ ] T005 [US1] Update `tests/unit/print-map-layout.test.ts`'s `step()` test helper to
+- [X] T005 [US1] Update `tests/unit/print-map-layout.test.ts`'s `step()` test helper to
       accept/default `numberLabel` (defaulting to `String(order)`, matching every
       existing test's implicit expectation), and extend the merge/back-reference
       assertions to also check the new `numberLabel`/`toNumberLabel` fields for the
       existing (unmarked) fixtures — still equal to the plain order, proving T004 doesn't
       change output when nothing uses parallel numbering.
-- [ ] T006 [US1] Wire `app/reports/[workspaceId]/printed-map/printed-process-map.tsx`:
+- [X] T006 [US1] Wire `app/reports/[workspaceId]/printed-map/printed-process-map.tsx`:
       call `computeStepNumberLabels` (T002) once over `steps`/`connections`/the
       `joinRequiresAll` steps already available (spec 015), and set each
       `layoutSteps` entry's `numberLabel` from the result, alongside the existing
       `joinRequiresAll` field.
-- [ ] T007 [US1] Update `flow-layout.tsx` and `roles-layout.tsx`: the card-number
+- [X] T007 [US1] Update `flow-layout.tsx` and `roles-layout.tsx`: the card-number
       `<span>` prints `row.step.numberLabel` / `cell.step.numberLabel` instead of
       `.order`; `mergeWording`'s unmarked branch (spec 015) prints
       `` `step ${m.numberLabel}` `` instead of `` `step ${m.order}` ``; back-reference
       text prints `back.toNumberLabel` instead of `back.toOrder`.
-- [ ] T008 [US1] Create `tests/fixtures/parallel-step-process.ts`: Start → Legal
+- [X] T008 [US1] Create `tests/fixtures/parallel-step-process.ts`: Start → Legal
       sign-off (Task) and Start → Client sign-off (Task), both → Countersign (Task, End
       after it), with Countersign's `joinRequiresAll` set true and its two predecessors
       genuinely unreachable from one another — the minimal shape every test in this
       feature needs.
-- [ ] T009 [US1] Wire `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/map-view.tsx`:
+- [X] T009 [US1] Wire `app/(app)/workspaces/[workspaceId]/processes/[processId]/map/map-view.tsx`:
       call `computeStepNumberLabels` once over the page's already-loaded `steps`/
       `connections`, and pass each `StepListRow` its own `numberLabel: string`.
-- [ ] T010 [US1] Update `step-list-row.tsx`: accept a `numberLabel: string` prop and
+- [X] T010 [US1] Update `step-list-row.tsx`: accept a `numberLabel: string` prop and
       render it in the number chip instead of `index + 1`. `index` itself is unchanged —
       still drives `isFirst`/`isLast` for the move buttons (FR-010).
-- [ ] T011 [US1] Write `tests/e2e/parallel-step-numbering.spec.ts` covering User Story
+- [X] T011 [US1] Write `tests/e2e/parallel-step-numbering.spec.ts` covering User Story
       1's Acceptance Scenarios against the T008 fixture: the Steps List shows the two
       predecessors as `{base}a`/`{base}b`, in list order; the step after them shows the
       next whole number, not a skipped one; the printed report (both layouts) shows the
@@ -101,11 +101,11 @@ reachability pattern group correctly.
 predecessors (so one is reachable from the other) and confirm both revert to plain,
 consecutive numbers.
 
-- [ ] T012 [US2] Extend `tests/fixtures/parallel-step-process.ts` (or add a sibling
+- [X] T012 [US2] Extend `tests/fixtures/parallel-step-process.ts` (or add a sibling
       fixture) with a variant that connects the two otherwise-parallel predecessors
       directly to each other, and a second variant with three predecessors where one has
       a path to another (mixed reachability — spec Edge Cases).
-- [ ] T013 [US2] Extend `tests/e2e/parallel-step-numbering.spec.ts`: the connected-pair
+- [X] T013 [US2] Extend `tests/e2e/parallel-step-numbering.spec.ts`: the connected-pair
       variant shows both predecessors with ordinary whole numbers, on the Steps List and
       both printed layouts; the three-predecessor mixed variant shows the two genuinely
       unreachable ones lettered and the connected one plain, positioned correctly
@@ -124,10 +124,10 @@ identically to how it did before this feature shipped.
 decision branches, step join) unmodified and confirm every number they assert is
 unchanged.
 
-- [ ] T014 [US3] Extend `tests/e2e/parallel-step-numbering.spec.ts`: a `joinRequiresAll`
+- [X] T014 [US3] Extend `tests/e2e/parallel-step-numbering.spec.ts`: a `joinRequiresAll`
       step with only one predecessor (spec 015's own edge case, reused) shows that
       predecessor with a plain number, not a lone letter.
-- [ ] T015 [US3] Run the full existing e2e suite — `printed-map.spec.ts` (specs 013/015),
+- [X] T015 [US3] Run the full existing e2e suite — `printed-map.spec.ts` (specs 013/015),
       `decision-branch-editor.spec.ts` (spec 014), `step-join-requirement.spec.ts`
       (spec 015) — and confirm every one still passes unmodified, proving SC-002 by
       construction rather than by a new, separate assertion.

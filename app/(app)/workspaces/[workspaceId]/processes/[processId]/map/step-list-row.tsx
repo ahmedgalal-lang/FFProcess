@@ -57,9 +57,9 @@ type ProcessOption = { id: string; code: string; name: string };
 export function StepListRow({
   workspaceId,
   processId,
-  index,
   isFirst,
   isLast,
+  numberLabel,
   step,
   predecessors,
   incomingConnections,
@@ -70,9 +70,10 @@ export function StepListRow({
 }: {
   workspaceId: string;
   processId: string;
-  index: number;
   isFirst: boolean;
   isLast: boolean;
+  /** "4", or "4a"/"4b" for a genuine parallel pair feeding a requires-all step (spec 016). */
+  numberLabel: string;
   step: StepT;
   /** Every step feeding into this one, resolved for display (spec 015 FR-001) — not just one. */
   predecessors: PredecessorRef[];
@@ -394,8 +395,8 @@ export function StepListRow({
             ▲
           </button>
         )}
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 font-mono text-xs font-bold text-indigo-700">
-          {index + 1}
+        <div className="flex h-6 min-w-6 items-center justify-center rounded-md bg-indigo-50 px-1 font-mono text-xs font-bold text-indigo-700">
+          {numberLabel}
         </div>
         {canEdit && (
           <button

@@ -54,7 +54,7 @@ export function RolesLayout({
               style={{ "--pmap-col": cell.column + 1 } as React.CSSProperties}
             >
               <div className="pmap-roles__cell" data-kind={cell.step.kind}>
-                <span className="pmap-card__num">{cell.step.order}</span>
+                <span className="pmap-card__num">{cell.step.numberLabel}</span>
                 <div className="pmap-card__body">
                   <p className="pmap-card__label">{cell.step.label}</p>
                   <p className="pmap-card__meta">
@@ -82,7 +82,7 @@ export function RolesLayout({
                     <p key={back.connectionId} className="pmap-card__backref">
                       <span aria-hidden="true">{back.direction === "back" ? "↩" : "↪"}</span>{" "}
                       {back.label ? <strong>{back.label}</strong> : null}{" "}
-                      {back.direction === "back" ? "back to" : "on to"} step {back.toOrder}
+                      {back.direction === "back" ? "back to" : "on to"} step {back.toNumberLabel}
                     </p>
                   ))}
                 </div>
@@ -138,8 +138,8 @@ const KIND_LABEL: Record<string, string> = {
  * every predecessor (FR-008), since a reader with no other explanation needs
  * to tell the two kinds of convergence apart by what they actually require.
  */
-function mergeWording(joinRequiresAll: boolean, mergesFrom: { order: number; label: string }[]): string {
-  if (!joinRequiresAll) return `joins ${mergesFrom.map((m) => `step ${m.order}`).join(" and ")}`;
+function mergeWording(joinRequiresAll: boolean, mergesFrom: { numberLabel: string; label: string }[]): string {
+  if (!joinRequiresAll) return `joins ${mergesFrom.map((m) => `step ${m.numberLabel}`).join(" and ")}`;
   const names = mergesFrom.map((m) => m.label);
   const verb = names.length === 2 ? "needs both" : "needs all of";
   const joined = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;

@@ -70,7 +70,7 @@ function FlowCard({
 }) {
   return (
     <div className="pmap-card">
-      <span className="pmap-card__num">{row.step.order}</span>
+      <span className="pmap-card__num">{row.step.numberLabel}</span>
       <div className="pmap-card__body">
         <p className="pmap-card__label">{row.step.label}</p>
         <p className="pmap-card__meta">
@@ -107,7 +107,7 @@ function FlowCard({
               {back.direction === "back" ? "↩" : "↪"}
             </span>
             {back.label ? <strong>{back.label}</strong> : null} {back.direction === "back" ? "back to" : "on to"}{" "}
-            step {back.toOrder}, {back.toLabel}
+            step {back.toNumberLabel}, {back.toLabel}
           </p>
         ))}
       </div>
@@ -130,8 +130,8 @@ const KIND_LABEL: Record<string, string> = {
  * every predecessor (FR-008), since a reader with no other explanation needs
  * to tell the two kinds of convergence apart by what they actually require.
  */
-function mergeWording(joinRequiresAll: boolean, mergesFrom: { order: number; label: string }[]): string {
-  if (!joinRequiresAll) return `joins ${mergesFrom.map((m) => `step ${m.order}`).join(" and ")}`;
+function mergeWording(joinRequiresAll: boolean, mergesFrom: { numberLabel: string; label: string }[]): string {
+  if (!joinRequiresAll) return `joins ${mergesFrom.map((m) => `step ${m.numberLabel}`).join(" and ")}`;
   const names = mergesFrom.map((m) => m.label);
   const verb = names.length === 2 ? "needs both" : "needs all of";
   const joined = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;

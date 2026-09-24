@@ -4,6 +4,7 @@ import {
   type PrintConnectionInput,
   type PrintStepInput,
 } from "@/lib/domain/print-map-layout";
+import { computeStepNumberLabels } from "@/lib/domain/parallel-step-numbering";
 import { FlowLayout } from "./flow-layout";
 import { RolesLayout } from "./roles-layout";
 
@@ -85,6 +86,12 @@ export function PrintedProcessMap({
 
   // The Steps List order, which is what the report prints by — never the stored
   // canvas position, which disagrees the moment anyone drags a card.
+  const numberLabels = computeStepNumberLabels(
+    steps.map((step, index) => ({ id: step.id, order: index + 1 })),
+    connections,
+    new Set(steps.filter((s) => s.joinRequiresAll).map((s) => s.id))
+  );
+
   const layoutSteps: PrintStepInput[] = steps.map((step, index) => ({
     id: step.id,
     order: index + 1,
@@ -92,6 +99,7 @@ export function PrintedProcessMap({
     roleName: step.assignedRole?.name ?? null,
     kind: kindOf(step.type),
     joinRequiresAll: step.joinRequiresAll,
+    numberLabel: numberLabels.get(step.id) ?? String(index + 1),
   }));
 
   const layoutConnections: PrintConnectionInput[] = connections.map(

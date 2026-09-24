@@ -37,6 +37,8 @@ export type PrintStepInput = {
   kind: PrintStepKind;
   /** Whether this step needs every one of its predecessors, not just one (spec 015). */
   joinRequiresAll: boolean;
+  /** What a reader sees instead of a bare `order` — "4", or "4a"/"4b" for a genuine parallel pair (spec 016). */
+  numberLabel: string;
 };
 
 export type PrintConnectionInput = {
@@ -69,7 +71,7 @@ export type FlowRow = {
   /** Nothing leaves this step: a terminated branch, or the end of the process. */
   endsHere: boolean;
   /** Every step converging here, when this row is a merge — empty otherwise. */
-  mergesFrom: { order: number; label: string }[];
+  mergesFrom: { order: number; label: string; numberLabel: string }[];
 };
 
 /** A connection no rail can draw — a loop, or a jump the layout cannot span. */
@@ -77,6 +79,8 @@ export type BackReference = {
   connectionId: string;
   fromOrder: number;
   toOrder: number;
+  fromNumberLabel: string;
+  toNumberLabel: string;
   toLabel: string;
   label: string | null;
   direction: "back" | "ahead";
@@ -94,7 +98,7 @@ export type RolesCell = {
   column: number;
   row: number;
   /** Every step converging here, when this step is a merge — mirrors FlowRow.mergesFrom. */
-  mergesFrom: { order: number; label: string }[];
+  mergesFrom: { order: number; label: string; numberLabel: string }[];
 };
 
 export type RolesConnector = {
@@ -245,7 +249,7 @@ function buildFlowOutline(
     const mergesFrom = inbound.length > 1
       ? inbound
           .map((c) => byId.get(c.fromStepId)!)
-          .map((s) => ({ order: s.order, label: s.label }))
+          .map((s) => ({ order: s.order, label: s.label, numberLabel: s.numberLabel }))
           .sort((a, b) => a.order - b.order)
       : [];
 
@@ -287,6 +291,8 @@ function buildFlowOutline(
       connectionId: connection.id,
       fromOrder: from.order,
       toOrder: to.order,
+      fromNumberLabel: from.numberLabel,
+      toNumberLabel: to.numberLabel,
       toLabel: to.label,
       label: connection.label,
       direction: to.order < from.order ? "back" : "ahead",
@@ -330,7 +336,7 @@ function buildRolesGrid(
       inbound.length > 1
         ? inbound
             .map((c) => byId.get(c.fromStepId)!)
-            .map((s) => ({ order: s.order, label: s.label }))
+            .map((s) => ({ order: s.order, label: s.label, numberLabel: s.numberLabel }))
             .sort((a, b) => a.order - b.order)
         : [];
     return { step, column: columnOf.get(step.roleName ?? NO_ROLE_COLUMN)!, row, mergesFrom };
@@ -364,6 +370,8 @@ function buildRolesGrid(
       connectionId: connection.id,
       fromOrder: from.order,
       toOrder: to.order,
+      fromNumberLabel: from.numberLabel,
+      toNumberLabel: to.numberLabel,
       toLabel: to.label,
       label: connection.label,
       direction: to.order < from.order ? "back" : "ahead",

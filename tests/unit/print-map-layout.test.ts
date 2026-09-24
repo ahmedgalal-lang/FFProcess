@@ -30,6 +30,7 @@ function step(
     roleName: "roleName" in opts ? (opts.roleName ?? null) : "Analyst",
     kind: opts.kind ?? "task",
     joinRequiresAll: opts.joinRequiresAll ?? false,
+    numberLabel: opts.numberLabel ?? String(order),
   };
 }
 
@@ -158,8 +159,8 @@ describe("buildPrintMapLayout — FLOW", () => {
 
     expect(merge.rail).toBe("merge");
     expect(merge.mergesFrom).toEqual([
-      { order: 7, label: "Contract drafting" },
-      { order: 8, label: "Outsourcing legal firm" },
+      { order: 7, label: "Contract drafting", numberLabel: "7" },
+      { order: 8, label: "Outsourcing legal firm", numberLabel: "8" },
     ]);
     expect(merge.indent).toBe(0);
   });
@@ -177,8 +178,8 @@ describe("buildPrintMapLayout — FLOW", () => {
 
     expect(merge.step.joinRequiresAll).toBe(true);
     expect(merge.mergesFrom).toEqual([
-      { order: 2, label: "Legal sign-off" },
-      { order: 3, label: "Client sign-off" },
+      { order: 2, label: "Legal sign-off", numberLabel: "2" },
+      { order: 3, label: "Client sign-off", numberLabel: "3" },
     ]);
 
     // A step left at the default carries the flag through as false, not
@@ -320,8 +321,8 @@ describe("buildPrintMapLayout — ROLES", () => {
 
     const merge = outcome.roles.cells.find((c) => c.step.order === 9)!;
     expect(merge.mergesFrom).toEqual([
-      { order: 7, label: "Contract drafting" },
-      { order: 8, label: "Outsourcing legal firm" },
+      { order: 7, label: "Contract drafting", numberLabel: "7" },
+      { order: 8, label: "Outsourcing legal firm", numberLabel: "8" },
     ]);
 
     // No other cell claims to be a merge.

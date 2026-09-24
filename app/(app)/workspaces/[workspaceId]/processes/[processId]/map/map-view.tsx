@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { arrangeProcessStepsByFlow } from "@/lib/actions/process";
 import type { StepGap } from "@/lib/domain/step-readiness";
 import type { AuthorityDirection } from "@/lib/domain/authority-table";
+import { computeStepNumberLabels } from "@/lib/domain/parallel-step-numbering";
 import { ProcessMapCanvas, type BranchFromT } from "./process-map-canvas";
 import { StepListRow } from "./step-list-row";
 
@@ -54,6 +55,14 @@ export function MapView({
   const [arrangeError, setArrangeError] = useState<string | null>(null);
   const [arranging, startArranging] = useTransition();
   const router = useRouter();
+  // "4a"/"4b" for a genuine parallel pair feeding a requires-all step, plain
+  // otherwise (spec 016) — the Steps List's own display order stands in for
+  // `order`, since `steps` already arrives sorted the same way.
+  const numberLabels = computeStepNumberLabels(
+    steps.map((s, i) => ({ id: s.id, order: i + 1 })),
+    connections,
+    new Set(steps.filter((s) => s.joinRequiresAll).map((s) => s.id))
+  );
   // Every connection landing on a step — a step's predecessors, not just one (spec 015 FR-001).
   const incomingConnectionsOf = new Map<string, ConnectionT[]>();
   for (const c of connections) {
@@ -150,9 +159,9 @@ export function MapView({
                 key={step.id}
                 workspaceId={workspaceId}
                 processId={processId}
-                index={i}
                 isFirst={i === 0}
                 isLast={i === steps.length - 1}
+                numberLabel={numberLabels.get(step.id) ?? String(i + 1)}
                 step={step}
                 predecessors={predecessors}
                 incomingConnections={incomingConnections}
