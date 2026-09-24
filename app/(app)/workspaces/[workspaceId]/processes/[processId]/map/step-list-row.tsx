@@ -50,6 +50,8 @@ type StepT = {
 };
 type ConnectionT = { id: string; fromStepId: string; toStepId: string; label: string | null };
 type StepOption = { id: string; label: string; type: StepType };
+/** A resolved predecessor, carrying its own connection's label (e.g. "Yes" on a Decision's loop-back). */
+type PredecessorRef = StepOption & { connectionLabel: string | null };
 type ProcessOption = { id: string; code: string; name: string };
 
 export function StepListRow({
@@ -73,7 +75,7 @@ export function StepListRow({
   isLast: boolean;
   step: StepT;
   /** Every step feeding into this one, resolved for display (spec 015 FR-001) — not just one. */
-  predecessors: StepOption[];
+  predecessors: PredecessorRef[];
   /** This step's own incoming connections — every predecessor, not just one (FR-001). */
   incomingConnections: ConnectionT[];
   /** This step's own outgoing connections — a Decision's branches (FR-009). */
@@ -548,7 +550,7 @@ function joinNames(names: string[]): string {
   return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 }
 
-function predecessorSummary(predecessors: StepOption[], joinRequiresAll: boolean): string {
+function predecessorSummary(predecessors: PredecessorRef[], joinRequiresAll: boolean): string {
   if (predecessors.length === 0) return "Entry point — no predecessor";
   // The rule has no visible effect until there are two or more predecessors
   // to actually require all of (spec 015 Edge Cases).
@@ -556,7 +558,11 @@ function predecessorSummary(predecessors: StepOption[], joinRequiresAll: boolean
     const verb = predecessors.length === 2 ? "Needs both" : "Needs all of";
     return `${verb}: ${joinNames(predecessors.map((p) => p.label))}`;
   }
-  return `Connects from: ${joinNames(predecessors.map((p) => p.label))}`;
+  // Each predecessor's own connector label (e.g. "Yes" on a Decision's
+  // loop-back) — carried over from the single-predecessor summary this
+  // replaces, which read "Connects from: X (Yes)".
+  const withLabels = predecessors.map((p) => (p.connectionLabel ? `${p.label} (${p.connectionLabel})` : p.label));
+  return `Connects from: ${joinNames(withLabels)}`;
 }
 
 function StarIcon({ filled }: { filled: boolean }) {

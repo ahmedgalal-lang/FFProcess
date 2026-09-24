@@ -137,9 +137,11 @@ export function MapView({
           {steps.map((step, i) => {
             const incomingConnections = incomingConnectionsOf.get(step.id) ?? [];
             const predecessors = incomingConnections
-              .map((c) => stepById.get(c.fromStepId))
-              .filter((s): s is StepT => s !== undefined)
-              .map((s) => ({ id: s.id, label: s.label, type: s.type }));
+              .map((c) => {
+                const s = stepById.get(c.fromStepId);
+                return s ? { id: s.id, label: s.label, type: s.type, connectionLabel: c.label } : undefined;
+              })
+              .filter((p): p is NonNullable<typeof p> => p !== undefined);
             const stepOptions = steps
               .filter((s) => s.id !== step.id)
               .map((s) => ({ id: s.id, label: s.label, type: s.type }));

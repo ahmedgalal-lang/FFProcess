@@ -44,7 +44,16 @@ export function PredecessorEditor({
       <span className="text-xs font-semibold text-slate-700">Predecessors</span>
       <div className="flex flex-col gap-2">
         {drafts.map((draft, index) => (
-          <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
+          <div
+            key={index}
+            // A distinct border shade from DecisionBranchEditor's own boxes
+            // (border-slate-200), not just the same styling reused: a
+            // Decision step's edit form renders both editors at once, and
+            // tests/e2e/decision-branch-editor.spec.ts scopes its box
+            // locators by that exact class combination — an identical class
+            // here would silently pull this editor's boxes into its counts.
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-white p-2"
+          >
             <select
               value={draft.fromStepId}
               onChange={(e) => updateAt(index, { fromStepId: e.target.value })}
