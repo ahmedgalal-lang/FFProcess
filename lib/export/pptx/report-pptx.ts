@@ -117,6 +117,9 @@ function addBanner(
 function addCoverSlide(pptx: PptxGenJS, data: ReportData, accent: string, ink: string) {
   const slide = pptx.addSlide();
   slide.background = { color: accent };
+  if (data.logoDataUrl) {
+    slide.addImage({ data: data.logoDataUrl, x: MARGIN, y: 0.6, w: 0.6, h: 0.6 });
+  }
   slide.addText(data.companyName, {
     x: MARGIN,
     y: 2.3,

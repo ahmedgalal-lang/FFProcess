@@ -160,6 +160,7 @@ export function ExportPreview({
   accentColor,
   accentColorTertiary,
   accentSecondary,
+  logoDataUrl,
   people,
   processes,
   valueChain,
@@ -177,6 +178,8 @@ export function ExportPreview({
   accentColor: string | null;
   accentColorTertiary: string | null;
   accentSecondary: string | null;
+  /** The client's logo — same source as the in-app sidebar (WorkspaceBranding), or null if never set. */
+  logoDataUrl: string | null;
   people: PersonT[];
   processes: ExportProcessData[];
   valueChain: ValueChainColumn[];
@@ -539,6 +542,7 @@ export function ExportPreview({
                   firmName={firmName}
                   industry={industry}
                   description={description}
+                  logoDataUrl={logoDataUrl}
                   processes={processes}
                 />
               );
@@ -605,12 +609,14 @@ function CoverPage({
   firmName,
   industry,
   description,
+  logoDataUrl,
   processes,
 }: {
   companyName: string;
   firmName: string;
   industry: string | null;
   description: string | null;
+  logoDataUrl: string | null;
   processes: ExportProcessData[];
 }) {
   const docId = deriveDocId(companyName);
@@ -623,10 +629,15 @@ function CoverPage({
       <div className="pointer-events-none absolute inset-3 border border-slate-200" />
       <div className="relative flex h-full flex-col p-[6%]">
         <div className="flex items-center gap-2.5">
-          <div
-            className="h-6 w-6 flex-none rounded-md"
-            style={{ backgroundImage: "linear-gradient(135deg, var(--accent), var(--accent-banner-to))" }}
-          />
+          {logoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a stored data: URL, not an optimizable remote asset
+            <img src={logoDataUrl} alt="" className="h-6 w-6 flex-none rounded-md object-contain" />
+          ) : (
+            <div
+              className="h-6 w-6 flex-none rounded-md"
+              style={{ backgroundImage: "linear-gradient(135deg, var(--accent), var(--accent-banner-to))" }}
+            />
+          )}
           <span className="text-sm font-semibold text-slate-800">{companyName}</span>
         </div>
 

@@ -34,6 +34,8 @@ export type ReportData = {
   accentColor: string | null;
   accentColorTertiary: string | null;
   accentSecondary: string | null;
+  /** The client's logo, as a data: URL — same source as the in-app sidebar (WorkspaceBranding). */
+  logoDataUrl: string | null;
   people: { id: string; name: string; managerId: string | null; roleNames: string[] }[];
   processes: ExportProcessData[];
   valueChain: ValueChainColumn[];
@@ -341,6 +343,7 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
     accentColor: workspace.accentColor,
     accentColorTertiary: workspace.accentColorTertiary,
     accentSecondary: workspace.accentColorSecondary,
+    logoDataUrl: workspace.logoDataUrl,
     people: people.map((p) => ({
       id: p.id,
       name: p.name,
