@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { requireFirmOwner, requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { canChangeLastFirmOwner } from "@/lib/domain/access-control";
 import { validateLogoDataUrl, isValidHexColor } from "@/lib/domain/logo";
+import { DEFAULT_GOVERNANCE_ASPECT_NAMES } from "@/lib/domain/governance-focus-areas";
 import { ok, validationError, type ActionResult, type ActionError } from "@/lib/actions/errors";
 
 export type WorkspaceListEntry = {
@@ -65,6 +66,13 @@ export async function createWorkspace(
       industry: parsed.data.industry || undefined,
       description: parsed.data.description || undefined,
     },
+  });
+
+  // A new workspace starts with the same seven governance aspects an
+  // existing one already has (spec 017 FR-011/SC-005) — fully editable from
+  // here on, same as any other aspect.
+  await prisma.governanceAspect.createMany({
+    data: DEFAULT_GOVERNANCE_ASPECT_NAMES.map((name) => ({ workspaceId: workspace.id, name })),
   });
 
   revalidatePath("/workspaces");

@@ -111,6 +111,25 @@ describe("createWorkspace", () => {
     const result = await createWorkspace({ name: "Bare Client" });
     expect(result.ok).toBe(true);
   });
+
+  it("starts with the same seven governance aspects an existing workspace already has (spec 017 FR-011)", async () => {
+    const result = await createWorkspace({ name: "New Client Co" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const aspects = await prisma.governanceAspect.findMany({ where: { workspaceId: result.data.id } });
+    expect(aspects.map((a) => a.name).sort()).toEqual(
+      [
+        "Board Structure",
+        "Risk & Internal Controls",
+        "Ethics Policy",
+        "Compensation",
+        "ESG",
+        "Data Integrity",
+        "Accessibility",
+      ].sort()
+    );
+  });
 });
 
 describe("updateWorkspaceProfile", () => {

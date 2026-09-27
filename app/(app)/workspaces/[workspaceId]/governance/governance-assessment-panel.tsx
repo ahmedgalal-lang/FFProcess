@@ -10,11 +10,15 @@ import {
   updateGovernanceChecklistItem,
   deleteGovernanceChecklistItem,
   updateGovernanceSummary,
+  addGovernanceAspect,
+  renameGovernanceAspect,
+  deleteGovernanceAspect,
 } from "@/lib/actions/governance";
 import { GovernancePolicyDrawer, type PolicyT } from "./governance-policy-drawer";
 import { GovernanceRiskRegister, type RiskT } from "./governance-risk-register";
 import { GovernancePolicyLibrary } from "./governance-policy-library";
-import { GOVERNANCE_FOCUS_AREAS as FOCUS_AREAS } from "@/lib/domain/governance-focus-areas";
+
+export type AspectT = { id: string; name: string };
 
 /**
  * Transparency and Fairness are assessed as one pillar carrying both halves,
@@ -51,29 +55,30 @@ export type AssessmentT = {
 /**
  * The AI-assisted governance assessment: profile is set alongside this
  * (governance-profile-form.tsx, sibling in page.tsx), pillars are static,
- * and focus-area tabs switch which assessment's summary/checklist is shown.
- * The Risk Register and Policy Library are rendered here too, filtered to
- * the same active tab — a risk or policy added by hand (no assessment
- * behind it) has no tab of its own, so it stays visible under every tab
- * rather than becoming unreachable the moment another tab is selected.
+ * and aspect tabs — a workspace's own, addable/renameable/deletable list
+ * (spec 017) — switch which assessment's summary/checklist is shown. The
+ * Risk Register and Policy Library are rendered here too, filtered to the
+ * same active tab — a risk or policy added by hand (no assessment behind
+ * it) has no tab of its own, so it stays visible under every tab rather
+ * than becoming unreachable the moment another tab is selected.
  */
 export function GovernanceAssessmentPanel({
   workspaceId,
   hasProfile,
-  assessmentsByFocusArea,
+  aspects,
+  assessmentsByAspectId,
   risks,
   allPolicies,
-  initialFocusArea = "RISK_CONTROLS",
 }: {
   workspaceId: string;
   hasProfile: boolean;
-  assessmentsByFocusArea: Record<string, AssessmentT>;
+  aspects: AspectT[];
+  assessmentsByAspectId: Record<string, AssessmentT>;
   risks: RiskT[];
   allPolicies: PolicyT[];
-  initialFocusArea?: (typeof FOCUS_AREAS)[number]["value"];
 }) {
   const canEdit = useCanEdit();
-  const [focusArea, setFocusArea] = useState<string>(initialFocusArea);
+  const [aspectId, setAspectId] = useState<string>(aspects[0]?.id ?? "");
   const [openPolicyId, setOpenPolicyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addingItem, setAddingItem] = useState(false);
@@ -81,11 +86,14 @@ export function GovernanceAssessmentPanel({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [editingSummary, setEditingSummary] = useState(false);
   const [summaryDraft, setSummaryDraft] = useState("");
+  const [addingAspect, setAddingAspect] = useState(false);
+  const [renamingAspectId, setRenamingAspectId] = useState<string | null>(null);
+  const [confirmingDeleteAspectId, setConfirmingDeleteAspectId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
-  const assessment = assessmentsByFocusArea[focusArea] ?? null;
-  const focusLabel = FOCUS_AREAS.find((f) => f.value === focusArea)?.label ?? focusArea;
+  const assessment = assessmentsByAspectId[aspectId] ?? null;
+  const focusLabel = aspects.find((a) => a.id === aspectId)?.name ?? "";
 
   const openPolicy = useMemo(
     () => allPolicies.find((p) => p.id === openPolicyId) ?? null,
@@ -95,7 +103,7 @@ export function GovernanceAssessmentPanel({
   function regenerate() {
     setError(null);
     startTransition(async () => {
-      const result = await generateGovernanceAssessment({ workspaceId, focusArea: focusArea as never });
+      const result = await generateGovernanceAssessment({ workspaceId, aspectId });
       if (!result.ok) {
         setError(
           result.error === "AI_UNAVAILABLE" || result.error === "VALIDATION_ERROR"
@@ -115,6 +123,58 @@ export function GovernanceAssessmentPanel({
     });
   }
 
+  function submitNewAspect(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const name = String(data.get("name") ?? "").trim();
+    if (!name) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await addGovernanceAspect({ workspaceId, name });
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not add.") : result.error);
+        return;
+      }
+      setAddingAspect(false);
+      setAspectId(result.data.id);
+      router.refresh();
+    });
+  }
+
+  function submitRenamedAspect(id: string, form: HTMLFormElement) {
+    const data = new FormData(form);
+    const name = String(data.get("name") ?? "").trim();
+    if (!name) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await renameGovernanceAspect({ workspaceId, aspectId: id, name });
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not rename.") : result.error);
+        return;
+      }
+      setRenamingAspectId(null);
+      router.refresh();
+    });
+  }
+
+  function removeAspect(id: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteGovernanceAspect({ workspaceId, aspectId: id });
+      if (!result.ok) {
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not delete.") : result.error);
+        return;
+      }
+      setConfirmingDeleteAspectId(null);
+      // Deleting the aspect currently being viewed moves the view to
+      // whatever remains, rather than a tab for something now gone (FR-010).
+      if (id === aspectId) {
+        const remaining = aspects.filter((a) => a.id !== id);
+        setAspectId(remaining[0]?.id ?? "");
+      }
+      router.refresh();
+    });
+  }
+
   function submitNewItem(form: HTMLFormElement) {
     const data = new FormData(form);
     const title = String(data.get("title") ?? "").trim();
@@ -124,7 +184,7 @@ export function GovernanceAssessmentPanel({
     startTransition(async () => {
       const result = await addGovernanceChecklistItem({
         workspaceId,
-        focusArea: focusArea as never,
+        aspectId,
         phase: String(data.get("phase") ?? "IMMEDIATE") as "IMMEDIATE" | "NEAR_TERM" | "LONG_TERM",
         title,
         description,
@@ -197,8 +257,8 @@ export function GovernanceAssessmentPanel({
 
   // Scoped to the active tab — a risk/policy with no source (added by hand)
   // belongs to no tab, so it stays visible everywhere rather than vanishing.
-  const risksForTab = risks.filter((r) => r.sourceFocusArea === null || r.sourceFocusArea === focusArea);
-  const policiesForTab = allPolicies.filter((p) => p.focusArea === null || p.focusArea === focusArea);
+  const risksForTab = risks.filter((r) => r.sourceFocusArea === null || r.sourceFocusArea === aspectId);
+  const policiesForTab = allPolicies.filter((p) => p.focusArea === null || p.focusArea === aspectId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -216,29 +276,138 @@ export function GovernanceAssessmentPanel({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Governance focus area">
-            {FOCUS_AREAS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                role="tab"
-                aria-selected={focusArea === f.value}
-                onClick={() => {
-                  setFocusArea(f.value);
-                  setAddingItem(false);
-                  setEditingItemId(null);
-                  setConfirmingDeleteId(null);
-                  setEditingSummary(false);
-                }}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                  focusArea === f.value
-                    ? "border-indigo-600 bg-indigo-600 text-white"
-                    : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Governance focus area">
+            {aspects.map((aspect) =>
+              renamingAspectId === aspect.id ? (
+                <form
+                  key={aspect.id}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitRenamedAspect(aspect.id, e.currentTarget);
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <input
+                    name="name"
+                    required
+                    defaultValue={aspect.name}
+                    aria-label="Aspect name"
+                    autoFocus
+                    className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                  />
+                  <button type="submit" disabled={pending} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRenamingAspectId(null)}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-600"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : confirmingDeleteAspectId === aspect.id ? (
+                <span key={aspect.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                  Delete &ldquo;{aspect.name}&rdquo;?
+                  <button
+                    type="button"
+                    onClick={() => removeAspect(aspect.id)}
+                    disabled={pending}
+                    className="rounded bg-red-600 px-1.5 py-0.5 font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDeleteAspectId(null)}
+                    className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Keep
+                  </button>
+                </span>
+              ) : (
+                <span key={aspect.id} className="inline-flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={aspectId === aspect.id}
+                    onClick={() => {
+                      setAspectId(aspect.id);
+                      setAddingItem(false);
+                      setEditingItemId(null);
+                      setConfirmingDeleteId(null);
+                      setEditingSummary(false);
+                    }}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      aspectId === aspect.id
+                        ? "border-indigo-600 bg-indigo-600 text-white"
+                        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {aspect.name}
+                  </button>
+                  {canEdit && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setRenamingAspectId(aspect.id)}
+                        aria-label={`Rename ${aspect.name}`}
+                        title="Rename"
+                        className="rounded p-1 text-[10px] text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingDeleteAspectId(aspect.id)}
+                        aria-label={`Delete ${aspect.name}`}
+                        title="Delete"
+                        className="rounded p-1 text-[10px] text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  )}
+                </span>
+              )
+            )}
+            {canEdit &&
+              (addingAspect ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitNewAspect(e.currentTarget);
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <input
+                    name="name"
+                    required
+                    placeholder="Aspect name"
+                    aria-label="Aspect name"
+                    autoFocus
+                    className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                  />
+                  <button type="submit" disabled={pending} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddingAspect(false)}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-600"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAddingAspect(true)}
+                  className="rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                >
+                  + Add aspect
+                </button>
+              ))}
           </div>
           {canEdit && (
             <div className="flex items-center gap-3">

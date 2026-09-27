@@ -247,13 +247,18 @@ test("a risk sourced from one focus area's assessment does not show under anothe
   await client.connect();
   let assessmentId = "";
   try {
+    const { rows } = await client.query(
+      `SELECT id FROM governance_aspects WHERE "workspaceId" = $1 AND name = 'Board Structure'`,
+      [WORKSPACE]
+    );
+    const boardAspectId = rows[0].id as string;
     assessmentId = crypto.randomUUID();
     const itemId = crypto.randomUUID();
     const riskId = crypto.randomUUID();
     await client.query(
-      `INSERT INTO governance_assessments (id, "workspaceId", "focusArea", summary, "createdAt", "updatedAt")
-       VALUES ($1, $2, 'BOARD_STRUCTURE', '', now(), now())`,
-      [assessmentId, WORKSPACE]
+      `INSERT INTO governance_assessments (id, "workspaceId", "aspectId", summary, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, '', now(), now())`,
+      [assessmentId, WORKSPACE, boardAspectId]
     );
     await client.query(
       `INSERT INTO governance_checklist_items (id, "assessmentId", phase, title, description, "createdAt", "updatedAt")

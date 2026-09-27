@@ -12,7 +12,6 @@ import {
 } from "@/lib/domain/governance-findings";
 import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
 import type {
-  GovernanceFocusArea,
   GovernanceItemPhase,
   GovernanceItemStatus,
   RiskLikelihood,
@@ -20,17 +19,12 @@ import type {
   RiskStatus,
 } from "@/app/generated/prisma/client";
 
-import {
-  GOVERNANCE_FOCUS_AREAS,
-  GOVERNANCE_FOCUS_AREA_LABEL,
-  type GovernanceFocusAreaValue,
-} from "@/lib/domain/governance-focus-areas";
-
-const FOCUS_AREAS = GOVERNANCE_FOCUS_AREAS.map((f) => f.value) as [
-  GovernanceFocusAreaValue,
-  ...GovernanceFocusAreaValue[],
-];
-const FOCUS_AREA_LABEL = GOVERNANCE_FOCUS_AREA_LABEL;
+/** Looks up a workspace's aspect by id, refusing one that doesn't exist or belongs elsewhere. */
+async function findOwnedAspect(workspaceId: string, aspectId: string) {
+  const aspect = await prisma.governanceAspect.findUnique({ where: { id: aspectId } });
+  if (!aspect || aspect.workspaceId !== workspaceId) return null;
+  return aspect;
+}
 
 /**
  * Sets a workspace's governance profile — company size and jurisdiction,
@@ -65,10 +59,10 @@ export async function setGovernanceProfile(
 }
 
 /**
- * Generates (or regenerates) a governance assessment for one focus area
- * (FR-002). Gathers the workspace's profile and industry, this focus area's
+ * Generates (or regenerates) a governance assessment for one aspect
+ * (FR-002). Gathers the workspace's profile and industry, this aspect's
  * already-tracked checklist item titles and every risk already on the
- * workspace's register (FR-011's risk register is not focus-area-scoped, so
+ * workspace's register (FR-011's risk register is not aspect-scoped, so
  * its reconciliation set is workspace-wide — see governance-findings.ts's
  * partitionNewRisks), calls the model, reconciles the result so a
  * done/dismissed item, an edited policy, or a hand-scored risk is never
@@ -77,7 +71,7 @@ export async function setGovernanceProfile(
  */
 const generateAssessmentSchema = z.object({
   workspaceId: z.string().min(1),
-  focusArea: z.enum(FOCUS_AREAS),
+  aspectId: z.string().min(1),
 });
 
 export async function generateGovernanceAssessment(
@@ -89,10 +83,14 @@ export async function generateGovernanceAssessment(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const { workspaceId, focusArea } = parsed.data;
+  const { workspaceId, aspectId } = parsed.data;
 
-  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+  const [workspace, aspect] = await Promise.all([
+    prisma.workspace.findUnique({ where: { id: workspaceId } }),
+    findOwnedAspect(workspaceId, aspectId),
+  ]);
   if (!workspace) return notFound();
+  if (!aspect) return notFound();
 
   // FR-003: refuse rather than generate a generic, industry-blind result.
   if (!workspace.industry?.trim() || !workspace.governanceCompanySize?.trim() || !workspace.governanceJurisdiction?.trim()) {
@@ -103,7 +101,7 @@ export async function generateGovernanceAssessment(
 
   const [existingAssessment, allWorkspaceRisks] = await Promise.all([
     prisma.governanceAssessment.findUnique({
-      where: { workspaceId_focusArea: { workspaceId, focusArea: focusArea as GovernanceFocusArea } },
+      where: { aspectId },
       include: { items: true },
     }),
     prisma.governanceRisk.findMany({ where: { workspaceId } }),
@@ -121,7 +119,7 @@ export async function generateGovernanceAssessment(
     companySize: workspace.governanceCompanySize,
     industry: workspace.industry,
     jurisdiction: workspace.governanceJurisdiction,
-    focusAreaLabel: FOCUS_AREA_LABEL[focusArea],
+    focusAreaLabel: aspect.name,
     alreadyTrackedChecklistTitles: [...trackedChecklistTitles],
     alreadyTrackedRiskTitles: [...trackedRiskTitles],
   });
@@ -145,9 +143,9 @@ export async function generateGovernanceAssessment(
     // policy, just carried on its own flag rather than reusing that enum
     // (an assessment's summary has no other status to piggyback on).
     const assessment = await tx.governanceAssessment.upsert({
-      where: { workspaceId_focusArea: { workspaceId, focusArea: focusArea as GovernanceFocusArea } },
+      where: { aspectId },
       update: existingAssessment?.summaryHandEdited ? {} : { summary: outcome.data.summary },
-      create: { workspaceId, focusArea: focusArea as GovernanceFocusArea, summary: outcome.data.summary },
+      create: { workspaceId, aspectId, summary: outcome.data.summary },
     });
 
     for (const item of newItems) {
@@ -312,14 +310,14 @@ export async function setChecklistItemStatus(
 }
 
 /**
- * Adds a governance action straight to a focus area's checklist, with no
+ * Adds a governance action straight to an aspect's checklist, with no
  * assessment run behind it — the same parity addGovernancePolicy and
  * addGovernanceRisk give a hand-written policy or risk. A consultant who
  * already knows what a client needs to do next should not have to run an AI
  * assessment first to have somewhere to put it.
  *
  * A checklist item's assessmentId is required (unlike a policy's optional
- * checklistItemId), so this upserts the focus area's assessment shell —
+ * checklistItemId), so this upserts the aspect's assessment shell —
  * summary "" — the first time it gets a hand-written item before ever being
  * generated. No extra protection is needed against a later regenerate:
  * partitionNewChecklistItems already treats every existing title as tracked
@@ -327,7 +325,7 @@ export async function setChecklistItemStatus(
  */
 const addChecklistItemSchema = z.object({
   workspaceId: z.string().min(1),
-  focusArea: z.enum(FOCUS_AREAS),
+  aspectId: z.string().min(1),
   phase: z.enum(["IMMEDIATE", "NEAR_TERM", "LONG_TERM"]),
   title: z.string().min(1),
   description: z.string().min(1),
@@ -342,13 +340,16 @@ export async function addGovernanceChecklistItem(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const { workspaceId, focusArea, phase, title, description } = parsed.data;
+  const { workspaceId, aspectId, phase, title, description } = parsed.data;
+
+  const aspect = await findOwnedAspect(workspaceId, aspectId);
+  if (!aspect) return notFound();
 
   const item = await prisma.$transaction(async (tx) => {
     const assessment = await tx.governanceAssessment.upsert({
-      where: { workspaceId_focusArea: { workspaceId, focusArea: focusArea as GovernanceFocusArea } },
+      where: { aspectId },
       update: {},
-      create: { workspaceId, focusArea: focusArea as GovernanceFocusArea, summary: "" },
+      create: { workspaceId, aspectId, summary: "" },
     });
 
     return tx.governanceChecklistItem.create({
@@ -651,4 +652,141 @@ export async function deleteGovernanceRisk(
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.riskId });
+}
+
+function isUniqueConflict(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+}
+
+/**
+ * Adds a new governance aspect to a workspace (spec 017 FR-002) — a client-
+ * specific tab alongside whatever the workspace already has. Starts with no
+ * assessment, exactly the empty state any aspect has before its first
+ * "Generate assessment" run.
+ */
+const addAspectSchema = z.object({
+  workspaceId: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+});
+
+export async function addGovernanceAspect(
+  input: z.infer<typeof addAspectSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = addAspectSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  try {
+    const aspect = await prisma.governanceAspect.create({
+      data: { workspaceId: parsed.data.workspaceId, name: parsed.data.name },
+    });
+    revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+    return ok({ id: aspect.id });
+  } catch (error) {
+    if (isUniqueConflict(error)) {
+      return validationError(`"${parsed.data.name}" is already an aspect in this workspace.`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Renames an aspect (spec 017 FR-003) — only its label changes; every
+ * assessment, checklist item, risk, and policy already tied to it stays
+ * tied to it, untouched. No distinction between one of the seven a
+ * workspace started with and one added later (FR-006) — this is the same
+ * action either way.
+ */
+const renameAspectSchema = z.object({
+  workspaceId: z.string().min(1),
+  aspectId: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+});
+
+export async function renameGovernanceAspect(
+  input: z.infer<typeof renameAspectSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = renameAspectSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const aspect = await findOwnedAspect(parsed.data.workspaceId, parsed.data.aspectId);
+  if (!aspect) return notFound();
+
+  try {
+    await prisma.governanceAspect.update({
+      where: { id: parsed.data.aspectId },
+      data: { name: parsed.data.name },
+    });
+    revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+    return ok({ id: parsed.data.aspectId });
+  } catch (error) {
+    if (isUniqueConflict(error)) {
+      return validationError(`"${parsed.data.name}" is already an aspect in this workspace.`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Deletes an aspect (spec 017 FR-004/FR-005) — removes its own assessment
+ * (summary + checklist) but never a risk or policy it had sourced. Those
+ * must survive, ending up indistinguishable from one added by hand, the
+ * same guarantee a risk already gets from its sourceItem's SetNull. The
+ * schema's own cascade cannot be trusted to do this alone:
+ * GovernancePolicyDraft.checklistItem is deliberately Cascade (deleting a
+ * single checklist item takes its own drafted policy with it — untouched,
+ * different, existing behavior) so every policy drafted under this
+ * aspect's checklist items is explicitly detached *before* the assessment
+ * (and therefore its items) are deleted — nothing is left for that cascade
+ * to catch.
+ */
+const deleteAspectSchema = z.object({
+  workspaceId: z.string().min(1),
+  aspectId: z.string().min(1),
+});
+
+export async function deleteGovernanceAspect(
+  input: z.infer<typeof deleteAspectSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = deleteAspectSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const { workspaceId, aspectId } = parsed.data;
+  const aspect = await findOwnedAspect(workspaceId, aspectId);
+  if (!aspect) return notFound();
+
+  await prisma.$transaction(async (tx) => {
+    const assessment = await tx.governanceAssessment.findUnique({
+      where: { aspectId },
+      include: { items: { select: { id: true } } },
+    });
+
+    if (assessment) {
+      const itemIds = assessment.items.map((i) => i.id);
+      if (itemIds.length > 0) {
+        // Detach every policy this aspect's checklist drafted — survives the
+        // deletion below rather than cascading away with its item.
+        await tx.governancePolicyDraft.updateMany({
+          where: { checklistItemId: { in: itemIds } },
+          data: { checklistItemId: null },
+        });
+      }
+      // Cascades the checklist items; each item's own risk already survives
+      // via GovernanceRisk.sourceItem's existing SetNull.
+      await tx.governanceAssessment.delete({ where: { id: assessment.id } });
+    }
+
+    await tx.governanceAspect.delete({ where: { id: aspectId } });
+  });
+
+  revalidatePath(`/workspaces/${workspaceId}/governance`);
+  return ok({ id: aspectId });
 }

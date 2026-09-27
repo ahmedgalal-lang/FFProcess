@@ -3,7 +3,6 @@ import { WorkspacePageHeader } from "../workspace-page-header";
 import { buildRaciTableRows } from "@/lib/domain/raci-table";
 import { buildAuthorityTableRows } from "@/lib/domain/authority-table";
 import { buildCombinedMatrixRows, deriveControlPoints } from "@/lib/domain/process-report";
-import { GOVERNANCE_FOCUS_AREA_LABEL } from "@/lib/domain/governance-focus-areas";
 import { ProcessKpisControls } from "./process-kpis-controls";
 import { GovernanceProfileForm } from "./governance-profile-form";
 import { GovernanceAssessmentPanel, type AssessmentT, type ChecklistItemT } from "./governance-assessment-panel";
@@ -26,11 +25,15 @@ function formatDate(d: Date): string {
 export default async function GovernancePage(props: PageProps<"/workspaces/[workspaceId]/governance">) {
   const { workspaceId } = await props.params;
 
-  const [workspace, roles, people, processes, assessments, risks, policies] = await Promise.all([
+  const [workspace, roles, people, processes, aspects, assessments, risks, policies] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
     prisma.role.findMany({ where: { workspaceId } }),
     prisma.person.findMany({ where: { workspaceId } }),
     prisma.process.findMany({ where: { workspaceId, archivedAt: null }, orderBy: { code: "asc" } }),
+    // A workspace's own aspects (spec 017) — the tabs themselves, addable,
+    // renameable, and deletable; ordered oldest-first, so a newly added one
+    // appends after the existing ones.
+    prisma.governanceAspect.findMany({ where: { workspaceId }, orderBy: { createdAt: "asc" } }),
     prisma.governanceAssessment.findMany({
       where: { workspaceId },
       include: { items: { include: { policy: true }, orderBy: { createdAt: "asc" } } },
@@ -48,30 +51,31 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
 
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
   const personNameById = new Map(people.map((p) => [p.id, p.name]));
+  const aspectNameById = new Map(aspects.map((a) => [a.id, a.name]));
 
-  // One assessment id -> its focus area's label, so a policy or a risk
-  // sourced from it can say which area it came from without a second query.
-  const focusAreaByAssessmentId = new Map(assessments.map((a) => [a.id, a.focusArea]));
+  // One assessment id -> its aspect's id, so a policy or a risk sourced from
+  // it can say which aspect it came from without a second query.
+  const aspectIdByAssessmentId = new Map(assessments.map((a) => [a.id, a.aspectId]));
 
   // Every policy in the workspace, drafted or hand-written, each labelled with
-  // the focus area whose assessment produced it — or null when nobody's
+  // the aspect whose assessment produced it — or null when nobody's
   // assessment did, which the library reads as "Added manually".
   const allPolicies: PolicyT[] = policies.map((policy) => {
     const assessmentId = policy.checklistItem?.assessmentId;
-    const focusArea = assessmentId ? focusAreaByAssessmentId.get(assessmentId) : undefined;
+    const aspectId = assessmentId ? aspectIdByAssessmentId.get(assessmentId) : undefined;
     return {
       id: policy.id,
       title: policy.title,
       body: policy.body,
       status: policy.status,
-      focusAreaLabel: focusArea ? GOVERNANCE_FOCUS_AREA_LABEL[focusArea] : null,
-      focusArea: focusArea ?? null,
+      focusAreaLabel: aspectId ? (aspectNameById.get(aspectId) ?? null) : null,
+      focusArea: aspectId ?? null,
       updatedAt: formatDate(policy.updatedAt),
     };
   });
   const policyById = new Map(allPolicies.map((p) => [p.id, p]));
 
-  const assessmentsByFocusArea: Record<string, AssessmentT> = {};
+  const assessmentsByAspectId: Record<string, AssessmentT> = {};
   for (const assessment of assessments) {
     const items: ChecklistItemT[] = assessment.items.map((item) => {
       return {
@@ -85,7 +89,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         policy: item.policy ? (policyById.get(item.policy.id) ?? null) : null,
       };
     });
-    assessmentsByFocusArea[assessment.focusArea] = {
+    assessmentsByAspectId[assessment.aspectId] = {
       id: assessment.id,
       summary: assessment.summary,
       updatedAtLabel: formatDate(assessment.updatedAt),
@@ -105,14 +109,14 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       : r.ownerPersonId
         ? (personNameById.get(r.ownerPersonId) ?? null)
         : null,
-    // Resolved below, via each risk's sourceItem -> assessment -> focus area.
+    // Resolved below, via each risk's sourceItem -> assessment -> aspect.
     sourceLabel: null as string | null,
     sourceFocusArea: null as string | null,
   }));
 
-  // A risk's sourceLabel names the focus area of the assessment that
-  // surfaced it, found via its sourceItem's own assessment — a second pass
-  // because that lookup needs the checklist item, not just the risk row.
+  // A risk's sourceLabel names the aspect of the assessment that surfaced
+  // it, found via its sourceItem's own assessment — a second pass because
+  // that lookup needs the checklist item, not just the risk row.
   if (risks.some((r) => r.sourceItemId)) {
     const sourceItems = await prisma.governanceChecklistItem.findMany({
       where: { id: { in: risks.map((r) => r.sourceItemId).filter((id): id is string => id !== null) } },
@@ -122,10 +126,10 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
     risks.forEach((r, i) => {
       if (!r.sourceItemId) return;
       const assessmentId = assessmentIdByItemId.get(r.sourceItemId);
-      const focusArea = assessmentId ? focusAreaByAssessmentId.get(assessmentId) : undefined;
-      if (focusArea) {
-        risksForPanel[i]!.sourceLabel = GOVERNANCE_FOCUS_AREA_LABEL[focusArea];
-        risksForPanel[i]!.sourceFocusArea = focusArea;
+      const aspectId = assessmentId ? aspectIdByAssessmentId.get(assessmentId) : undefined;
+      if (aspectId) {
+        risksForPanel[i]!.sourceLabel = aspectNameById.get(aspectId) ?? null;
+        risksForPanel[i]!.sourceFocusArea = aspectId;
       }
     });
   }
@@ -195,7 +199,8 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         <GovernanceAssessmentPanel
           workspaceId={workspaceId}
           hasProfile={hasProfile}
-          assessmentsByFocusArea={assessmentsByFocusArea}
+          aspects={aspects.map((a) => ({ id: a.id, name: a.name }))}
+          assessmentsByAspectId={assessmentsByAspectId}
           risks={risksForPanel}
           allPolicies={allPolicies}
         />

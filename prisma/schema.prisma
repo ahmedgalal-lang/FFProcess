@@ -175,6 +175,7 @@ model Workspace {
   people                Person[]
   processes             Process[]
   phases                Phase[]
+  governanceAspects     GovernanceAspect[]
   governanceAssessments GovernanceAssessment[]
   governanceRisks       GovernanceRisk[]
   governancePolicies    GovernancePolicyDraft[]
@@ -742,16 +743,6 @@ model AuthorityRule {
 // persist-and-reconcile shape above (spec 012-governance-generator).
 // ============================================================================
 
-enum GovernanceFocusArea {
-  BOARD_STRUCTURE
-  RISK_CONTROLS
-  ETHICS_POLICY
-  COMPENSATION
-  ESG
-  DATA_INTEGRITY
-  ACCESSIBILITY
-}
-
 enum GovernanceItemPhase {
   IMMEDIATE
   NEAR_TERM
@@ -788,13 +779,37 @@ enum RiskStatus {
   CLOSED
 }
 
-/// One run, for one workspace and one focus area. Re-running replaces
-/// `summary` but reconciles `items` rather than deleting and recreating them
-/// — see governance-findings.ts.
-model GovernanceAssessment {
-  id          String              @id @default(uuid())
+/// A workspace's own governance "aspect" tab (spec 017) — Board Structure,
+/// Ethics Policy, or a client-specific one a consultant added. Replaces what
+/// used to be a fixed, product-wide GovernanceFocusArea enum: every workspace
+/// gets its own rows, addable, renameable, and deletable like any other
+/// workspace-scoped entity, with the original seven no different from one
+/// added later.
+model GovernanceAspect {
+  id          String @id @default(uuid())
   workspaceId String
-  focusArea   GovernanceFocusArea
+  name        String
+
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessments GovernanceAssessment[]
+
+  createdAt DateTime @default(now())
+
+  /// Ordering is by createdAt (oldest first) — a newly added aspect appends
+  /// after the existing ones; no separate order column, since nothing here
+  /// reorders the list.
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("governance_aspects")
+}
+
+/// One run, for one workspace and one aspect. Re-running replaces `summary`
+/// but reconciles `items` rather than deleting and recreating them — see
+/// governance-findings.ts.
+model GovernanceAssessment {
+  id          String @id @default(uuid())
+  workspaceId String
+  aspectId    String
 
   /// The pillar-framed executive summary from the most recent run, or a
   /// consultant's own rewrite of it.
@@ -807,12 +822,17 @@ model GovernanceAssessment {
   summaryHandEdited Boolean @default(false)
 
   workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Deleting an aspect deletes its own assessment with it (spec 017 FR-004)
+  /// — but deleteGovernanceAspect must detach any linked policy draft first,
+  /// or GovernancePolicyDraft.checklistItem's own Cascade would silently take
+  /// it down too (research.md Decision 2 for spec 017).
+  aspect    GovernanceAspect         @relation(fields: [aspectId], references: [id], onDelete: Cascade)
   items     GovernanceChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([workspaceId, focusArea])
+  @@unique([aspectId])
   @@map("governance_assessments")
 }
 

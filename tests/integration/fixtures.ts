@@ -46,3 +46,8 @@ export async function createFixtureWorkspace() {
 
   return { firm, workspace, adminUser, adminMember, addMember, cleanup, unique };
 }
+
+/** A governance aspect for a fixture workspace — cascades away with it. */
+export async function createGovernanceAspect(workspaceId: string, name: string) {
+  return prisma.governanceAspect.create({ data: { workspaceId, name } });
+}

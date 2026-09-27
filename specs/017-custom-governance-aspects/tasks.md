@@ -11,23 +11,23 @@ own existing, already-tested pattern (ownership-checked id lookups, EDITOR gatin
 
 ## Phase 1: Foundational — schema, migration, and the shared aspect names (blocks every slice)
 
-- [ ] T001 Add `model GovernanceAspect` to `prisma/schema.prisma` (data-model.md), change
+- [X] T001 Add `model GovernanceAspect` to `prisma/schema.prisma` (data-model.md), change
       `GovernanceAssessment.focusArea` to `aspectId String` with the `aspect` relation and
       `@@unique([aspectId])`, replacing `@@unique([workspaceId, focusArea])`.
-- [ ] T002 Run `CI=true pnpm exec prisma migrate dev --name custom_governance_aspects
+- [X] T002 Run `CI=true pnpm exec prisma migrate dev --name custom_governance_aspects
       --create-only`, then hand-edit the generated `migration.sql` to add the backfill
       steps from data-model.md's Migration section (seed seven aspects per existing
       workspace, backfill `aspectId` by joining on the old enum value and workspace,
       require it `NOT NULL`, drop the old column and the `GovernanceFocusArea` enum) —
       in that order, before applying.
-- [ ] T003 Apply the migration (`prisma migrate dev` without `--create-only`, or `prisma
+- [X] T003 Apply the migration (`prisma migrate dev` without `--create-only`, or `prisma
       migrate deploy` in CI). Run `prisma generate`. Confirm against the seeded dev
       database: every existing workspace has exactly seven `governance_aspects` rows
       named exactly as `GOVERNANCE_FOCUS_AREA_LABEL` labelled them, and every existing
       `governance_assessments` row's new `aspectId` resolves to the correct one for its
       workspace (spot-check `workspace-acme`'s Risk & Internal Controls assessment, which
       already has real data from this session's earlier work).
-- [ ] T004 Add a small shared constant, `DEFAULT_GOVERNANCE_ASPECT_NAMES` (the same seven
+- [X] T004 Add a small shared constant, `DEFAULT_GOVERNANCE_ASPECT_NAMES` (the same seven
       names as the migration's seed list), in `lib/domain/governance-focus-areas.ts` (repurposed
       from its removed static array — see T012) — the one place both the migration's SQL
       and `createWorkspace`'s runtime seeding (T011) read the same seven names from, so
@@ -45,16 +45,16 @@ usable as any built-in one.
 and every governance action (generate, add checklist item/risk/policy by hand) works on
 it exactly as it does on a built-in aspect. Adding a duplicate name is rejected.
 
-- [ ] T005 [US1] Write `tests/integration/governance.test.ts` tests for a new
+- [X] T005 [US1] Write `tests/integration/governance.test.ts` tests for a new
       `addGovernanceAspect({ workspaceId, name })` action: creates a row; a duplicate
       name (same workspace) is rejected with a validation error and creates nothing; a
       duplicate name in a *different* workspace succeeds (FR-001); non-EDITOR access is
       rejected. Confirm these fail before T006 exists.
-- [ ] T006 [US1] Implement `addGovernanceAspect` in `lib/actions/governance.ts`, following
+- [X] T006 [US1] Implement `addGovernanceAspect` in `lib/actions/governance.ts`, following
       this file's existing pattern (Zod schema, `requireWorkspaceAccess(..., "EDITOR")`,
       `prisma.governanceAspect.create`, catching the unique-constraint violation into a
       validation error naming the duplicate).
-- [ ] T007 [US1] Rewire every existing action currently taking `focusArea:
+- [X] T007 [US1] Rewire every existing action currently taking `focusArea:
       z.enum(FOCUS_AREAS)` (`generateGovernanceAssessment`, `addGovernanceChecklistItem`)
       to take `aspectId: z.string().min(1)` instead, with an ownership lookup
       (`prisma.governanceAspect.findUnique`, `notFound()` if missing or
@@ -64,29 +64,29 @@ it exactly as it does on a built-in aspect. Adding a duplicate name is rejected.
       create a real `GovernanceAspect` first (a small test helper,
       `createGovernanceAspect(workspaceId, name)`, alongside `createFixtureWorkspace`) and
       pass its id instead of a fixed string like `"RISK_CONTROLS"`.
-- [ ] T008 [US1] Wire `app/(app)/workspaces/[workspaceId]/governance/page.tsx`: query
+- [X] T008 [US1] Wire `app/(app)/workspaces/[workspaceId]/governance/page.tsx`: query
       `prisma.governanceAspect.findMany({ where: { workspaceId }, orderBy: { createdAt:
       "asc" } })`, pass the list to `GovernanceAssessmentPanel` as `aspects: { id: string;
       name: string }[]`. `focusAreaByAssessmentId`/`assessmentsByFocusArea` (used to label
       a risk/policy's source and to look up which assessment a tab shows) are re-keyed by
       `aspectId`, reading `aspect.name` directly.
-- [ ] T009 [US1] Wire `governance-assessment-panel.tsx`: remove the `FOCUS_AREAS` import
+- [X] T009 [US1] Wire `governance-assessment-panel.tsx`: remove the `FOCUS_AREAS` import
       and the `focusArea` state's fixed default; take `aspects` as a prop, default the
       active tab to `aspects[0]?.id`, render the tab bar from the prop. Add an "+ Add
       aspect" control (small inline form — a name input and a submit button, matching the
       "+ Add risk"/"+ Add policy" pattern already on this page) that calls
       `addGovernanceAspect` and selects the new tab on success.
-- [ ] T010 [US1] Write `tests/e2e/governance-aspects.spec.ts` covering User Story 1's
+- [X] T010 [US1] Write `tests/e2e/governance-aspects.spec.ts` covering User Story 1's
       Acceptance Scenarios: adding a uniquely-named aspect shows a new, empty tab after
       the existing ones; generating an assessment / adding a checklist item, risk, and
       policy by hand all work on it; adding a duplicate name is rejected and the existing
       aspect is untouched.
-- [ ] T011 [US1] Wire `lib/actions/organization.ts`'s `createWorkspace`: after creating
+- [X] T011 [US1] Wire `lib/actions/organization.ts`'s `createWorkspace`: after creating
       the workspace, create the same seven `GovernanceAspect` rows
       (`DEFAULT_GOVERNANCE_ASPECT_NAMES`, T004) so a brand-new workspace opens Governance
       with the same starting tabs an existing one has (FR-011/SC-005) — never an empty
       list.
-- [ ] T012 [US1] Remove `GOVERNANCE_FOCUS_AREAS` / `GovernanceFocusAreaValue` /
+- [X] T012 [US1] Remove `GOVERNANCE_FOCUS_AREAS` / `GovernanceFocusAreaValue` /
       `GOVERNANCE_FOCUS_AREA_LABEL` from `lib/domain/governance-focus-areas.ts`, leaving
       only `DEFAULT_GOVERNANCE_ASPECT_NAMES` (T004). Fix every remaining import (governance.ts,
       page.tsx, governance-assessment-panel.tsx) — by this task, none should still
@@ -104,21 +104,21 @@ anything already tied to it.
 all three are unchanged apart from now reading under the new label. A rename into an
 existing name is rejected; the vacated name becomes available.
 
-- [ ] T013 [US2] Write `tests/integration/governance.test.ts` tests for a new
+- [X] T013 [US2] Write `tests/integration/governance.test.ts` tests for a new
       `renameGovernanceAspect({ workspaceId, aspectId, name })` action: renames a plain
       aspect; renaming to a name already used by a *different* aspect in the same
       workspace is rejected and neither name changes; renaming to the exact name a
       *different workspace's* aspect holds succeeds; non-EDITOR access is rejected; a
       mismatched/missing `aspectId` returns not-found. Confirm these fail before T014
       exists.
-- [ ] T014 [US2] Implement `renameGovernanceAspect` in `lib/actions/governance.ts` —
+- [X] T014 [US2] Implement `renameGovernanceAspect` in `lib/actions/governance.ts` —
       ownership check, then `prisma.governanceAspect.update`, same duplicate-name handling
       as `addGovernanceAspect` (T006).
-- [ ] T015 [US2] Add a rename control to each tab in `governance-assessment-panel.tsx`
+- [X] T015 [US2] Add a rename control to each tab in `governance-assessment-panel.tsx`
       (an inline edit affordance beside the tab, matching the existing per-row "Edit"
       pattern already used for checklist items on this page) that calls
       `renameGovernanceAspect` and updates the tab's label in place.
-- [ ] T016 [US2] Extend `tests/e2e/governance-aspects.spec.ts`: renaming an aspect that
+- [X] T016 [US2] Extend `tests/e2e/governance-aspects.spec.ts`: renaming an aspect that
       already has an assessment, a risk, and a policy leaves all three reachable and
       correct under the new tab label; renaming to a name another aspect holds is
       rejected; renaming a different aspect to the name just vacated then succeeds.
@@ -135,7 +135,7 @@ own assessment goes with it, but any risk or policy it had sourced survives.
 Confirm the tab and its assessment are gone, but the risk (Risk Register) and the policy
 (Policy Library) are both still there, reading "Added manually."
 
-- [ ] T017 [US3] Write `tests/integration/governance.test.ts` tests for a new
+- [X] T017 [US3] Write `tests/integration/governance.test.ts` tests for a new
       `deleteGovernanceAspect({ workspaceId, aspectId })` action, proving research.md
       Decision 2 specifically: an aspect with an assessment that has a checklist item
       carrying both a linked policy draft and a linked risk — after deletion, the
@@ -144,21 +144,21 @@ Confirm the tab and its assessment are gone, but the risk (Risk Register) and th
       exist and are queryable; an aspect with no assessment yet deletes cleanly; non-EDITOR
       access is rejected; a mismatched/missing `aspectId` returns not-found. Confirm these
       fail before T018 exists.
-- [ ] T018 [US3] Implement `deleteGovernanceAspect` in `lib/actions/governance.ts`, in a
+- [X] T018 [US3] Implement `deleteGovernanceAspect` in `lib/actions/governance.ts`, in a
       transaction, in the exact order research.md Decision 2 requires: find the aspect's
       assessment and its checklist item ids (if any) → `governancePolicyDraft.updateMany`
       to null out `checklistItemId` for every policy linked to one of those items → delete
       the assessment (cascades checklist items; each item's risk already survives via the
       existing `SetNull` on `sourceItem`) → delete the aspect row.
-- [ ] T019 [US3] Make T017 pass, then mutation-check: skip the policy-detach step (let the
+- [X] T019 [US3] Make T017 pass, then mutation-check: skip the policy-detach step (let the
       default cascade run) and confirm the now-missing-policy assertion catches it; then
       restore.
-- [ ] T020 [US3] Add a delete control to each tab in `governance-assessment-panel.tsx`
+- [X] T020 [US3] Add a delete control to each tab in `governance-assessment-panel.tsx`
       (confirm-before-delete, matching the existing pattern already used for risks and
       policies on this page) that calls `deleteGovernanceAspect`; on success, if the
       deleted aspect was the active tab, select a remaining one (or the no-aspects empty
       state if none remain — FR-010).
-- [ ] T021 [US3] Extend `tests/e2e/governance-aspects.spec.ts`: deleting an aspect with an
+- [X] T021 [US3] Extend `tests/e2e/governance-aspects.spec.ts`: deleting an aspect with an
       assessment, a risk, and a policy removes the tab and the assessment, but the risk
       and the policy are still visible (now "Added manually") from the Risk Register and
       Policy Library sections; deleting the aspect currently being viewed moves the view
