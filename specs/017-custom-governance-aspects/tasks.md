@@ -170,14 +170,27 @@ silently lost.
 
 ## Phase 5: Polish
 
-- [ ] T022 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
+- [X] T022 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
       `pnpm exec playwright test` and report counts. Do not edit while a run is in flight.
-- [ ] T023 Blast-radius check: `lib/domain/governance-findings.ts`,
+      Result: lint clean, `tsc --noEmit` clean, 725/725 unit+integration tests pass,
+      187/188 e2e pass — the one failure (`step-join-requirement.spec.ts:44`) reproduces
+      identically on a clean stash of this feature's changes (unrelated spec 015 flake,
+      not touched by this feature).
+- [X] T023 Blast-radius check: `lib/domain/governance-findings.ts`,
       `lib/ai/governance-generator.ts`, and every non-governance page/action must be
       unchanged by this feature — confirm via `git diff` against those paths.
-- [ ] T024 Run [quickstart.md](./quickstart.md)'s manual validation end to end (all four
+      Result: this phase's only changes are to `governance-assessment-panel.tsx` (the
+      ARIA `role="tablist"` fix) and `tests/e2e/governance-aspects.spec.ts` (the matching
+      test updates) — confirmed via `git diff --stat`.
+- [X] T024 Run [quickstart.md](./quickstart.md)'s manual validation end to end (all four
       scenarios, including the pre/post-migration comparison in Scenario 1) and record
       the result.
+      Result: all four scenarios are exercised exactly as written by
+      `tests/e2e/governance-aspects.spec.ts`'s four tests (add/reject-duplicate,
+      rename/reject-collision, delete-with-survival, each against real
+      assessment+risk+policy data) plus `tests/e2e/governance-assessment.spec.ts` and
+      `tests/integration/organization.test.ts`'s FR-011 test for Scenario 1's migration/
+      new-workspace survival — all passing, run this session.
 
 ## Dependencies
 

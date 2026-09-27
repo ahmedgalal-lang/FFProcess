@@ -59,9 +59,10 @@ test.describe("custom governance aspects", () => {
     await openGovernance(page);
 
     const tabs = page.getByRole("tablist", { name: "Governance focus area" });
-    await tabs.getByRole("button", { name: "+ Add aspect" }).click();
+    const toolbar = page.getByTestId("aspect-toolbar");
+    await toolbar.getByRole("button", { name: "+ Add aspect" }).click();
     await page.getByLabel("Aspect name").fill("Data Privacy");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Add", exact: true }).click();
 
     const newTab = tabs.getByRole("tab", { name: "Data Privacy" });
     await expect(newTab).toBeVisible();
@@ -80,14 +81,15 @@ test.describe("custom governance aspects", () => {
     await openGovernance(page);
 
     const tabs = page.getByRole("tablist", { name: "Governance focus area" });
-    await tabs.getByRole("button", { name: "+ Add aspect" }).click();
+    const toolbar = page.getByTestId("aspect-toolbar");
+    await toolbar.getByRole("button", { name: "+ Add aspect" }).click();
     await page.getByLabel("Aspect name").fill("Data Privacy");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Add", exact: true }).click();
     await expect(tabs.getByRole("tab", { name: "Data Privacy" })).toBeVisible();
 
-    await tabs.getByRole("button", { name: "+ Add aspect" }).click();
+    await toolbar.getByRole("button", { name: "+ Add aspect" }).click();
     await page.getByLabel("Aspect name").fill("Data Privacy");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText(/already an aspect/i)).toBeVisible();
     await expect(tabs.getByRole("tab", { name: "Data Privacy" })).toHaveCount(1);
   });
@@ -100,9 +102,10 @@ test.describe("custom governance aspects", () => {
     // A freshly added aspect, guaranteed empty — avoids any dependency on
     // a built-in aspect's own, possibly shared, existing state.
     const tabs = page.getByRole("tablist", { name: "Governance focus area" });
-    await tabs.getByRole("button", { name: "+ Add aspect" }).click();
+    const toolbar = page.getByTestId("aspect-toolbar");
+    await toolbar.getByRole("button", { name: "+ Add aspect" }).click();
     await page.getByLabel("Aspect name").fill("Data Privacy");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Add", exact: true }).click();
     await tabs.getByRole("tab", { name: "Data Privacy" }).click();
 
     await page.getByRole("button", { name: "+ Add a checklist item by hand" }).click();
@@ -111,9 +114,11 @@ test.describe("custom governance aspects", () => {
     await page.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Draft a data privacy notice")).toBeVisible();
 
-    await tabs.getByRole("button", { name: "Rename Data Privacy" }).click();
+    // Rename/delete act on whichever aspect tab is currently selected
+    // ("Data Privacy", selected above) rather than being per-tab controls.
+    await toolbar.getByRole("button", { name: "Rename Data Privacy" }).click();
     await page.getByLabel("Aspect name").fill("Data Protection");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Save", exact: true }).click();
 
     const renamed = tabs.getByRole("tab", { name: "Data Protection" });
     await expect(renamed).toBeVisible();
@@ -121,12 +126,14 @@ test.describe("custom governance aspects", () => {
     await renamed.click();
     await expect(page.getByText("Draft a data privacy notice")).toBeVisible();
 
-    // Renaming another aspect to a name already in use is rejected.
-    await tabs.getByRole("button", { name: "Rename ESG" }).click();
+    // Renaming another aspect to a name already in use is rejected — select
+    // its tab first, since rename now targets the active aspect.
+    await tabs.getByRole("tab", { name: "ESG" }).click();
+    await toolbar.getByRole("button", { name: "Rename ESG" }).click();
     await page.getByLabel("Aspect name").fill("Data Protection");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(/already an aspect/i)).toBeVisible();
-    await page.getByRole("button", { name: "Cancel" }).click();
+    await toolbar.getByRole("button", { name: "Cancel" }).click();
 
     // Clean up under the renamed name (afterEach only matches "Data Privacy").
     await removeAspectByName("Data Protection");
@@ -138,9 +145,10 @@ test.describe("custom governance aspects", () => {
     await openGovernance(page);
 
     const tabs = page.getByRole("tablist", { name: "Governance focus area" });
-    await tabs.getByRole("button", { name: "+ Add aspect" }).click();
+    const toolbar = page.getByTestId("aspect-toolbar");
+    await toolbar.getByRole("button", { name: "+ Add aspect" }).click();
     await page.getByLabel("Aspect name").fill("Data Privacy 2");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Add", exact: true }).click();
     const newTab = tabs.getByRole("tab", { name: "Data Privacy 2" });
     await expect(newTab).toBeVisible();
     await newTab.click();
@@ -167,9 +175,9 @@ test.describe("custom governance aspects", () => {
     // sourced them from the aspect's own assessment (they were hand-added),
     // so this test's real subject is the checklist item, which the delete
     // must take with it.
-    await tabs.getByRole("button", { name: "Delete Data Privacy 2" }).click();
-    await tabs.getByText(/Delete.*Data Privacy 2/).waitFor();
-    await tabs.getByRole("button", { name: "Delete", exact: true }).click();
+    await toolbar.getByRole("button", { name: "Delete Data Privacy 2" }).click();
+    await toolbar.getByText(/Delete.*Data Privacy 2/).waitFor();
+    await toolbar.getByRole("button", { name: "Delete", exact: true }).click();
 
     await expect(newTab).toHaveCount(0);
     // The view moved to a remaining aspect, not a blank tab (FR-010).

@@ -276,101 +276,36 @@ export function GovernanceAssessmentPanel({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-          <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Governance focus area">
-            {aspects.map((aspect) =>
-              renamingAspectId === aspect.id ? (
-                <form
+          <div className="flex flex-wrap items-center gap-3" data-testid="aspect-toolbar">
+            {/* ARIA requires a tablist's only children be role="tab" elements
+                (aria-required-children) — rename/delete/add controls live in
+                a separate toolbar below, never nested inside this div. */}
+            <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Governance focus area">
+              {aspects.map((aspect) => (
+                <button
                   key={aspect.id}
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitRenamedAspect(aspect.id, e.currentTarget);
+                  type="button"
+                  role="tab"
+                  aria-selected={aspectId === aspect.id}
+                  onClick={() => {
+                    setAspectId(aspect.id);
+                    setAddingItem(false);
+                    setEditingItemId(null);
+                    setConfirmingDeleteId(null);
+                    setEditingSummary(false);
+                    setRenamingAspectId(null);
+                    setConfirmingDeleteAspectId(null);
                   }}
-                  className="flex items-center gap-1"
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                    aspectId === aspect.id
+                      ? "border-indigo-600 bg-indigo-600 text-white"
+                      : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
                 >
-                  <input
-                    name="name"
-                    required
-                    defaultValue={aspect.name}
-                    aria-label="Aspect name"
-                    autoFocus
-                    className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                  />
-                  <button type="submit" disabled={pending} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRenamingAspectId(null)}
-                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-600"
-                  >
-                    Cancel
-                  </button>
-                </form>
-              ) : confirmingDeleteAspectId === aspect.id ? (
-                <span key={aspect.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  Delete &ldquo;{aspect.name}&rdquo;?
-                  <button
-                    type="button"
-                    onClick={() => removeAspect(aspect.id)}
-                    disabled={pending}
-                    className="rounded bg-red-600 px-1.5 py-0.5 font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDeleteAspectId(null)}
-                    className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    Keep
-                  </button>
-                </span>
-              ) : (
-                <span key={aspect.id} className="inline-flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={aspectId === aspect.id}
-                    onClick={() => {
-                      setAspectId(aspect.id);
-                      setAddingItem(false);
-                      setEditingItemId(null);
-                      setConfirmingDeleteId(null);
-                      setEditingSummary(false);
-                    }}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                      aspectId === aspect.id
-                        ? "border-indigo-600 bg-indigo-600 text-white"
-                        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {aspect.name}
-                  </button>
-                  {canEdit && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setRenamingAspectId(aspect.id)}
-                        aria-label={`Rename ${aspect.name}`}
-                        title="Rename"
-                        className="rounded p-1 text-[10px] text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingDeleteAspectId(aspect.id)}
-                        aria-label={`Delete ${aspect.name}`}
-                        title="Delete"
-                        className="rounded p-1 text-[10px] text-slate-400 hover:bg-red-50 hover:text-red-600"
-                      >
-                        ✕
-                      </button>
-                    </>
-                  )}
-                </span>
-              )
-            )}
+                  {aspect.name}
+                </button>
+              ))}
+            </div>
             {canEdit &&
               (addingAspect ? (
                 <form
@@ -408,6 +343,76 @@ export function GovernanceAssessmentPanel({
                   + Add aspect
                 </button>
               ))}
+            {canEdit && aspectId ? (
+              renamingAspectId === aspectId ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitRenamedAspect(aspectId, e.currentTarget);
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <input
+                    name="name"
+                    required
+                    defaultValue={focusLabel}
+                    aria-label="Aspect name"
+                    autoFocus
+                    className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                  />
+                  <button type="submit" disabled={pending} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRenamingAspectId(null)}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-600"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : confirmingDeleteAspectId === aspectId ? (
+                <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                  Delete &ldquo;{focusLabel}&rdquo;?
+                  <button
+                    type="button"
+                    onClick={() => removeAspect(aspectId)}
+                    disabled={pending}
+                    className="rounded bg-red-600 px-1.5 py-0.5 font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDeleteAspectId(null)}
+                    className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Keep
+                  </button>
+                </span>
+              ) : (
+                <span className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setRenamingAspectId(aspectId)}
+                    aria-label={`Rename ${focusLabel}`}
+                    title="Rename"
+                    className="rounded p-1 text-[10px] text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDeleteAspectId(aspectId)}
+                    aria-label={`Delete ${focusLabel}`}
+                    title="Delete"
+                    className="rounded p-1 text-[10px] text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )
+            ) : null}
           </div>
           {canEdit && (
             <div className="flex items-center gap-3">
