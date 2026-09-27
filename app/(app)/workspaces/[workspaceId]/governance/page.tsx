@@ -65,6 +65,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       body: policy.body,
       status: policy.status,
       focusAreaLabel: focusArea ? GOVERNANCE_FOCUS_AREA_LABEL[focusArea] : null,
+      focusArea: focusArea ?? null,
       updatedAt: formatDate(policy.updatedAt),
     };
   });
@@ -106,6 +107,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         : null,
     // Resolved below, via each risk's sourceItem -> assessment -> focus area.
     sourceLabel: null as string | null,
+    sourceFocusArea: null as string | null,
   }));
 
   // A risk's sourceLabel names the focus area of the assessment that
@@ -121,7 +123,10 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       if (!r.sourceItemId) return;
       const assessmentId = assessmentIdByItemId.get(r.sourceItemId);
       const focusArea = assessmentId ? focusAreaByAssessmentId.get(assessmentId) : undefined;
-      if (focusArea) risksForPanel[i]!.sourceLabel = GOVERNANCE_FOCUS_AREA_LABEL[focusArea];
+      if (focusArea) {
+        risksForPanel[i]!.sourceLabel = GOVERNANCE_FOCUS_AREA_LABEL[focusArea];
+        risksForPanel[i]!.sourceFocusArea = focusArea;
+      }
     });
   }
 

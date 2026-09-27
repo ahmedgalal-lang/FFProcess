@@ -12,6 +12,8 @@ export type PolicyT = {
   status: "OPEN" | "EDITED" | "DONE" | "DISMISSED";
   /** The focus area whose assessment drafted it, or null when written by hand. */
   focusAreaLabel: string | null;
+  /** The same focus area as focusAreaLabel, as its raw value — for filtering by the active tab. */
+  focusArea: string | null;
   updatedAt: string;
 };
 

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { Client } from "pg";
+import crypto from "crypto";
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
 
@@ -237,4 +238,45 @@ test("the two focus areas added after the first five are offered as tabs", async
   // Transparency and Fairness now read as one pillar, not two.
   await expect(page.getByText("Evaluated against four pillars")).toBeVisible();
   await expect(page.getByText("Transparency & Fairness", { exact: true })).toBeVisible();
+});
+
+test("a risk sourced from one focus area's assessment does not show under another", async ({ page }) => {
+  // Reported: selecting a tab (e.g. Ethics Policy) still showed the Risk
+  // Register's full, unfiltered contents from every other focus area too.
+  const client = new Client({ connectionString: process.env["DATABASE_URL"] });
+  await client.connect();
+  let assessmentId = "";
+  try {
+    assessmentId = crypto.randomUUID();
+    const itemId = crypto.randomUUID();
+    const riskId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO governance_assessments (id, "workspaceId", "focusArea", summary, "createdAt", "updatedAt")
+       VALUES ($1, $2, 'BOARD_STRUCTURE', '', now(), now())`,
+      [assessmentId, WORKSPACE]
+    );
+    await client.query(
+      `INSERT INTO governance_checklist_items (id, "assessmentId", phase, title, description, "createdAt", "updatedAt")
+       VALUES ($1, $2, 'IMMEDIATE', 'Board item', 'Because the board needs it', now(), now())`,
+      [itemId, assessmentId]
+    );
+    await client.query(
+      `INSERT INTO governance_risks (id, "workspaceId", "sourceItemId", title, description, likelihood, impact, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, 'Board-only risk', 'Only Board Structure surfaced this', 'HIGH', 'HIGH', now(), now())`,
+      [riskId, WORKSPACE, itemId]
+    );
+
+    await signIn(page);
+    await page.goto(`/workspaces/${WORKSPACE}/governance`);
+
+    const tabs = page.getByRole("tablist", { name: "Governance focus area" });
+    await tabs.getByRole("tab", { name: "Board Structure" }).click();
+    await expect(page.locator("tr", { hasText: "Board-only risk" })).toBeVisible();
+
+    await tabs.getByRole("tab", { name: "Ethics Policy" }).click();
+    await expect(page.locator("tr", { hasText: "Board-only risk" })).toHaveCount(0);
+  } finally {
+    if (assessmentId) await client.query(`DELETE FROM governance_assessments WHERE id = $1`, [assessmentId]);
+    await client.end();
+  }
 });

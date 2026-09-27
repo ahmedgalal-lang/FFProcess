@@ -51,9 +51,11 @@ export type AssessmentT = {
 /**
  * The AI-assisted governance assessment: profile is set alongside this
  * (governance-profile-form.tsx, sibling in page.tsx), pillars are static,
- * focus-area tabs switch which assessment's summary/checklist is shown, and
- * the Risk Register / Policy Library are workspace-wide — not scoped to the
- * active tab — so they're rendered here too rather than switching with it.
+ * and focus-area tabs switch which assessment's summary/checklist is shown.
+ * The Risk Register and Policy Library are rendered here too, filtered to
+ * the same active tab — a risk or policy added by hand (no assessment
+ * behind it) has no tab of its own, so it stays visible under every tab
+ * rather than becoming unreachable the moment another tab is selected.
  */
 export function GovernanceAssessmentPanel({
   workspaceId,
@@ -192,6 +194,11 @@ export function GovernanceAssessmentPanel({
     phase,
     items: (assessment?.items ?? []).filter((i) => i.phase === phase && i.status !== "DISMISSED"),
   }));
+
+  // Scoped to the active tab — a risk/policy with no source (added by hand)
+  // belongs to no tab, so it stays visible everywhere rather than vanishing.
+  const risksForTab = risks.filter((r) => r.sourceFocusArea === null || r.sourceFocusArea === focusArea);
+  const policiesForTab = allPolicies.filter((p) => p.focusArea === null || p.focusArea === focusArea);
 
   return (
     <div className="flex flex-col gap-4">
@@ -597,8 +604,8 @@ export function GovernanceAssessmentPanel({
         </section>
       )}
 
-      <GovernanceRiskRegister workspaceId={workspaceId} risks={risks} />
-      <GovernancePolicyLibrary workspaceId={workspaceId} policies={allPolicies} onOpen={setOpenPolicyId} />
+      <GovernanceRiskRegister workspaceId={workspaceId} risks={risksForTab} />
+      <GovernancePolicyLibrary workspaceId={workspaceId} policies={policiesForTab} onOpen={setOpenPolicyId} />
 
       <GovernancePolicyDrawer
         key={openPolicy?.id ?? "none"}

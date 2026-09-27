@@ -15,6 +15,8 @@ export type RiskT = {
   status: "OPEN" | "MITIGATING" | "ACCEPTED" | "CLOSED";
   ownerLabel: string | null;
   sourceLabel: string | null; // focus area it came from, or null when added by hand
+  /** The same focus area as sourceLabel, as its raw value — for filtering by the active tab. */
+  sourceFocusArea: string | null;
 };
 
 const LEVEL_STYLE: Record<string, string> = {
