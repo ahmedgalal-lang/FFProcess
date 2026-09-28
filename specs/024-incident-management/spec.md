@@ -62,7 +62,7 @@ Some incidents involve personal data: a leaked customer list, an email sent to t
 
 ### Edge Cases
 
-- What happens to an incident's linked process if that process is deleted? The incident stays and simply no longer names a process.
+- What happens to an incident's linked process if that process is deleted? Processes are archived, not deleted, in this app: the incident keeps the link, shown as "(archived)", and an archived process can't be newly linked. Only a hard delete clears the link, and the incident stays.
 - What happens to corrective actions when their incident is deleted? They're deleted with it.
 - Can an incident be linked to a risk on the Risk Register? Yes, optionally, one or more, so a risk that materialized can be traced to the incident. Deleting either side removes only the link.
 

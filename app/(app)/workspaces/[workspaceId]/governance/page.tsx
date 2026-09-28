@@ -12,6 +12,10 @@ import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/d
 import { isPolicyOverdueForReview } from "@/lib/domain/policy-lifecycle";
 import { dayOf, isChecklistItemOverdue } from "@/lib/domain/checklist-due";
 import { isTreatmentActionOverdue } from "@/lib/domain/risk-treatment";
+import { breachNotificationState, daysOpen, describeBreachState, isIncidentActionOverdue, sortIncidents } from "@/lib/domain/incidents";
+import { GovernanceIncidents, type IncidentT } from "./governance-incidents";
+import { GovernancePrivacy, type BreachT, type ProcessingActivityT } from "./governance-privacy";
+import { isDpiaRecommended, needsPriorConsultation } from "@/lib/domain/privacy";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -33,7 +37,8 @@ function formatDateOnly(d: Date): string {
 export default async function GovernancePage(props: PageProps<"/workspaces/[workspaceId]/governance">) {
   const { workspaceId } = await props.params;
 
-  const [workspace, roles, people, processes, aspects, assessments, risks, policies] = await Promise.all([
+  const [workspace, roles, people, processes, aspects, assessments, risks, policies, incidents, allProcesses, activities] =
+    await Promise.all([
     prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
     prisma.role.findMany({ where: { workspaceId } }),
     prisma.person.findMany({ where: { workspaceId } }),
@@ -63,6 +68,25 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         acknowledgements: { include: { person: { select: { id: true, name: true } } } },
       },
       orderBy: { updatedAt: "desc" },
+    }),
+    // The incident log (spec 024), workspace-wide.
+    prisma.governanceIncident.findMany({
+      where: { workspaceId },
+      include: {
+        actions: { orderBy: { createdAt: "asc" } },
+        riskLinks: { include: { risk: { select: { id: true, title: true } } } },
+      },
+    }),
+    // Archived ones too: an incident keeps a link to a process archived after it was logged.
+    prisma.process.findMany({ where: { workspaceId }, select: { id: true, name: true, archivedAt: true }, orderBy: { code: "asc" } }),
+    // The data privacy register (spec 025).
+    prisma.processingActivity.findMany({
+      where: { workspaceId },
+      include: {
+        dpias: { include: { approvedByUser: { select: { name: true, email: true } } }, orderBy: { createdAt: "asc" } },
+        breachLinks: true,
+      },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -179,6 +203,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       done: a.doneAt !== null,
       overdue: isTreatmentActionOverdue(a.dueDate, a.doneAt, now),
     })),
+    incidentTitles: incidents.filter((i) => i.riskLinks.some((l) => l.riskId === r.id)).map((i) => i.title),
   }));
 
   // A risk's sourceLabel names the aspect of the assessment that surfaced
@@ -200,6 +225,89 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       }
     });
   }
+
+  const processById = new Map(allProcesses.map((p) => [p.id, p]));
+  const incidentsForSection: IncidentT[] = sortIncidents(incidents).map((i) => {
+    const breach = breachNotificationState(i, now);
+    return {
+      id: i.id,
+      title: i.title,
+      description: i.description,
+      occurredAt: dayOf(i.occurredAt),
+      severity: i.severity,
+      category: i.category,
+      status: i.status,
+      rootCause: i.rootCause,
+      processId: i.processId,
+      processLabel: i.processId ? ownerLabel(processById.get(i.processId)) : null,
+      daysOpen: daysOpen(i.occurredAt, i.closedAt, now),
+      personalDataBreach: i.personalDataBreach,
+      breachAwareAt: i.breachAwareAt?.toISOString() ?? null,
+      regulatorNotifiedAt: i.regulatorNotifiedAt?.toISOString() ?? null,
+      notificationNotRequiredReason: i.notificationNotRequiredReason,
+      breach: { ...breach, deadline: breach.deadline?.toISOString() ?? null },
+      actions: i.actions.map((a) => ({
+        id: a.id,
+        description: a.description,
+        ownerLabel: a.ownerRoleId
+          ? ownerLabel(roleById.get(a.ownerRoleId))
+          : a.ownerPersonId
+            ? ownerLabel(personById.get(a.ownerPersonId))
+            : null,
+        dueDate: a.dueDate ? dayOf(a.dueDate) : null,
+        done: a.doneAt !== null,
+        overdue: isIncidentActionOverdue(a.dueDate, a.doneAt, now),
+      })),
+      risks: i.riskLinks.map((l) => l.risk),
+    };
+  });
+
+  const activitiesForSection: ProcessingActivityT[] = activities.map((a) => ({
+    id: a.id,
+    name: a.name,
+    purpose: a.purpose,
+    lawfulBasis: a.lawfulBasis,
+    dataSubjectCategories: a.dataSubjectCategories,
+    personalDataCategories: a.personalDataCategories,
+    recipients: a.recipients,
+    retentionPeriod: a.retentionPeriod,
+    specialCategory: a.specialCategory,
+    transferDestination: a.transferDestination,
+    transferSafeguard: a.transferSafeguard,
+    processId: a.processId,
+    processLabel: a.processId ? ownerLabel(processById.get(a.processId)) : null,
+    ownerRoleId: a.ownerRoleId,
+    ownerPersonId: a.ownerPersonId,
+    ownerLabel: a.ownerRoleId
+      ? ownerLabel(roleById.get(a.ownerRoleId))
+      : a.ownerPersonId
+        ? ownerLabel(personById.get(a.ownerPersonId))
+        : null,
+    dpiaRecommended: isDpiaRecommended(a),
+    dpias: a.dpias.map((d) => ({
+      id: d.id,
+      risksIdentified: d.risksIdentified,
+      mitigations: d.mitigations,
+      residualRisk: d.residualRisk,
+      status: d.status,
+      approvedByName: d.approvedByUser ? (d.approvedByUser.name ?? d.approvedByUser.email) : null,
+      approvedAt: d.approvedAt ? formatDate(d.approvedAt) : null,
+      priorConsultation: needsPriorConsultation(d),
+    })),
+  }));
+  // Breaches are incidents flagged in the log (spec 024), never a second record.
+  const breachesForSection: BreachT[] = incidentsForSection
+    .filter((i) => i.personalDataBreach)
+    .map((i) => {
+      const described = describeBreachState(i.breach)!;
+      return {
+        id: i.id,
+        title: i.title,
+        notificationLabel: described.text,
+        urgent: described.urgent,
+        activityIds: activities.filter((a) => a.breachLinks.some((l) => l.incidentId === i.id)).map((a) => a.id),
+      };
+    });
 
   const hasProfile = Boolean(
     workspace.industry?.trim() && workspace.governanceCompanySize?.trim() && workspace.governanceJurisdiction?.trim()
@@ -270,6 +378,28 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           assessmentsByAspectId={assessmentsByAspectId}
           risks={risksForPanel}
           allPolicies={allPolicies}
+          people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+          roles={roles.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null }))}
+        />
+      </div>
+
+      <div className="mb-6">
+        <GovernanceIncidents
+          workspaceId={workspaceId}
+          incidents={incidentsForSection}
+          processes={allProcesses.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+          risks={risks.map((r) => ({ id: r.id, title: r.title }))}
+          people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+          roles={roles.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null }))}
+        />
+      </div>
+
+      <div className="mb-6">
+        <GovernancePrivacy
+          workspaceId={workspaceId}
+          activities={activitiesForSection}
+          breaches={breachesForSection}
+          processes={allProcesses.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
           people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
           roles={roles.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null }))}
         />

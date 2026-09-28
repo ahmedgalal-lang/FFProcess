@@ -34,6 +34,7 @@ model User {
   /// actually need to survive a User row disappearing.
   policyVersionsAuthored GovernancePolicyVersion[]
   policiesApproved       GovernancePolicyDraft[]
+  dpiasApproved          Dpia[]                    @relation("DpiaApprover")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -186,6 +187,8 @@ model Workspace {
   governanceAssessments GovernanceAssessment[]
   governanceRisks       GovernanceRisk[]
   governancePolicies    GovernancePolicyDraft[]
+  governanceIncidents   GovernanceIncident[]
+  processingActivities  ProcessingActivity[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -227,15 +230,17 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles           PersonRole[]
-  processSteps          ProcessStep[]                   @relation("StepAssignedRole")
-  swimlaneSteps         ProcessStep[]                   @relation("StepSwimlaneRole")
-  supportedSteps        ProcessStep[]                   @relation("StepSupportingRoles")
-  raciAssignments       RaciAssignment[]
-  authorityRules        AuthorityRule[]                 @relation("AuthorityRuleRole")
-  governanceRisks       GovernanceRisk[]
-  checklistItemsOwned   GovernanceChecklistItem[]       @relation("ChecklistItemOwnerRole")
-  treatmentActionsOwned GovernanceRiskTreatmentAction[] @relation("TreatmentActionOwnerRole")
+  personRoles               PersonRole[]
+  processSteps              ProcessStep[]                   @relation("StepAssignedRole")
+  swimlaneSteps             ProcessStep[]                   @relation("StepSwimlaneRole")
+  supportedSteps            ProcessStep[]                   @relation("StepSupportingRoles")
+  raciAssignments           RaciAssignment[]
+  authorityRules            AuthorityRule[]                 @relation("AuthorityRuleRole")
+  governanceRisks           GovernanceRisk[]
+  checklistItemsOwned       GovernanceChecklistItem[]       @relation("ChecklistItemOwnerRole")
+  treatmentActionsOwned     GovernanceRiskTreatmentAction[] @relation("TreatmentActionOwnerRole")
+  incidentActionsOwned      GovernanceIncidentAction[]      @relation("IncidentActionOwnerRole")
+  processingActivitiesOwned ProcessingActivity[]            @relation("ProcessingOwnerRole")
 
   createdAt DateTime @default(now())
 
@@ -255,12 +260,14 @@ model Person {
   manager   Person?   @relation("PersonManager", fields: [managerId], references: [id])
   reports   Person[]  @relation("PersonManager")
 
-  personRoles            PersonRole[]
-  authorityRules         AuthorityRule[]                   @relation("AuthorityRulePerson")
-  governanceRisks        GovernanceRisk[]
-  policyAcknowledgements GovernancePolicyAcknowledgement[]
-  checklistItemsOwned    GovernanceChecklistItem[]         @relation("ChecklistItemOwnerPerson")
-  treatmentActionsOwned  GovernanceRiskTreatmentAction[]   @relation("TreatmentActionOwnerPerson")
+  personRoles               PersonRole[]
+  authorityRules            AuthorityRule[]                   @relation("AuthorityRulePerson")
+  governanceRisks           GovernanceRisk[]
+  policyAcknowledgements    GovernancePolicyAcknowledgement[]
+  checklistItemsOwned       GovernanceChecklistItem[]         @relation("ChecklistItemOwnerPerson")
+  treatmentActionsOwned     GovernanceRiskTreatmentAction[]   @relation("TreatmentActionOwnerPerson")
+  incidentActionsOwned      GovernanceIncidentAction[]        @relation("IncidentActionOwnerPerson")
+  processingActivitiesOwned ProcessingActivity[]              @relation("ProcessingOwnerPerson")
 
   createdAt DateTime @default(now())
 
@@ -321,13 +328,15 @@ model Process {
   /// { metric, target, frequency }[] — operational KPIs/SLAs for this process.
   kpis             Json     @default("[]")
 
-  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  category       ProcessCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  parentProcess  Process?         @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
-  subProcesses   Process[]        @relation("ProcessHierarchy")
+  workspace            Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category             ProcessCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  parentProcess        Process?             @relation("ProcessHierarchy", fields: [parentProcessId], references: [id])
+  subProcesses         Process[]            @relation("ProcessHierarchy")
+  governanceIncidents  GovernanceIncident[]
+  processingActivities ProcessingActivity[]
   /// SetNull rather than Cascade: deleting the source step must not delete a
   /// process someone else owns — the branch link is simply dropped.
-  branchFromStep ProcessStep?     @relation("ProcessBranchOrigin", fields: [branchFromStepId], references: [id], onDelete: SetNull)
+  branchFromStep       ProcessStep?         @relation("ProcessBranchOrigin", fields: [branchFromStepId], references: [id], onDelete: SetNull)
 
   steps                ProcessStep[]
   activities           Activity[]
@@ -1010,6 +1019,7 @@ model GovernanceRisk {
   ownerRole        Role?                           @relation(fields: [ownerRoleId], references: [id])
   ownerPerson      Person?                         @relation(fields: [ownerPersonId], references: [id])
   treatmentActions GovernanceRiskTreatmentAction[]
+  incidentLinks    GovernanceIncidentRisk[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1045,4 +1055,188 @@ model GovernanceRiskTreatmentAction {
 
   @@index([riskId])
   @@map("governance_risk_treatment_actions")
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentCategory {
+  OPERATIONAL
+  FINANCIAL
+  IT_SECURITY
+  HEALTH_SAFETY
+  COMPLIANCE
+  OTHER
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+/// Something that actually went wrong (spec 024) — as distinct from a risk,
+/// which might. Workspace-wide, not per aspect.
+model GovernanceIncident {
+  id          String           @id @default(uuid())
+  workspaceId String
+  title       String
+  description String           @db.Text
+  occurredAt  DateTime
+  severity    IncidentSeverity
+  category    IncidentCategory
+  status      IncidentStatus   @default(OPEN)
+  /// Required to move to Resolved or Closed.
+  rootCause   String?          @db.Text
+  closedAt    DateTime?
+  processId   String?
+
+  /// A personal data breach runs a 72-hour regulator-notification clock from
+  /// breachAwareAt (GDPR Art. 33), stopped by either decision below.
+  personalDataBreach            Boolean   @default(false)
+  breachAwareAt                 DateTime?
+  regulatorNotifiedAt           DateTime?
+  notificationNotRequiredReason String?   @db.Text
+
+  workspace       Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Processes are archived, not deleted; only a hard delete clears the link.
+  process         Process?                   @relation(fields: [processId], references: [id], onDelete: SetNull)
+  actions         GovernanceIncidentAction[]
+  riskLinks       GovernanceIncidentRisk[]
+  processingLinks ProcessingBreachLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@map("governance_incidents")
+}
+
+/// A corrective action prompted by an incident (spec 024). Deleted with it.
+model GovernanceIncidentAction {
+  id            String    @id @default(uuid())
+  incidentId    String
+  description   String    @db.Text
+  ownerRoleId   String?
+  ownerPersonId String?
+  dueDate       DateTime?
+  doneAt        DateTime?
+
+  incident    GovernanceIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  ownerRole   Role?              @relation("IncidentActionOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  ownerPerson Person?            @relation("IncidentActionOwnerPerson", fields: [ownerPersonId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([incidentId])
+  @@map("governance_incident_actions")
+}
+
+/// An incident traced to a risk that materialised. Deleting either side
+/// removes only the link.
+model GovernanceIncidentRisk {
+  incidentId String
+  riskId     String
+  incident   GovernanceIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  risk       GovernanceRisk     @relation(fields: [riskId], references: [id], onDelete: Cascade)
+
+  @@id([incidentId, riskId])
+  @@index([riskId])
+  @@map("governance_incident_risks")
+}
+
+enum LawfulBasis {
+  CONSENT
+  CONTRACT
+  LEGAL_OBLIGATION
+  VITAL_INTERESTS
+  PUBLIC_TASK
+  LEGITIMATE_INTERESTS
+}
+
+enum DpiaStatus {
+  DRAFT
+  APPROVED
+}
+
+enum DpiaResidualRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// One purpose for which the client processes personal data — a row of the
+/// GDPR Art. 30 record of processing activities (spec 025). Categories and
+/// recipients are free text: they vary too much per client for a taxonomy.
+model ProcessingActivity {
+  id                     String      @id @default(uuid())
+  workspaceId            String
+  name                   String
+  purpose                String      @db.Text
+  lawfulBasis            LawfulBasis
+  dataSubjectCategories  String[]    @default([])
+  personalDataCategories String[]    @default([])
+  recipients             String[]    @default([])
+  retentionPeriod        String
+  specialCategory        Boolean     @default(false)
+  transferDestination    String?
+  transferSafeguard      String?
+  processId              String?
+  ownerRoleId            String?
+  ownerPersonId          String?
+
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  process     Process?               @relation(fields: [processId], references: [id], onDelete: SetNull)
+  ownerRole   Role?                  @relation("ProcessingOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  ownerPerson Person?                @relation("ProcessingOwnerPerson", fields: [ownerPersonId], references: [id], onDelete: SetNull)
+  dpias       Dpia[]
+  breachLinks ProcessingBreachLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@map("processing_activities")
+}
+
+/// A data protection impact assessment for one processing activity (GDPR
+/// Art. 35). Approving is an Admin sign-off; editing the content afterwards
+/// returns it to Draft.
+model Dpia {
+  id               String           @id @default(uuid())
+  activityId       String
+  risksIdentified  String           @db.Text
+  mitigations      String           @db.Text
+  residualRisk     DpiaResidualRisk
+  status           DpiaStatus       @default(DRAFT)
+  approvedByUserId String?
+  approvedAt       DateTime?
+
+  activity       ProcessingActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  approvedByUser User?              @relation("DpiaApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activityId])
+  @@map("dpias")
+}
+
+/// A personal-data-breach incident (spec 024) linked to an activity it
+/// affected. Deleting either side removes only the link.
+model ProcessingBreachLink {
+  activityId String
+  incidentId String
+  activity   ProcessingActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  incident   GovernanceIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@id([activityId, incidentId])
+  @@index([incidentId])
+  @@map("processing_breach_links")
 }

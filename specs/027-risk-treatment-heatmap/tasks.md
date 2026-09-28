@@ -41,6 +41,7 @@
 
 - [X] T009 Lint, `tsc --noEmit`, full Vitest and Playwright suites
       (including the Governance page axe test with risks present).
+      Result: clean; 787/787 Vitest; 195/195 Playwright.
 - [X] T010 Blast-radius check via `git diff --stat`.
       Result: schema + migration, the new `risk-treatment` domain module and
       actions, the shared `lib/data/owner-assignment.ts` (now also used by

@@ -4,36 +4,36 @@
 
 ## Phase 1: Foundational
 
-- [ ] T001 Add the three enums, three models and back-relations; migrate,
+- [X] T001 Add the three enums, three models and back-relations; migrate,
       generate, restart the dev server. (Requires spec 024's schema.)
 
 ## Phase 2: User Story 1 — processing record (P1) 🎯 MVP
 
-- [ ] T002 [US1] Write `tests/integration/privacy.test.ts` for
+- [X] T002 [US1] Write `tests/integration/privacy.test.ts` for
       add/update/delete processing activity (all fields, owner and process
       ownership, both owners rejected, VIEWER forbidden). Confirm they fail.
-- [ ] T003 [US1] Implement the three actions.
-- [ ] T004 [US1] Build `governance-privacy.tsx` (activity form and list with
+- [X] T003 [US1] Implement the three actions.
+- [X] T004 [US1] Build `governance-privacy.tsx` (activity form and list with
       special-category and transfer details) and wire `page.tsx`.
 
 ## Phase 3: User Story 2 — DPIAs (P2)
 
-- [ ] T005 [US2] Write `tests/unit/privacy.test.ts` for `isDpiaRecommended`
+- [X] T005 [US2] Write `tests/unit/privacy.test.ts` for `isDpiaRecommended`
       and `needsPriorConsultation`, and integration tests for `addDpia`,
       `updateDpia` (editing an approved DPIA returns it to Draft),
       `approveDpia` (ADMIN only; EDITOR forbidden). Confirm they fail.
-- [ ] T006 [US2] Implement; add DPIA controls and flags to the UI.
+- [X] T006 [US2] Implement; add DPIA controls and flags to the UI.
 
 ## Phase 4: User Story 3 — breaches (P3)
 
-- [ ] T007 [US3] Integration tests for link/unlink (non-breach incident
+- [X] T007 [US3] Integration tests for link/unlink (non-breach incident
       refused; another workspace's incident not-found; deleting either side
       removes only the link). Confirm they fail.
-- [ ] T008 [US3] Implement; list breach incidents with notification state
+- [X] T008 [US3] Implement; list breach incidents with notification state
       and their links.
-- [ ] T009 Write `tests/e2e/privacy.spec.ts` for the quickstart.
+- [X] T009 Write `tests/e2e/privacy.spec.ts` for the quickstart.
 
 ## Phase 5: Polish
 
-- [ ] T010 Lint, `tsc --noEmit`, full Vitest and Playwright suites.
-- [ ] T011 Blast-radius check via `git diff --stat`.
+- [X] T010 Lint, `tsc --noEmit`, full Vitest and Playwright suites.
+- [X] T011 Blast-radius check via `git diff --stat`.

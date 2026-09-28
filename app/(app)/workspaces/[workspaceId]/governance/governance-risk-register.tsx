@@ -33,6 +33,8 @@ export type RiskT = {
     done: boolean;
     overdue: boolean;
   }[];
+  /** Incidents where this risk materialised (spec 024). */
+  incidentTitles: string[];
 };
 
 type OwnerOptionT = { id: string; name: string; archived: boolean };
@@ -254,6 +256,9 @@ export function GovernanceRiskRegister({
                       <td className="py-2.5 pr-2">
                         <div className="font-semibold text-slate-900">{risk.title}</div>
                         <div className="text-slate-500">{risk.sourceLabel ?? "Added manually"}</div>
+                      {risk.incidentTitles.length > 0 && (
+                        <div className="text-slate-600">Incidents: {risk.incidentTitles.join(", ")}</div>
+                      )}
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
