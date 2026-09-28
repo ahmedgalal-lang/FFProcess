@@ -57,7 +57,14 @@ Tests first for the two business rules (pack ordering, view-model rules).
       `tests/e2e/report-composer.spec.ts` and update
       `tests/fixtures/report-default.snapshot.txt` with exactly that one
       intended line.
-- [ ] T016 Run lint, `tsc --noEmit`, the full Vitest suite and the full
+- [X] T016 Run lint, `tsc --noEmit`, the full Vitest suite and the full
       Playwright suite (including the pagination baselines); report counts.
-- [ ] T017 Blast-radius check via `git diff --stat`: no change to the
+      Result: lint and `tsc` clean; 762/762 Vitest (was 750); 192/192
+      Playwright (was 190), pagination baselines and composer snapshot
+      included. Run alone, the composer snapshot test fails on unrelated
+      per-process KPI data, identically on the pre-feature commit; it
+      passes in suite order.
+- [X] T017 Blast-radius check via `git diff --stat`: no change to the
       Governance page, governance actions, or the schema.
+      Result: confirmed — only the report pipeline (catalogue, loader, both
+      renderers), the new view-model module, and tests.
