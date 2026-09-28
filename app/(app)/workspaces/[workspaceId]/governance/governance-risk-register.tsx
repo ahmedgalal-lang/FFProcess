@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCanEdit } from "../workspace-access";
 import { addGovernanceRisk, updateGovernanceRisk, deleteGovernanceRisk } from "@/lib/actions/governance";
 import { deriveRiskLevel } from "@/lib/domain/governance-risk";
@@ -35,6 +35,8 @@ export type RiskT = {
   }[];
   /** Incidents where this risk materialised (spec 024). */
   incidentTitles: string[];
+  /** Vendors carrying this risk (spec 023). */
+  vendorNames: string[];
 };
 
 type OwnerOptionT = { id: string; name: string; archived: boolean };
@@ -60,12 +62,18 @@ const STATUS_STYLE: Record<string, string> = {
  */
 export function GovernanceRiskRegister({
   workspaceId,
-  risks,
+  risks: tabRisks,
+  allRisks,
+  riskLevel = null,
   roles,
   people,
 }: {
   workspaceId: string;
+  /** The active aspect tab's risks. */
   risks: RiskT[];
+  /** Every risk in the workspace, for the dashboard's level filter. */
+  allRisks?: RiskT[];
+  riskLevel?: "HIGH" | "MEDIUM" | "LOW" | null;
   roles: OwnerOptionT[];
   people: OwnerOptionT[];
 }) {
@@ -76,6 +84,13 @@ export function GovernanceRiskRegister({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const pathname = usePathname();
+  // From a dashboard tile: every open risk at one level, across all aspects,
+  // so the count on the tile matches the rows here (spec 026).
+  const risks =
+    riskLevel && allRisks
+      ? allRisks.filter((r) => r.status !== "CLOSED" && deriveRiskLevel(r.likelihood, r.impact) === riskLevel)
+      : tabRisks;
 
   function submitNewRisk(form: HTMLFormElement) {
     const data = new FormData(form);
@@ -208,6 +223,19 @@ export function GovernanceRiskRegister({
         </form>
       )}
 
+      {riskLevel && allRisks && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-700" role="status">
+          Showing every open {capitalize(riskLevel)} risk across all aspects ({risks.length}).
+          <button
+            type="button"
+            onClick={() => router.replace(`${pathname}#risk-register`, { scroll: false })}
+            className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Show this aspect&apos;s risks
+          </button>
+        </div>
+      )}
+
       {risks.length > 0 && (
         <RiskHeatMap cells={cells} selected={activeCell ? selectedCell : null} onSelect={setSelectedCell} />
       )}
@@ -242,7 +270,11 @@ export function GovernanceRiskRegister({
                 <th className="pb-2 pr-2">Level</th>
                 <th className="pb-2 pr-2">Owner</th>
                 <th className="pb-2">Status</th>
-                {canEdit && <th className="pb-2 pl-2" aria-label="Remove" />}
+                {canEdit && (
+                  <th className="pb-2 pl-2">
+                    <span className="sr-only">Remove</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -258,6 +290,9 @@ export function GovernanceRiskRegister({
                         <div className="text-slate-500">{risk.sourceLabel ?? "Added manually"}</div>
                       {risk.incidentTitles.length > 0 && (
                         <div className="text-slate-600">Incidents: {risk.incidentTitles.join(", ")}</div>
+                      )}
+                      {risk.vendorNames.length > 0 && (
+                        <div className="text-slate-600">Vendors: {risk.vendorNames.join(", ")}</div>
                       )}
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <button
@@ -366,7 +401,7 @@ export function GovernanceRiskRegister({
                               type="button"
                               onClick={() => setConfirmingDeleteId(risk.id)}
                               aria-label={`Delete risk: ${risk.title}`}
-                              className="text-[10px] font-semibold text-slate-400 hover:text-red-600"
+                              className="text-[10px] font-semibold text-slate-500 hover:text-red-600"
                             >
                               Delete
                             </button>

@@ -47,7 +47,7 @@ The client's staff complete required training such as anti-bribery, data protect
 
 ### Edge Cases
 
-- What happens to a person's conflicts and training records if that person is removed from the People directory? They're removed along with the person, matching how every other person-linked record in this app already behaves.
+- What happens to a person's conflicts and training records if that person is removed from the People directory? People are archived, not deleted, in this app: an archived person's records stay, labelled "(archived)", and no new conflict or completion can be recorded for them. Only a hard delete removes the records with the person.
 - What happens when a course is deleted that already has completions recorded against it? The completions are deleted with it, and the delete confirmation says how many will go.
 - What about code-of-conduct attestation? It is already covered: publishing a Code of Conduct policy and recording who has acknowledged it (Policy Lifecycle, spec 018) is that attestation. This feature does not build a second mechanism for it.
 
@@ -63,7 +63,7 @@ The client's staff complete required training such as anti-bribery, data protect
 - **FR-006**: System MUST let an Editor record a person's completion of a course on a given date, and delete a completion recorded in error.
 - **FR-007**: For a course with a validity period, each completion MUST show its expiry date, and MUST be flagged Expired once that date has passed and Expiring soon within 30 days before it.
 - **FR-008**: Conflicts and training records MUST be workspace-scoped: visible only within the workspace they belong to, and readable by Viewers and above.
-- **FR-009**: Removing a person from the People directory MUST remove their conflicts and training completions with them.
+- **FR-009**: Archiving a person MUST keep their conflicts and training completions (labelled as archived) and MUST prevent recording new ones for them; a hard delete of the person MUST remove their records with them.
 
 ### Key Entities
 

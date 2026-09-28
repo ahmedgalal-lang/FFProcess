@@ -77,6 +77,7 @@ export function GovernanceAssessmentPanel({
   aspects,
   assessmentsByAspectId,
   risks,
+  riskLevel = null,
   allPolicies,
   people,
   roles,
@@ -86,6 +87,8 @@ export function GovernanceAssessmentPanel({
   aspects: AspectT[];
   assessmentsByAspectId: Record<string, AssessmentT>;
   risks: RiskT[];
+  /** From a dashboard tile: show every open risk at this level, across aspects (spec 026). */
+  riskLevel?: "HIGH" | "MEDIUM" | "LOW" | null;
   allPolicies: PolicyT[];
   people: OwnerOptionT[];
   roles: OwnerOptionT[];
@@ -284,7 +287,7 @@ export function GovernanceAssessmentPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <section id="governance-assessment" className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-1 text-sm font-bold text-slate-900">Evaluated against four pillars</h2>
         <p className="mb-3 text-xs text-slate-500">
           Every summary is framed against these, not left as an unstructured paragraph.
@@ -868,7 +871,14 @@ export function GovernanceAssessmentPanel({
         </section>
       )}
 
-      <GovernanceRiskRegister workspaceId={workspaceId} risks={risksForTab} roles={roles} people={people} />
+      <GovernanceRiskRegister
+        workspaceId={workspaceId}
+        risks={risksForTab}
+        allRisks={risks}
+        riskLevel={riskLevel}
+        roles={roles}
+        people={people}
+      />
       <GovernancePolicyLibrary workspaceId={workspaceId} policies={policiesForTab} onOpen={setOpenPolicyId} />
 
       <GovernancePolicyDrawer

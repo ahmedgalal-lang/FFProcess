@@ -16,6 +16,18 @@ import { breachNotificationState, daysOpen, describeBreachState, isIncidentActio
 import { GovernanceIncidents, type IncidentT } from "./governance-incidents";
 import { GovernancePrivacy, type BreachT, type ProcessingActivityT } from "./governance-privacy";
 import { isDpiaRecommended, needsPriorConsultation } from "@/lib/domain/privacy";
+import { GovernanceConflicts, type ConflictT } from "./governance-conflicts";
+import { GovernanceTraining, type TrainingCourseT } from "./governance-training";
+import { trainingExpiry, trainingState } from "@/lib/domain/training";
+import { GovernanceVendors, type VendorT } from "./governance-vendors";
+import { GovernanceEthics, type EthicsCaseT } from "./governance-ethics";
+import { formatCaseReference } from "@/lib/domain/ethics";
+import { GovernanceDashboard } from "./governance-dashboard";
+import { buildDashboardTiles, isDashboardEmpty } from "@/lib/domain/governance-dashboard";
+import { deriveRiskLevel } from "@/lib/domain/governance-risk";
+import { requireWorkspaceAccess } from "@/lib/auth/workspace";
+import { hasSufficientAccess } from "@/lib/domain/access-control";
+import { contractState, isDueDiligenceOverdue, nextDueDiligenceOn, sortVendors } from "@/lib/domain/vendors";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -36,8 +48,32 @@ function formatDateOnly(d: Date): string {
  */
 export default async function GovernancePage(props: PageProps<"/workspaces/[workspaceId]/governance">) {
   const { workspaceId } = await props.params;
+  // A dashboard risk tile links here with ?riskLevel=, which shows every open
+  // risk at that level across all aspects (spec 026).
+  const rawLevel = (await props.searchParams)["riskLevel"];
+  const riskLevel = rawLevel === "HIGH" || rawLevel === "MEDIUM" || rawLevel === "LOW" ? rawLevel : null;
+  // Ethics cases (spec 022) are Admin-only: for anyone else they're never
+  // queried, so nothing about them — not even a count — reaches the browser.
+  const access = await requireWorkspaceAccess(workspaceId);
+  const isAdmin = access.ok && hasSufficientAccess(access.data.accessLevel, "ADMIN");
 
-  const [workspace, roles, people, processes, aspects, assessments, risks, policies, incidents, allProcesses, activities] =
+  const [
+    workspace,
+    roles,
+    people,
+    processes,
+    aspects,
+    assessments,
+    risks,
+    policies,
+    incidents,
+    allProcesses,
+    activities,
+    conflicts,
+    courses,
+    vendors,
+    ethicsCases,
+  ] =
     await Promise.all([
     prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
     prisma.role.findMany({ where: { workspaceId } }),
@@ -88,6 +124,25 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       },
       orderBy: { name: "asc" },
     }),
+    // Conflicts of interest and training records (spec 021).
+    prisma.conflictOfInterest.findMany({ where: { workspaceId }, orderBy: { declaredOn: "desc" } }),
+    prisma.trainingCourse.findMany({
+      where: { workspaceId },
+      include: { completions: { orderBy: { completedOn: "desc" } } },
+      orderBy: { name: "asc" },
+    }),
+    // The vendor register (spec 023).
+    prisma.vendor.findMany({
+      where: { workspaceId },
+      include: { riskLinks: { include: { risk: { select: { id: true, title: true } } } } },
+    }),
+    isAdmin
+      ? prisma.ethicsCase.findMany({
+          where: { workspaceId },
+          include: { notes: { include: { author: { select: { name: true, email: true } } }, orderBy: { createdAt: "asc" } } },
+          orderBy: { number: "desc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
@@ -204,6 +259,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       overdue: isTreatmentActionOverdue(a.dueDate, a.doneAt, now),
     })),
     incidentTitles: incidents.filter((i) => i.riskLinks.some((l) => l.riskId === r.id)).map((i) => i.title),
+    vendorNames: vendors.filter((v) => v.riskLinks.some((l) => l.riskId === r.id)).map((v) => v.name),
   }));
 
   // A risk's sourceLabel names the aspect of the assessment that surfaced
@@ -309,6 +365,115 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       };
     });
 
+  const personLabel = (id: string) => ownerLabel(personById.get(id)) ?? "Unknown person";
+  const conflictsForSection: ConflictT[] = conflicts.map((c) => ({
+    id: c.id,
+    personId: c.personId,
+    personLabel: personLabel(c.personId),
+    description: c.description,
+    relatedParty: c.relatedParty,
+    declaredOn: dayOf(c.declaredOn),
+    status: c.status,
+    mitigationNote: c.mitigationNote,
+  }));
+  const coursesForSection: TrainingCourseT[] = courses.map((course) => ({
+    id: course.id,
+    name: course.name,
+    validityMonths: course.validityMonths,
+    completions: course.completions.map((c) => {
+      const expiry = trainingExpiry(c.completedOn, course.validityMonths);
+      return {
+        id: c.id,
+        personLabel: personLabel(c.personId),
+        completedOn: dayOf(c.completedOn),
+        expiresOn: expiry ? dayOf(expiry) : null,
+        state: trainingState(c.completedOn, course.validityMonths, now),
+      };
+    }),
+  }));
+
+  const vendorsForSection: VendorT[] = sortVendors(vendors).map((v) => {
+    const next = nextDueDiligenceOn(v.lastDueDiligenceOn, v.reviewCycleMonths);
+    return {
+      id: v.id,
+      name: v.name,
+      service: v.service,
+      criticality: v.criticality,
+      ownerRoleId: v.ownerRoleId,
+      ownerPersonId: v.ownerPersonId,
+      ownerLabel: v.ownerRoleId
+        ? ownerLabel(roleById.get(v.ownerRoleId))
+        : v.ownerPersonId
+          ? ownerLabel(personById.get(v.ownerPersonId))
+          : null,
+      dueDiligenceStatus: v.dueDiligenceStatus,
+      lastDueDiligenceOn: v.lastDueDiligenceOn ? dayOf(v.lastDueDiligenceOn) : null,
+      reviewCycleMonths: v.reviewCycleMonths,
+      nextDueDiligenceOn: next ? dayOf(next) : null,
+      dueDiligenceOverdue: isDueDiligenceOverdue(v.lastDueDiligenceOn, v.reviewCycleMonths, now),
+      contractStartOn: v.contractStartOn ? dayOf(v.contractStartOn) : null,
+      contractEndOn: v.contractEndOn ? dayOf(v.contractEndOn) : null,
+      contractState: contractState(v.contractEndOn, now),
+      risks: v.riskLinks.map((l) => l.risk),
+    };
+  });
+
+  const casesForSection: EthicsCaseT[] = ethicsCases.map((c) => ({
+    id: c.id,
+    reference: formatCaseReference(c.number),
+    receivedOn: dayOf(c.receivedOn),
+    channel: c.channel,
+    category: c.category,
+    severity: c.severity,
+    description: c.description,
+    anonymous: c.anonymous,
+    reporterName: c.reporterName,
+    status: c.status,
+    investigatorPersonId: c.investigatorPersonId,
+    investigatorName: c.investigatorName,
+    outcome: c.outcome,
+    closingSummary: c.closingSummary,
+    daysOpen: daysOpen(c.receivedOn, c.closedAt, now),
+    notes: c.notes.map((n) => ({
+      id: n.id,
+      body: n.body,
+      authorName: n.author.name ?? n.author.email,
+      createdAt: formatDate(n.createdAt),
+    })),
+  }));
+
+  const checklistItems = Object.values(assessmentsByAspectId).flatMap((a) => a?.items ?? []);
+  const dashboardInput = {
+    risks: risksForPanel.map((r) => ({ level: deriveRiskLevel(r.likelihood, r.impact), closed: r.status === "CLOSED" })),
+    policies: allPolicies.map((p) => ({ needsReview: p.needsReview })),
+    checklist: {
+      done: checklistItems.filter((i) => i.status === "DONE").length,
+      total: checklistItems.filter((i) => i.status !== "DISMISSED").length,
+      overdue: checklistItems.filter((i) => i.overdue).length,
+    },
+    treatment: { overdueActions: risksForPanel.reduce((n, r) => n + r.treatmentActions.filter((a) => a.overdue).length, 0) },
+    incidents: incidentsForSection.map((i) => ({
+      severity: i.severity,
+      closed: i.status === "CLOSED",
+      overdueActions: i.actions.filter((a) => a.overdue).length,
+      breachOverdue: i.breach.state === "OVERDUE",
+    })),
+    vendors: vendorsForSection.map((v) => ({
+      dueDiligenceOverdue: v.dueDiligenceOverdue,
+      renewalSoon: v.contractState === "RENEWAL_SOON",
+      contractExpired: v.contractState === "EXPIRED",
+    })),
+    conflicts: conflictsForSection.map((c) => ({ closed: c.status === "CLOSED" })),
+    training: {
+      expired: coursesForSection.reduce((n, c) => n + c.completions.filter((x) => x.state === "EXPIRED").length, 0),
+      expiringSoon: coursesForSection.reduce((n, c) => n + c.completions.filter((x) => x.state === "EXPIRING_SOON").length, 0),
+      completions: coursesForSection.reduce((n, c) => n + c.completions.length, 0),
+    },
+    privacy: activitiesForSection.map((a) => ({ dpiaRecommended: a.dpiaRecommended })),
+    // Only Admins ever get this field, so only they get an ethics tile (spec 022).
+    ...(isAdmin ? { ethics: casesForSection.map((c) => ({ closed: c.status === "CLOSED" })) } : {}),
+  };
+
   const hasProfile = Boolean(
     workspace.industry?.trim() && workspace.governanceCompanySize?.trim() && workspace.governanceJurisdiction?.trim()
   );
@@ -360,6 +525,14 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       />
 
       <div className="mb-4">
+        <GovernanceDashboard
+          basePath={`/workspaces/${workspaceId}/governance`}
+          tiles={buildDashboardTiles(dashboardInput)}
+          empty={isDashboardEmpty(dashboardInput)}
+        />
+      </div>
+
+      <div className="mb-4">
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <GovernanceProfileForm
             workspaceId={workspaceId}
@@ -377,6 +550,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           aspects={aspects.map((a) => ({ id: a.id, name: a.name }))}
           assessmentsByAspectId={assessmentsByAspectId}
           risks={risksForPanel}
+          riskLevel={riskLevel}
           allPolicies={allPolicies}
           people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
           roles={roles.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null }))}
@@ -404,6 +578,42 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           roles={roles.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null }))}
         />
       </div>
+
+      <div className="mb-6">
+        <GovernanceVendors
+          workspaceId={workspaceId}
+          vendors={vendorsForSection}
+          risks={risks.map((r) => ({ id: r.id, title: r.title }))}
+          people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+          roles={roles.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null }))}
+        />
+      </div>
+
+      <div className="mb-6">
+        <GovernanceConflicts
+          workspaceId={workspaceId}
+          conflicts={conflictsForSection}
+          people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+        />
+      </div>
+
+      <div className="mb-6">
+        <GovernanceTraining
+          workspaceId={workspaceId}
+          courses={coursesForSection}
+          people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+        />
+      </div>
+
+      {isAdmin && (
+        <div className="mb-6">
+          <GovernanceEthics
+            workspaceId={workspaceId}
+            cases={casesForSection}
+            people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+          />
+        </div>
+      )}
 
       <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
         <div className="h-px flex-1 bg-slate-200" />

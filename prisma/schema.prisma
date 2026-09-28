@@ -35,6 +35,7 @@ model User {
   policyVersionsAuthored GovernancePolicyVersion[]
   policiesApproved       GovernancePolicyDraft[]
   dpiasApproved          Dpia[]                    @relation("DpiaApprover")
+  ethicsCaseNotes        EthicsCaseNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -189,6 +190,13 @@ model Workspace {
   governancePolicies    GovernancePolicyDraft[]
   governanceIncidents   GovernanceIncident[]
   processingActivities  ProcessingActivity[]
+  conflictsOfInterest   ConflictOfInterest[]
+  trainingCourses       TrainingCourse[]
+  vendors               Vendor[]
+  ethicsCases           EthicsCase[]
+  /// Spec 022: the next case's number. Only ever goes up, so a reference is
+  /// never reused after a New case is deleted.
+  nextEthicsCaseNumber  Int                     @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -240,6 +248,7 @@ model Role {
   checklistItemsOwned       GovernanceChecklistItem[]       @relation("ChecklistItemOwnerRole")
   treatmentActionsOwned     GovernanceRiskTreatmentAction[] @relation("TreatmentActionOwnerRole")
   incidentActionsOwned      GovernanceIncidentAction[]      @relation("IncidentActionOwnerRole")
+  vendorsOwned              Vendor[]                        @relation("VendorOwnerRole")
   processingActivitiesOwned ProcessingActivity[]            @relation("ProcessingOwnerRole")
 
   createdAt DateTime @default(now())
@@ -267,6 +276,10 @@ model Person {
   checklistItemsOwned       GovernanceChecklistItem[]         @relation("ChecklistItemOwnerPerson")
   treatmentActionsOwned     GovernanceRiskTreatmentAction[]   @relation("TreatmentActionOwnerPerson")
   incidentActionsOwned      GovernanceIncidentAction[]        @relation("IncidentActionOwnerPerson")
+  vendorsOwned              Vendor[]                          @relation("VendorOwnerPerson")
+  ethicsCasesInvestigating  EthicsCase[]
+  conflictsOfInterest       ConflictOfInterest[]
+  trainingCompletions       TrainingCompletion[]
   processingActivitiesOwned ProcessingActivity[]              @relation("ProcessingOwnerPerson")
 
   createdAt DateTime @default(now())
@@ -1020,6 +1033,7 @@ model GovernanceRisk {
   ownerPerson      Person?                         @relation(fields: [ownerPersonId], references: [id])
   treatmentActions GovernanceRiskTreatmentAction[]
   incidentLinks    GovernanceIncidentRisk[]
+  vendorLinks      VendorRisk[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1239,4 +1253,213 @@ model ProcessingBreachLink {
   @@id([activityId, incidentId])
   @@index([incidentId])
   @@map("processing_breach_links")
+}
+
+enum ConflictStatus {
+  DECLARED
+  UNDER_REVIEW
+  MITIGATED
+  CLOSED
+}
+
+/// An interest declared by one person in the directory (spec 021). It is
+/// about that person, so it goes with them on a hard delete; archiving the
+/// person keeps it.
+model ConflictOfInterest {
+  id             String         @id @default(uuid())
+  workspaceId    String
+  personId       String
+  description    String         @db.Text
+  relatedParty   String
+  declaredOn     DateTime
+  status         ConflictStatus @default(DECLARED)
+  mitigationNote String?        @db.Text
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  person    Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([personId])
+  @@map("conflicts_of_interest")
+}
+
+/// Required training in a workspace (spec 021). A completion's expiry is
+/// derived from validityMonths (null: never expires), not stored.
+model TrainingCourse {
+  id             String @id @default(uuid())
+  workspaceId    String
+  name           String
+  validityMonths Int?
+
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  completions TrainingCompletion[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, name])
+  @@map("training_courses")
+}
+
+/// One person's completion of one course on a date (spec 021).
+model TrainingCompletion {
+  id          String   @id @default(uuid())
+  courseId    String
+  personId    String
+  completedOn DateTime
+
+  course TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  person Person         @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([courseId])
+  @@index([personId])
+  @@map("training_completions")
+}
+
+enum VendorCriticality {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DueDiligenceStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+/// An outside party the client depends on (spec 023). The next review date
+/// and the contract flags are derived, not stored.
+model Vendor {
+  id                 String             @id @default(uuid())
+  workspaceId        String
+  name               String
+  service            String             @db.Text
+  criticality        VendorCriticality
+  ownerRoleId        String?
+  ownerPersonId      String?
+  dueDiligenceStatus DueDiligenceStatus @default(NOT_STARTED)
+  lastDueDiligenceOn DateTime?
+  reviewCycleMonths  Int?
+  contractStartOn    DateTime?
+  contractEndOn      DateTime?
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerRole   Role?        @relation("VendorOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  ownerPerson Person?      @relation("VendorOwnerPerson", fields: [ownerPersonId], references: [id], onDelete: SetNull)
+  riskLinks   VendorRisk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@map("vendors")
+}
+
+/// A vendor linked to a risk it carries. Deleting either side removes only the link.
+model VendorRisk {
+  vendorId String
+  riskId   String
+  vendor   Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  risk     GovernanceRisk @relation(fields: [riskId], references: [id], onDelete: Cascade)
+
+  @@id([vendorId, riskId])
+  @@index([riskId])
+  @@map("vendor_risks")
+}
+
+enum EthicsChannel {
+  HOTLINE
+  EMAIL
+  IN_PERSON
+  MANAGER_REFERRAL
+  OTHER
+}
+
+enum EthicsCategory {
+  FRAUD
+  BRIBERY_CORRUPTION
+  HARASSMENT_DISCRIMINATION
+  HEALTH_SAFETY
+  CONFLICT_OF_INTEREST
+  DATA_MISUSE
+  OTHER
+}
+
+enum EthicsSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EthicsStatus {
+  NEW
+  TRIAGED
+  UNDER_INVESTIGATION
+  CLOSED
+}
+
+enum EthicsOutcome {
+  SUBSTANTIATED
+  PARTIALLY_SUBSTANTIATED
+  UNSUBSTANTIATED
+  REFERRED
+}
+
+/// A reported ethics or whistleblower concern (spec 022). Admin-only: read
+/// and written only through ADMIN-gated actions and never loaded for anyone
+/// else, never exported, never in the activity log.
+model EthicsCase {
+  id                   String         @id @default(uuid())
+  workspaceId          String
+  /// Shown as CASE-0007; from Workspace.nextEthicsCaseNumber.
+  number               Int
+  receivedOn           DateTime
+  channel              EthicsChannel
+  category             EthicsCategory
+  severity             EthicsSeverity
+  description          String         @db.Text
+  anonymous            Boolean
+  /// Only when the reporter isn't anonymous.
+  reporterName         String?
+  status               EthicsStatus   @default(NEW)
+  investigatorPersonId String?
+  /// Always stored — the person's name at assignment, or someone outside the
+  /// directory — so it survives the person going.
+  investigatorName     String?
+  outcome              EthicsOutcome?
+  closingSummary       String?        @db.Text
+  closedAt             DateTime?
+
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  investigator Person?          @relation(fields: [investigatorPersonId], references: [id], onDelete: SetNull)
+  notes        EthicsCaseNote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, number])
+  @@map("ethics_cases")
+}
+
+/// An append-only investigation note: there is no action that edits or deletes one.
+model EthicsCaseNote {
+  id           String @id @default(uuid())
+  caseId       String
+  body         String @db.Text
+  authorUserId String
+
+  ethicsCase EthicsCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  author     User       @relation(fields: [authorUserId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+  @@map("ethics_case_notes")
 }

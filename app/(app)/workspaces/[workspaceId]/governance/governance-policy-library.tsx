@@ -65,7 +65,7 @@ export function GovernancePolicyLibrary({
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
+    <section id="policy-library" className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-bold text-slate-900">Policy library</h2>
