@@ -69,6 +69,7 @@ export function GovernanceAssessmentPanel({
   assessmentsByAspectId,
   risks,
   allPolicies,
+  people,
 }: {
   workspaceId: string;
   hasProfile: boolean;
@@ -76,6 +77,7 @@ export function GovernanceAssessmentPanel({
   assessmentsByAspectId: Record<string, AssessmentT>;
   risks: RiskT[];
   allPolicies: PolicyT[];
+  people: { id: string; name: string }[];
 }) {
   const canEdit = useCanEdit();
   const [aspectId, setAspectId] = useState<string>(aspects[0]?.id ?? "");
@@ -785,6 +787,7 @@ export function GovernanceAssessmentPanel({
         key={openPolicy?.id ?? "none"}
         workspaceId={workspaceId}
         policy={openPolicy}
+        people={people}
         onClose={() => setOpenPolicyId(null)}
       />
     </div>

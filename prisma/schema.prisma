@@ -28,6 +28,13 @@ model User {
   firmMember  FirmMember?
   memberships Member[]
 
+  /// Policy Lifecycle (spec 018) — every policy version this user has saved,
+  /// and every policy they've approved. Users are never deleted in this app
+  /// (only Firm/Workspace membership records are), so these relations never
+  /// actually need to survive a User row disappearing.
+  policyVersionsAuthored GovernancePolicyVersion[]
+  policiesApproved       GovernancePolicyDraft[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -220,13 +227,13 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles      PersonRole[]
-  processSteps     ProcessStep[]    @relation("StepAssignedRole")
-  swimlaneSteps    ProcessStep[]    @relation("StepSwimlaneRole")
-  supportedSteps   ProcessStep[]    @relation("StepSupportingRoles")
-  raciAssignments  RaciAssignment[]
-  authorityRules   AuthorityRule[]  @relation("AuthorityRuleRole")
-  governanceRisks  GovernanceRisk[]
+  personRoles     PersonRole[]
+  processSteps    ProcessStep[]    @relation("StepAssignedRole")
+  swimlaneSteps   ProcessStep[]    @relation("StepSwimlaneRole")
+  supportedSteps  ProcessStep[]    @relation("StepSupportingRoles")
+  raciAssignments RaciAssignment[]
+  authorityRules  AuthorityRule[]  @relation("AuthorityRuleRole")
+  governanceRisks GovernanceRisk[]
 
   createdAt DateTime @default(now())
 
@@ -246,9 +253,10 @@ model Person {
   manager   Person?   @relation("PersonManager", fields: [managerId], references: [id])
   reports   Person[]  @relation("PersonManager")
 
-  personRoles     PersonRole[]
-  authorityRules  AuthorityRule[] @relation("AuthorityRulePerson")
-  governanceRisks GovernanceRisk[]
+  personRoles            PersonRole[]
+  authorityRules         AuthorityRule[]                   @relation("AuthorityRulePerson")
+  governanceRisks        GovernanceRisk[]
+  policyAcknowledgements GovernancePolicyAcknowledgement[]
 
   createdAt DateTime @default(now())
 
@@ -759,6 +767,20 @@ enum GovernanceItemStatus {
   DISMISSED
 }
 
+/// A policy's approval/publication state (spec 018) — independent of
+/// GovernanceItemStatus above, which tracks whether the *recommendation*
+/// behind a policy was acted on, not whether the *document* is reviewed and
+/// in force. DRAFT is the starting state for every policy, hand-written or
+/// AI-drafted. Editing an APPROVED or PUBLISHED policy resets it to DRAFT —
+/// see updatePolicyDraft.
+enum GovernancePolicyLifecycleStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  RETIRED
+}
+
 enum RiskLikelihood {
   LOW
   MEDIUM
@@ -821,12 +843,12 @@ model GovernanceAssessment {
   /// theirs — see governance-findings.ts's isHandManaged.
   summaryHandEdited Boolean @default(false)
 
-  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   /// Deleting an aspect deletes its own assessment with it (spec 017 FR-004)
   /// — but deleteGovernanceAspect must detach any linked policy draft first,
   /// or GovernancePolicyDraft.checklistItem's own Cascade would silently take
   /// it down too (research.md Decision 2 for spec 017).
-  aspect    GovernanceAspect         @relation(fields: [aspectId], references: [id], onDelete: Cascade)
+  aspect    GovernanceAspect          @relation(fields: [aspectId], references: [id], onDelete: Cascade)
   items     GovernanceChecklistItem[]
 
   createdAt DateTime @default(now())
@@ -876,14 +898,69 @@ model GovernancePolicyDraft {
   /// keeps a later assessment run from overwriting their words.
   handManaged Boolean @default(false)
 
-  workspace     Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  checklistItem GovernanceChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  /// Policy Lifecycle (spec 018) — independent of `status` above; see
+  /// GovernancePolicyLifecycleStatus's own doc comment.
+  lifecycleStatus  GovernancePolicyLifecycleStatus @default(DRAFT)
+  /// Set together, only by approvePolicyDraft; both null until then, and
+  /// cleared again the moment the policy is edited back to DRAFT.
+  approvedByUserId String?
+  approvedAt       DateTime?
+  /// Set by publishPolicyDraft — the given date, or "today" if omitted.
+  effectiveDate    DateTime?
+  /// Independent of lifecycleStatus — settable at any point (FR-011).
+  reviewDueDate    DateTime?
+
+  workspace        Workspace                         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  checklistItem    GovernanceChecklistItem?          @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  approvedByUser   User?                             @relation(fields: [approvedByUserId], references: [id])
+  versions         GovernancePolicyVersion[]
+  acknowledgements GovernancePolicyAcknowledgement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([workspaceId])
   @@map("governance_policy_drafts")
+}
+
+/// An immutable snapshot of a policy's title/body, one per save, sequential
+/// from 1 (spec 018) — a policy always has at least one version, created
+/// alongside the policy itself. Full history, not just "last edited by."
+model GovernancePolicyVersion {
+  id              String @id @default(uuid())
+  policyId        String
+  versionNumber   Int
+  title           String
+  body            String @db.Text
+  createdByUserId String
+
+  policy        GovernancePolicyDraft @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  createdByUser User                  @relation(fields: [createdByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([policyId, versionNumber])
+  @@index([policyId])
+  @@map("governance_policy_versions")
+}
+
+/// One row per (policy, Person) a consultant has marked as having
+/// acknowledged a PUBLISHED policy, on that person's behalf — People in
+/// this app's directory have no login of their own, so this is never
+/// self-service (spec 018).
+model GovernancePolicyAcknowledgement {
+  id       String @id @default(uuid())
+  policyId String
+  personId String
+
+  policy GovernancePolicyDraft @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  person Person                @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  acknowledgedAt DateTime @default(now())
+
+  @@unique([policyId, personId])
+  @@index([policyId])
+  @@map("governance_policy_acknowledgements")
 }
 
 /// A tracked risk — from an assessment (`sourceItemId` set) or added by hand

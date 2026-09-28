@@ -9,9 +9,15 @@ import { GovernanceAssessmentPanel, type AssessmentT, type ChecklistItemT } from
 import type { PolicyT } from "./governance-policy-drawer";
 import type { RiskT } from "./governance-risk-register";
 import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
+import { isPolicyOverdueForReview } from "@/lib/domain/policy-lifecycle";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/** ISO date-only (YYYY-MM-DD), for round-tripping through an `<input type="date">`. */
+function formatDateOnly(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /**
@@ -44,7 +50,12 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
     // item to be found through, and would be invisible if gathered that way.
     prisma.governancePolicyDraft.findMany({
       where: { workspaceId },
-      include: { checklistItem: { select: { assessmentId: true } } },
+      include: {
+        checklistItem: { select: { assessmentId: true } },
+        approvedByUser: { select: { name: true, email: true } },
+        versions: { orderBy: { versionNumber: "desc" }, include: { createdByUser: { select: { name: true, email: true } } } },
+        acknowledgements: { include: { person: { select: { id: true, name: true } } } },
+      },
       orderBy: { updatedAt: "desc" },
     }),
   ]);
@@ -60,6 +71,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
   // Every policy in the workspace, drafted or hand-written, each labelled with
   // the aspect whose assessment produced it — or null when nobody's
   // assessment did, which the library reads as "Added manually".
+  const now = new Date();
   const allPolicies: PolicyT[] = policies.map((policy) => {
     const assessmentId = policy.checklistItem?.assessmentId;
     const aspectId = assessmentId ? aspectIdByAssessmentId.get(assessmentId) : undefined;
@@ -71,6 +83,24 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       focusAreaLabel: aspectId ? (aspectNameById.get(aspectId) ?? null) : null,
       focusArea: aspectId ?? null,
       updatedAt: formatDate(policy.updatedAt),
+      lifecycleStatus: policy.lifecycleStatus,
+      approvedByUserName: policy.approvedByUser ? (policy.approvedByUser.name ?? policy.approvedByUser.email) : null,
+      approvedAt: policy.approvedAt ? formatDate(policy.approvedAt) : null,
+      effectiveDate: policy.effectiveDate ? formatDate(policy.effectiveDate) : null,
+      reviewDueDate: policy.reviewDueDate ? formatDateOnly(policy.reviewDueDate) : null,
+      needsReview: isPolicyOverdueForReview(policy.lifecycleStatus, policy.reviewDueDate, now),
+      versions: policy.versions.map((v) => ({
+        versionNumber: v.versionNumber,
+        title: v.title,
+        body: v.body,
+        authorName: v.createdByUser.name ?? v.createdByUser.email,
+        createdAt: formatDate(v.createdAt),
+      })),
+      acknowledgements: policy.acknowledgements.map((a) => ({
+        personId: a.personId,
+        personName: a.person.name,
+        acknowledgedAt: formatDate(a.acknowledgedAt),
+      })),
     };
   });
   const policyById = new Map(allPolicies.map((p) => [p.id, p]));
@@ -203,6 +233,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           assessmentsByAspectId={assessmentsByAspectId}
           risks={risksForPanel}
           allPolicies={allPolicies}
+          people={people.map((p) => ({ id: p.id, name: p.name }))}
         />
       </div>
 

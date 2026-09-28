@@ -161,8 +161,19 @@ export async function generateGovernanceAssessment(
       const policyTitle = item.policyTitle ? normalizeFindingTitle(item.policyTitle) : null;
       const policy = policyTitle ? policyByTitle.get(policyTitle) : undefined;
       if (policy) {
-        await tx.governancePolicyDraft.create({
+        const createdPolicy = await tx.governancePolicyDraft.create({
           data: { workspaceId, checklistItemId: created.id, title: policy.title, body: policy.body },
+        });
+        // Version 1 — attributed to whoever ran the regenerate, since an
+        // AI-drafted policy has no other human author (spec 018).
+        await tx.governancePolicyVersion.create({
+          data: {
+            policyId: createdPolicy.id,
+            versionNumber: 1,
+            title: createdPolicy.title,
+            body: createdPolicy.body,
+            createdByUserId: access.data.userId,
+          },
         });
       }
 
@@ -470,14 +481,38 @@ export async function updatePolicyDraft(
   const policy = await prisma.governancePolicyDraft.findUnique({ where: { id: parsed.data.policyId } });
   if (!policy || policy.workspaceId !== parsed.data.workspaceId) return notFound();
 
-  await prisma.governancePolicyDraft.update({
-    where: { id: parsed.data.policyId },
-    data: {
-      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
-      body: parsed.data.body,
-      status: "EDITED",
-      handManaged: true,
-    },
+  const newTitle = parsed.data.title !== undefined ? parsed.data.title : policy.title;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.governancePolicyDraft.update({
+      where: { id: parsed.data.policyId },
+      data: {
+        title: newTitle,
+        body: parsed.data.body,
+        status: "EDITED",
+        handManaged: true,
+        // Policy Lifecycle (spec 018) — an Approved/Published policy no
+        // longer matches what was reviewed the moment its content changes,
+        // so it drops back to Draft and must be re-approved (FR-008).
+        ...(policy.lifecycleStatus === "APPROVED" || policy.lifecycleStatus === "PUBLISHED"
+          ? { lifecycleStatus: "DRAFT" as const, approvedByUserId: null, approvedAt: null }
+          : {}),
+      },
+    });
+
+    const latest = await tx.governancePolicyVersion.findFirst({
+      where: { policyId: parsed.data.policyId },
+      orderBy: { versionNumber: "desc" },
+    });
+    await tx.governancePolicyVersion.create({
+      data: {
+        policyId: parsed.data.policyId,
+        versionNumber: (latest?.versionNumber ?? 0) + 1,
+        title: newTitle,
+        body: parsed.data.body,
+        createdByUserId: access.data.userId,
+      },
+    });
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
@@ -505,14 +540,26 @@ export async function addGovernancePolicy(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const policy = await prisma.governancePolicyDraft.create({
-    data: {
-      workspaceId: parsed.data.workspaceId,
-      title: parsed.data.title,
-      body: parsed.data.body,
-      status: "EDITED",
-      handManaged: true,
-    },
+  const policy = await prisma.$transaction(async (tx) => {
+    const created = await tx.governancePolicyDraft.create({
+      data: {
+        workspaceId: parsed.data.workspaceId,
+        title: parsed.data.title,
+        body: parsed.data.body,
+        status: "EDITED",
+        handManaged: true,
+      },
+    });
+    await tx.governancePolicyVersion.create({
+      data: {
+        policyId: created.id,
+        versionNumber: 1,
+        title: created.title,
+        body: created.body,
+        createdByUserId: access.data.userId,
+      },
+    });
+    return created;
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
@@ -538,6 +585,262 @@ export async function deleteGovernancePolicy(
   if (!policy || policy.workspaceId !== parsed.data.workspaceId) return notFound();
 
   await prisma.governancePolicyDraft.delete({ where: { id: parsed.data.policyId } });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+const LIFECYCLE_STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Draft",
+  IN_REVIEW: "In Review",
+  APPROVED: "Approved",
+  PUBLISHED: "Published",
+  RETIRED: "Retired",
+};
+
+/** Looks up a workspace's policy by id, refusing one that doesn't exist or belongs elsewhere. */
+async function findOwnedPolicy(workspaceId: string, policyId: string) {
+  const policy = await prisma.governancePolicyDraft.findUnique({ where: { id: policyId } });
+  if (!policy || policy.workspaceId !== workspaceId) return null;
+  return policy;
+}
+
+/**
+ * Policy Lifecycle (spec 018): a policy moves Draft → In Review → Approved →
+ * Published → Retired. Submitting for review is EDITOR-level, matching every
+ * other content edit in this file; approving, publishing, and retiring are
+ * ADMIN-only, since those are the trust-bearing transitions (FR-016/FR-017).
+ */
+const submitForReviewSchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+});
+
+export async function submitPolicyForReview(
+  input: z.infer<typeof submitForReviewSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = submitForReviewSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const policy = await findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId);
+  if (!policy) return notFound();
+
+  if (policy.lifecycleStatus !== "DRAFT") {
+    return validationError(
+      `Only a Draft policy can be submitted for review — this one is ${LIFECYCLE_STATUS_LABEL[policy.lifecycleStatus] ?? policy.lifecycleStatus}.`
+    );
+  }
+
+  await prisma.governancePolicyDraft.update({
+    where: { id: parsed.data.policyId },
+    data: { lifecycleStatus: "IN_REVIEW" },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+const approvePolicySchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+});
+
+export async function approvePolicyDraft(
+  input: z.infer<typeof approvePolicySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = approvePolicySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "ADMIN");
+  if (!access.ok) return access;
+
+  const policy = await findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId);
+  if (!policy) return notFound();
+
+  if (policy.lifecycleStatus !== "IN_REVIEW") {
+    return validationError(
+      `Only a policy In Review can be approved — this one is ${LIFECYCLE_STATUS_LABEL[policy.lifecycleStatus] ?? policy.lifecycleStatus}.`
+    );
+  }
+
+  await prisma.governancePolicyDraft.update({
+    where: { id: parsed.data.policyId },
+    data: { lifecycleStatus: "APPROVED", approvedByUserId: access.data.userId, approvedAt: new Date() },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+const publishPolicySchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+  effectiveDate: z.string().min(1).optional(),
+});
+
+export async function publishPolicyDraft(
+  input: z.infer<typeof publishPolicySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = publishPolicySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "ADMIN");
+  if (!access.ok) return access;
+
+  const policy = await findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId);
+  if (!policy) return notFound();
+
+  if (policy.lifecycleStatus !== "APPROVED") {
+    return validationError(
+      `Only an Approved policy can be published — this one is ${LIFECYCLE_STATUS_LABEL[policy.lifecycleStatus] ?? policy.lifecycleStatus}.`
+    );
+  }
+
+  const effectiveDate = parsed.data.effectiveDate ? new Date(parsed.data.effectiveDate) : new Date();
+
+  await prisma.governancePolicyDraft.update({
+    where: { id: parsed.data.policyId },
+    data: { lifecycleStatus: "PUBLISHED", effectiveDate },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+const retirePolicySchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+});
+
+export async function retirePolicyDraft(
+  input: z.infer<typeof retirePolicySchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = retirePolicySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "ADMIN");
+  if (!access.ok) return access;
+
+  const policy = await findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId);
+  if (!policy) return notFound();
+
+  if (policy.lifecycleStatus !== "PUBLISHED") {
+    return validationError(
+      `Only a Published policy can be retired — this one is ${LIFECYCLE_STATUS_LABEL[policy.lifecycleStatus] ?? policy.lifecycleStatus}.`
+    );
+  }
+
+  await prisma.governancePolicyDraft.update({
+    where: { id: parsed.data.policyId },
+    data: { lifecycleStatus: "RETIRED" },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+/**
+ * Sets or clears a policy's review-due date (FR-011), independent of its
+ * lifecycleStatus — a reviewer can flag "come back to this" at any point,
+ * not only once it's Published.
+ */
+const setReviewDueDateSchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+  reviewDueDate: z.string().min(1).nullable(),
+});
+
+export async function setPolicyReviewDueDate(
+  input: z.infer<typeof setReviewDueDateSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = setReviewDueDateSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const policy = await findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId);
+  if (!policy) return notFound();
+
+  await prisma.governancePolicyDraft.update({
+    where: { id: parsed.data.policyId },
+    data: { reviewDueDate: parsed.data.reviewDueDate ? new Date(parsed.data.reviewDueDate) : null },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+/**
+ * Marks/unmarks a Person from the workspace's directory as having
+ * acknowledged a PUBLISHED (or RETIRED — was Published, still valid history)
+ * policy, on their behalf — People have no login of their own, so this is
+ * never self-service (spec 018 FR-013/FR-014).
+ */
+const markAcknowledgementSchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+  personId: z.string().min(1),
+});
+
+export async function markPolicyAcknowledgement(
+  input: z.infer<typeof markAcknowledgementSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = markAcknowledgementSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const [policy, person] = await Promise.all([
+    findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId),
+    prisma.person.findUnique({ where: { id: parsed.data.personId } }),
+  ]);
+  if (!policy) return notFound();
+  if (!person || person.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  if (policy.lifecycleStatus !== "PUBLISHED" && policy.lifecycleStatus !== "RETIRED") {
+    return validationError("Only a policy that has been published can be marked as acknowledged.");
+  }
+
+  await prisma.governancePolicyAcknowledgement.upsert({
+    where: { policyId_personId: { policyId: parsed.data.policyId, personId: parsed.data.personId } },
+    update: {},
+    create: { policyId: parsed.data.policyId, personId: parsed.data.personId },
+  });
+
+  revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
+  return ok({ id: parsed.data.policyId });
+}
+
+const unmarkAcknowledgementSchema = z.object({
+  workspaceId: z.string().min(1),
+  policyId: z.string().min(1),
+  personId: z.string().min(1),
+});
+
+export async function unmarkPolicyAcknowledgement(
+  input: z.infer<typeof unmarkAcknowledgementSchema>
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = unmarkAcknowledgementSchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
+  if (!access.ok) return access;
+
+  const [policy, person] = await Promise.all([
+    findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId),
+    prisma.person.findUnique({ where: { id: parsed.data.personId } }),
+  ]);
+  if (!policy) return notFound();
+  if (!person || person.workspaceId !== parsed.data.workspaceId) return notFound();
+
+  await prisma.governancePolicyAcknowledgement.deleteMany({
+    where: { policyId: parsed.data.policyId, personId: parsed.data.personId },
+  });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });

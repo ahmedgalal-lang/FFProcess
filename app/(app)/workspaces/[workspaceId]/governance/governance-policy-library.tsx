@@ -12,6 +12,21 @@ const STATUS_STYLE: Record<string, string> = {
   EDITED: "bg-indigo-50 text-indigo-700 border-indigo-200",
 };
 
+const LIFECYCLE_LABEL: Record<string, string> = {
+  DRAFT: "Draft",
+  IN_REVIEW: "In Review",
+  APPROVED: "Approved",
+  PUBLISHED: "Published",
+  RETIRED: "Retired",
+};
+const LIFECYCLE_STYLE: Record<string, string> = {
+  DRAFT: "bg-slate-100 text-slate-600 border-slate-200",
+  IN_REVIEW: "bg-amber-50 text-amber-700 border-amber-200",
+  APPROVED: "bg-blue-50 text-blue-700 border-blue-200",
+  PUBLISHED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  RETIRED: "bg-slate-100 text-slate-500 border-slate-200",
+};
+
 /**
  * Every policy across every focus area, in one place (FR-013) — not just the
  * ones reachable by clicking through a checklist.
@@ -127,6 +142,16 @@ export function GovernancePolicyLibrary({
                 <span className="block text-[11px] text-slate-500">
                   {policy.focusAreaLabel ?? "Added manually"} · updated {policy.updatedAt}
                 </span>
+              </span>
+              {policy.needsReview && (
+                <span className="flex-none rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-red-700">
+                  Needs review
+                </span>
+              )}
+              <span
+                className={`flex-none rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase ${LIFECYCLE_STYLE[policy.lifecycleStatus]}`}
+              >
+                {LIFECYCLE_LABEL[policy.lifecycleStatus]}
               </span>
               <span
                 className={`flex-none rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase ${STATUS_STYLE[policy.status] ?? STATUS_STYLE["OPEN"]}`}

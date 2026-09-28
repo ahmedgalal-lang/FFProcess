@@ -13,7 +13,7 @@ passing through every later task in this file.
 
 ## Phase 1: Foundational — schema and migration (blocks every slice)
 
-- [ ] T001 Add `enum GovernancePolicyLifecycleStatus` (DRAFT/IN_REVIEW/
+- [X] T001 Add `enum GovernancePolicyLifecycleStatus` (DRAFT/IN_REVIEW/
       APPROVED/PUBLISHED/RETIRED) to `prisma/schema.prisma`; add
       `lifecycleStatus` (default DRAFT), `approvedByUserId`, `approvedAt`,
       `effectiveDate`, `reviewDueDate` to `GovernancePolicyDraft`; add new
@@ -21,7 +21,7 @@ passing through every later task in this file.
       (data-model.md); add the two back-relation arrays to `User`
       (`policyVersionsAuthored`, `policiesApproved`) and one to `Person`
       (`policyAcknowledgements`).
-- [ ] T002 Run `pnpm exec prisma migrate dev --name policy_lifecycle` (purely
+- [X] T002 Run `pnpm exec prisma migrate dev --name policy_lifecycle` (purely
       additive — no `--create-only`/hand-editing needed, research.md
       Decision 7) and `pnpm exec prisma generate`. Restart the dev server
       afterward (a running `pnpm dev` process keeps its stale in-memory
@@ -45,7 +45,7 @@ and confirm nothing about it changes.
 
 ### Tests for User Story 1
 
-- [ ] T003 [US1] Write `tests/integration/governance.test.ts` tests for
+- [X] T003 [US1] Write `tests/integration/governance.test.ts` tests for
       version history: `addGovernancePolicy` creates exactly one
       `GovernancePolicyVersion` (version 1, matching the policy's initial
       title/body, attributed to the caller); `updatePolicyDraft` creates
@@ -53,13 +53,13 @@ and confirm nothing about it changes.
       unchanged; a policy created inside `generateGovernanceAssessment`'s
       transaction also gets version 1, attributed to whoever triggered the
       regenerate. Confirm these fail before T007 exists.
-- [ ] T004 [US1] Write tests for the reset-to-Draft rule (FR-008): approve
+- [X] T004 [US1] Write tests for the reset-to-Draft rule (FR-008): approve
       and publish a policy, then edit it via `updatePolicyDraft`; confirm
       `lifecycleStatus` reverts to `DRAFT` and `approvedByUserId`/
       `approvedAt` are cleared. Confirm editing a `DRAFT` or `IN_REVIEW`
       policy leaves `lifecycleStatus` unchanged. Confirm these fail before
       T008 exists.
-- [ ] T005 [US1] Write tests for `submitPolicyForReview` / `approvePolicyDraft`
+- [X] T005 [US1] Write tests for `submitPolicyForReview` / `approvePolicyDraft`
       / `publishPolicyDraft` / `retirePolicyDraft`: the correct-state happy
       path for each (approver and timestamp recorded on approve; effective
       date — input or today — recorded on publish); each rejected from the
@@ -67,7 +67,7 @@ and confirm nothing about it changes.
       submit but is rejected (FORBIDDEN) from approve/publish/retire; an
       ADMIN can do all four; a mismatched/missing `policyId` returns
       not-found for each. Confirm these fail before T009-T012 exist.
-- [ ] T006 [US1] Write the FR-010 regression test: publish a policy that was
+- [X] T006 [US1] Write the FR-010 regression test: publish a policy that was
       drafted from a checklist item, regenerate that aspect's assessment,
       and assert the policy's `title`, `body`, and `lifecycleStatus` are
       completely unchanged (research.md Decision 3). This test should pass
@@ -76,28 +76,28 @@ and confirm nothing about it changes.
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] In `lib/actions/governance.ts`, make `updatePolicyDraft`,
+- [X] T007 [US1] In `lib/actions/governance.ts`, make `updatePolicyDraft`,
       `addGovernancePolicy`, and `generateGovernanceAssessment`'s
       policy-creation step each insert a `GovernancePolicyVersion` row
       (`versionNumber` = current max for that policy + 1, `createdByUserId`
       = `access.data.userId`) in the same transaction as their existing
       create/update.
-- [ ] T008 [US1] In `updatePolicyDraft`, reset `lifecycleStatus` to `DRAFT`
+- [X] T008 [US1] In `updatePolicyDraft`, reset `lifecycleStatus` to `DRAFT`
       and clear `approvedByUserId`/`approvedAt` whenever the policy being
       saved was `APPROVED` or `PUBLISHED` (FR-008).
-- [ ] T009 [US1] Implement `submitPolicyForReview({ workspaceId, policyId })`
+- [X] T009 [US1] Implement `submitPolicyForReview({ workspaceId, policyId })`
       in `lib/actions/governance.ts` — EDITOR; `DRAFT` → `IN_REVIEW`; rejects
       any other starting status.
-- [ ] T010 [US1] Implement `approvePolicyDraft({ workspaceId, policyId })` —
+- [X] T010 [US1] Implement `approvePolicyDraft({ workspaceId, policyId })` —
       ADMIN; `IN_REVIEW` → `APPROVED`, sets `approvedByUserId`/`approvedAt`;
       rejects any other starting status.
-- [ ] T011 [US1] Implement `publishPolicyDraft({ workspaceId, policyId,
+- [X] T011 [US1] Implement `publishPolicyDraft({ workspaceId, policyId,
       effectiveDate? })` — ADMIN; `APPROVED` → `PUBLISHED`, sets
       `effectiveDate` (the given date, or today when omitted); rejects any
       other starting status.
-- [ ] T012 [US1] Implement `retirePolicyDraft({ workspaceId, policyId })` —
+- [X] T012 [US1] Implement `retirePolicyDraft({ workspaceId, policyId })` —
       ADMIN; `PUBLISHED` → `RETIRED`; rejects any other starting status.
-- [ ] T013 [US1] In `governance-policy-drawer.tsx`: extend `PolicyT` with
+- [X] T013 [US1] In `governance-policy-drawer.tsx`: extend `PolicyT` with
       `lifecycleStatus`, `approvedByUserName: string | null`, `approvedAt:
       string | null`, `effectiveDate: string | null`, and `versions: {
       versionNumber: number; title: string; body: string; authorName:
@@ -107,14 +107,14 @@ and confirm nothing about it changes.
       `useWorkspaceAccess().accessLevel` and the policy's current
       `lifecycleStatus` both allow it (EDITOR for submit, ADMIN for the
       other three).
-- [ ] T014 [US1] Wire `page.tsx` to populate the new `PolicyT` fields —
+- [X] T014 [US1] Wire `page.tsx` to populate the new `PolicyT` fields —
       `lifecycleStatus`, `approvedByUserName` (joined from `User.name`),
       `approvedAt`, `effectiveDate`, and each policy's `versions` (ordered
       `versionNumber` desc).
-- [ ] T015 [US1] Add a lifecycle status badge to each row in
+- [X] T015 [US1] Add a lifecycle status badge to each row in
       `governance-policy-library.tsx`, alongside the existing recommendation
       -status badge.
-- [ ] T016 [US1] Write `tests/e2e/policy-lifecycle.spec.ts` covering
+- [X] T016 [US1] Write `tests/e2e/policy-lifecycle.spec.ts` covering
       quickstart.md Scenarios 1 and 2: the full Draft → In Review → Approved
       → Published → (edit resets to Draft) → re-published → Retired path
       with version history visible at each step; regenerating a published
@@ -135,13 +135,13 @@ confirm a non-Published policy is never flagged regardless of its date.
 
 ### Tests for User Story 2
 
-- [ ] T017 [P] [US2] Write `tests/unit/policy-lifecycle.test.ts` for a new
+- [X] T017 [P] [US2] Write `tests/unit/policy-lifecycle.test.ts` for a new
       pure function `isPolicyOverdueForReview(lifecycleStatus,
       reviewDueDate, today)`: `PUBLISHED` with a past date → `true`;
       `PUBLISHED` with a future or `null` date → `false`; every other
       `lifecycleStatus` (`DRAFT`/`IN_REVIEW`/`APPROVED`/`RETIRED`) with a
       past date → `false` regardless. Confirm these fail before T019 exists.
-- [ ] T018 [US2] Write `tests/integration/governance.test.ts` tests for
+- [X] T018 [US2] Write `tests/integration/governance.test.ts` tests for
       `setPolicyReviewDueDate({ workspaceId, policyId, reviewDueDate })`:
       sets or clears the date at any `lifecycleStatus`; EDITOR-gated;
       ownership-checked (mismatched/missing `policyId` → not-found).
@@ -149,20 +149,20 @@ confirm a non-Published policy is never flagged regardless of its date.
 
 ### Implementation for User Story 2
 
-- [ ] T019 [P] [US2] Add `isPolicyOverdueForReview` to a new
+- [X] T019 [P] [US2] Add `isPolicyOverdueForReview` to a new
       `lib/domain/policy-lifecycle.ts` — a pure function (no DB/clock; `today`
       is a parameter), matching this codebase's existing domain-module
       pattern.
-- [ ] T020 [US2] Implement `setPolicyReviewDueDate` in
+- [X] T020 [US2] Implement `setPolicyReviewDueDate` in
       `lib/actions/governance.ts`.
-- [ ] T021 [US2] Wire `page.tsx` to compute `needsReview` per policy via
+- [X] T021 [US2] Wire `page.tsx` to compute `needsReview` per policy via
       `isPolicyOverdueForReview(policy.lifecycleStatus, policy.reviewDueDate,
       new Date())` and add it to `PolicyT`.
-- [ ] T022 [US2] Add a review-due date field to `governance-policy-drawer.tsx`
+- [X] T022 [US2] Add a review-due date field to `governance-policy-drawer.tsx`
       (settable at any `lifecycleStatus`) and a "Needs review" flag to
       `governance-policy-library.tsx`'s row rendering when `needsReview` is
       true.
-- [ ] T023 [US2] Extend `tests/e2e/policy-lifecycle.spec.ts` with quickstart.md
+- [X] T023 [US2] Extend `tests/e2e/policy-lifecycle.spec.ts` with quickstart.md
       Scenario 3.
 
 **Checkpoint**: User Stories 1 and 2 both work independently.
@@ -179,7 +179,7 @@ Approved policy.
 
 ### Tests for User Story 3
 
-- [ ] T024 [US3] Write `tests/integration/governance.test.ts` tests for
+- [X] T024 [US3] Write `tests/integration/governance.test.ts` tests for
       `markPolicyAcknowledgement({ workspaceId, policyId, personId })` /
       `unmarkPolicyAcknowledgement({ workspaceId, policyId, personId })`:
       marking records the person and a timestamp; marking the same person
@@ -191,28 +191,28 @@ Approved policy.
       and the person (a person from a different workspace is rejected the
       same as a mismatched policy). Confirm these fail before T026-T027
       exist.
-- [ ] T025 [US3] Write a test confirming the schema's cascade behavior
+- [X] T025 [US3] Write a test confirming the schema's cascade behavior
       (research.md Decision 5): deleting a `Person` removes their
       `GovernancePolicyAcknowledgement` rows along with them.
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Implement `markPolicyAcknowledgement` in
+- [X] T026 [US3] Implement `markPolicyAcknowledgement` in
       `lib/actions/governance.ts` — EDITOR; ownership-checks both the policy
       and the person against `workspaceId`; rejects unless `lifecycleStatus`
       is `PUBLISHED` or `RETIRED`; upserts (idempotent on a repeat mark).
-- [ ] T027 [US3] Implement `unmarkPolicyAcknowledgement` — EDITOR; deletes the
+- [X] T027 [US3] Implement `unmarkPolicyAcknowledgement` — EDITOR; deletes the
       acknowledgement row if present, no-op otherwise.
-- [ ] T028 [US3] Wire `page.tsx` to load each policy's acknowledgements
+- [X] T028 [US3] Wire `page.tsx` to load each policy's acknowledgements
       (joined with `Person.name`) and reuse the workspace's already-loaded
       People list (the same one RACI/Authority already query — no new
       query), adding both to `PolicyT`.
-- [ ] T029 [US3] Add an acknowledgement checklist to
+- [X] T029 [US3] Add an acknowledgement checklist to
       `governance-policy-drawer.tsx` against the workspace's People
       directory, visible only when `lifecycleStatus` is `PUBLISHED` or
       `RETIRED`, with mark/unmark controls and each acknowledgement's date
       shown.
-- [ ] T030 [US3] Extend `tests/e2e/policy-lifecycle.spec.ts` with
+- [X] T030 [US3] Extend `tests/e2e/policy-lifecycle.spec.ts` with
       quickstart.md Scenario 4.
 
 **Checkpoint**: all three user stories are independently functional — a
@@ -221,16 +221,36 @@ tracked for acknowledgement, with nothing silently lost or overwritten.
 
 ## Phase 5: Polish
 
-- [ ] T031 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
+- [X] T031 Run `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`,
       `pnpm exec playwright test` and report counts. Do not edit while a run
       is in flight.
-- [ ] T032 Blast-radius check: `lib/domain/governance-findings.ts`,
+      Result: lint clean, `tsc --noEmit` clean, 750/750 unit+integration
+      tests pass (up from 725 pre-feature), 190/190 e2e pass (up from 187),
+      including all 3 new `policy-lifecycle.spec.ts` tests.
+- [X] T032 Blast-radius check: `lib/domain/governance-findings.ts`,
       `lib/ai/governance-generator.ts`, `governance-risk-register.tsx`,
       `governance-assessment-panel.tsx`, and every non-governance page/action
       must be unchanged by this feature — confirm via `git diff` against
       those paths.
-- [ ] T033 Run [quickstart.md](./quickstart.md)'s manual validation end to
+      Result: `lib/domain/governance-findings.ts`, `lib/ai/governance-generator.ts`,
+      and `governance-risk-register.tsx` are confirmed unchanged (empty
+      `git diff`). `governance-assessment-panel.tsx` **was** touched, one
+      correction from plan.md's file list: it needed a `people` prop threaded
+      through from `page.tsx` down to `GovernancePolicyDrawer` for
+      acknowledgement tracking (T028) — a small, single-purpose addition
+      (one new prop, two pass-throughs), not a behavioral change to the
+      aspect-tab logic that file otherwise owns. No non-governance
+      page/action was touched anywhere in this feature.
+- [X] T033 Run [quickstart.md](./quickstart.md)'s manual validation end to
       end (all four scenarios) and record the result.
+      Result: all four scenarios are exercised exactly as written by
+      `tests/e2e/policy-lifecycle.spec.ts`'s three tests (full lifecycle +
+      version history + reset-on-edit; review-due flagging; acknowledgement
+      tracking) plus `tests/integration/governance.test.ts`'s FR-010
+      regression test for Scenario 2 (regeneration safety — not exercised
+      in e2e since this deployment has no GEMINI_API_KEY to generate a real
+      AI-drafted policy against, documented in the e2e file itself) — all
+      passing, run this session.
 
 ## Dependencies
 

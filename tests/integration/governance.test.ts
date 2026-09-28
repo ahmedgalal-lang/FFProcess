@@ -29,6 +29,13 @@ const {
   addGovernanceAspect,
   renameGovernanceAspect,
   deleteGovernanceAspect,
+  submitPolicyForReview,
+  approvePolicyDraft,
+  publishPolicyDraft,
+  retirePolicyDraft,
+  setPolicyReviewDueDate,
+  markPolicyAcknowledgement,
+  unmarkPolicyAcknowledgement,
 } = await import("@/lib/actions/governance");
 const { prisma } = await import("@/lib/db/client");
 
@@ -924,5 +931,466 @@ describe("Governance aspects (add / rename / delete)", () => {
     const remove = await deleteGovernanceAspect({ workspaceId: fixture.workspace.id, aspectId: aspect.id });
     expect(remove.ok).toBe(false);
     if (!remove.ok) expect(remove.error).toBe("FORBIDDEN");
+  });
+});
+
+describe("Policy Lifecycle — version history and approval workflow (spec 018)", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let aspectId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    mockRunGovernanceAssessment.mockReset();
+    aspectId = (await createGovernanceAspect(fixture.workspace.id, "Ethics Policy")).id;
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  it("creates exactly one version at creation, and a new one on every edit, leaving prior versions untouched", async () => {
+    const added = await addGovernancePolicy({
+      workspaceId: fixture.workspace.id,
+      title: "Data Retention Policy",
+      body: "First cut.",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+
+    const afterCreate = await prisma.governancePolicyVersion.findMany({
+      where: { policyId: added.data.id },
+      orderBy: { versionNumber: "asc" },
+    });
+    expect(afterCreate).toHaveLength(1);
+    expect(afterCreate[0].versionNumber).toBe(1);
+    expect(afterCreate[0].title).toBe("Data Retention Policy");
+    expect(afterCreate[0].body).toBe("First cut.");
+    expect(afterCreate[0].createdByUserId).toBe(fixture.adminUser.id);
+
+    const edited = await updatePolicyDraft({
+      workspaceId: fixture.workspace.id,
+      policyId: added.data.id,
+      body: "A fuller second cut.",
+    });
+    expect(edited.ok).toBe(true);
+
+    const afterEdit = await prisma.governancePolicyVersion.findMany({
+      where: { policyId: added.data.id },
+      orderBy: { versionNumber: "asc" },
+    });
+    expect(afterEdit).toHaveLength(2);
+    expect(afterEdit[0].body).toBe("First cut."); // version 1 unchanged
+    expect(afterEdit[1].versionNumber).toBe(2);
+    expect(afterEdit[1].body).toBe("A fuller second cut.");
+  });
+
+  it("also creates version 1 for a policy drafted by an assessment, attributed to whoever ran it", async () => {
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+    const generated = await generateGovernanceAssessment({ workspaceId: fixture.workspace.id, aspectId });
+    expect(generated.ok).toBe(true);
+    if (!generated.ok) return;
+
+    const policy = await prisma.governancePolicyDraft.findFirstOrThrow({
+      where: { checklistItem: { assessmentId: generated.data.assessmentId } },
+    });
+    const versions = await prisma.governancePolicyVersion.findMany({ where: { policyId: policy.id } });
+    expect(versions).toHaveLength(1);
+    expect(versions[0].versionNumber).toBe(1);
+    expect(versions[0].createdByUserId).toBe(fixture.adminUser.id);
+  });
+
+  it("moves a policy through submit, approve, publish, and retire, recording the approver and effective date", async () => {
+    const added = await addGovernancePolicy({
+      workspaceId: fixture.workspace.id,
+      title: "Code of Conduct",
+      body: "1. Purpose\n2. Scope",
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+    const policyId = added.data.id;
+
+    const submitted = await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId });
+    expect(submitted.ok).toBe(true);
+    const afterSubmit = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policyId } });
+    expect(afterSubmit.lifecycleStatus).toBe("IN_REVIEW");
+
+    const approved = await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(approved.ok).toBe(true);
+    const afterApprove = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policyId } });
+    expect(afterApprove.lifecycleStatus).toBe("APPROVED");
+    expect(afterApprove.approvedByUserId).toBe(fixture.adminUser.id);
+    expect(afterApprove.approvedAt).not.toBeNull();
+
+    const published = await publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(published.ok).toBe(true);
+    const afterPublish = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policyId } });
+    expect(afterPublish.lifecycleStatus).toBe("PUBLISHED");
+    expect(afterPublish.effectiveDate).not.toBeNull();
+
+    const retired = await retirePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(retired.ok).toBe(true);
+    const afterRetire = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policyId } });
+    expect(afterRetire.lifecycleStatus).toBe("RETIRED");
+  });
+
+  it("publishPolicyDraft accepts an explicit effectiveDate", async () => {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    if (!added.ok) return;
+    await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+    await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+
+    const published = await publishPolicyDraft({
+      workspaceId: fixture.workspace.id,
+      policyId: added.data.id,
+      effectiveDate: "2027-01-01",
+    });
+    expect(published.ok).toBe(true);
+
+    const policy = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: added.data.id } });
+    expect(policy.effectiveDate?.toISOString().slice(0, 10)).toBe("2027-01-01");
+  });
+
+  it("resets an Approved or Published policy to Draft when edited, but leaves Draft/In Review untouched", async () => {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    if (!added.ok) return;
+    const policyId = added.data.id;
+
+    // Editing while still Draft: no-op on lifecycleStatus.
+    await updatePolicyDraft({ workspaceId: fixture.workspace.id, policyId, body: "Still draft." });
+    let policy = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policyId } });
+    expect(policy.lifecycleStatus).toBe("DRAFT");
+
+    await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId });
+    // Editing while In Review: also no-op (only Approved/Published reset).
+    await updatePolicyDraft({ workspaceId: fixture.workspace.id, policyId, body: "Still in review." });
+    policy = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policyId } });
+    expect(policy.lifecycleStatus).toBe("IN_REVIEW");
+
+    await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    await publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+
+    const editResult = await updatePolicyDraft({
+      workspaceId: fixture.workspace.id,
+      policyId,
+      body: "Edited after publishing.",
+    });
+    expect(editResult.ok).toBe(true);
+
+    const afterEdit = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policyId } });
+    expect(afterEdit.lifecycleStatus).toBe("DRAFT");
+    expect(afterEdit.approvedByUserId).toBeNull();
+    expect(afterEdit.approvedAt).toBeNull();
+  });
+
+  it("rejects each transition from the wrong starting status, naming the actual one", async () => {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    if (!added.ok) return;
+    const policyId = added.data.id;
+
+    const approveFromDraft = await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(approveFromDraft.ok).toBe(false);
+    if (!approveFromDraft.ok && approveFromDraft.error === "VALIDATION_ERROR") {
+      expect(approveFromDraft.message).toMatch(/draft/i);
+    }
+
+    const publishFromDraft = await publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(publishFromDraft.ok).toBe(false);
+
+    const retireFromDraft = await retirePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(retireFromDraft.ok).toBe(false);
+
+    await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId });
+
+    const submitAgain = await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId });
+    expect(submitAgain.ok).toBe(false);
+
+    const publishFromReview = await publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(publishFromReview.ok).toBe(false);
+
+    const retireFromReview = await retirePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(retireFromReview.ok).toBe(false);
+  });
+
+  it("an EDITOR can submit for review but is forbidden from approving, publishing, or retiring", async () => {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    if (!added.ok) return;
+    const policyId = added.data.id;
+
+    const { user: editor } = await fixture.addMember("EDITOR");
+    mockAuth.mockResolvedValue({ user: { id: editor.id } });
+
+    const submitted = await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId });
+    expect(submitted.ok).toBe(true);
+
+    const approve = await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(approve.ok).toBe(false);
+    if (!approve.ok) expect(approve.error).toBe("FORBIDDEN");
+
+    const publish = await publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(publish.ok).toBe(false);
+    if (!publish.ok) expect(publish.error).toBe("FORBIDDEN");
+
+    const retire = await retirePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+    expect(retire.ok).toBe(false);
+    if (!retire.ok) expect(retire.error).toBe("FORBIDDEN");
+  });
+
+  it("returns not-found for a mismatched or missing policyId on every new lifecycle action", async () => {
+    const other = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: other.adminUser.id } });
+    const theirs = await addGovernancePolicy({ workspaceId: other.workspace.id, title: "Theirs", body: "Not yours." });
+    expect(theirs.ok).toBe(true);
+    if (!theirs.ok) return;
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+
+    const results = await Promise.all([
+      submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId: theirs.data.id }),
+      approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId: theirs.data.id }),
+      publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId: theirs.data.id }),
+      retirePolicyDraft({ workspaceId: fixture.workspace.id, policyId: theirs.data.id }),
+      submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId: "does-not-exist" }),
+    ]);
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+    }
+
+    await other.cleanup();
+  });
+
+  it("FR-010: regenerating an aspect's assessment never touches a policy that has left Draft", async () => {
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+    const generated = await generateGovernanceAssessment({ workspaceId: fixture.workspace.id, aspectId });
+    expect(generated.ok).toBe(true);
+    if (!generated.ok) return;
+
+    const policy = await prisma.governancePolicyDraft.findFirstOrThrow({
+      where: { checklistItem: { assessmentId: generated.data.assessmentId } },
+    });
+
+    await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId: policy.id });
+    await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId: policy.id });
+    await publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId: policy.id });
+
+    const before = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policy.id } });
+    expect(before.lifecycleStatus).toBe("PUBLISHED");
+
+    // Regenerate again — the mock returns the exact same titles, as if asked
+    // again the model reached the same conclusions.
+    await generateGovernanceAssessment({ workspaceId: fixture.workspace.id, aspectId });
+
+    const after = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: policy.id } });
+    expect(after.title).toBe(before.title);
+    expect(after.body).toBe(before.body);
+    expect(after.lifecycleStatus).toBe("PUBLISHED");
+
+    // No new version was created either — the regenerate never touched this row.
+    const versionCount = await prisma.governancePolicyVersion.count({ where: { policyId: policy.id } });
+    expect(versionCount).toBe(1);
+  });
+});
+
+describe("Policy review-due dates (spec 018)", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  it("sets and clears a review-due date at any lifecycle status", async () => {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+
+    const set = await setPolicyReviewDueDate({
+      workspaceId: fixture.workspace.id,
+      policyId: added.data.id,
+      reviewDueDate: "2027-06-15",
+    });
+    expect(set.ok).toBe(true);
+
+    let policy = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: added.data.id } });
+    expect(policy.reviewDueDate?.toISOString().slice(0, 10)).toBe("2027-06-15");
+
+    const cleared = await setPolicyReviewDueDate({
+      workspaceId: fixture.workspace.id,
+      policyId: added.data.id,
+      reviewDueDate: null,
+    });
+    expect(cleared.ok).toBe(true);
+
+    policy = await prisma.governancePolicyDraft.findUniqueOrThrow({ where: { id: added.data.id } });
+    expect(policy.reviewDueDate).toBeNull();
+  });
+
+  it("rejects a non-EDITOR from setting a review-due date", async () => {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    if (!added.ok) return;
+
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+
+    const result = await setPolicyReviewDueDate({
+      workspaceId: fixture.workspace.id,
+      policyId: added.data.id,
+      reviewDueDate: "2027-06-15",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("FORBIDDEN");
+  });
+
+  it("returns not-found for a review-due date set on another workspace's policy", async () => {
+    const other = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: other.adminUser.id } });
+    const theirs = await addGovernancePolicy({ workspaceId: other.workspace.id, title: "Theirs", body: "Not yours." });
+    expect(theirs.ok).toBe(true);
+    if (!theirs.ok) return;
+
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const result = await setPolicyReviewDueDate({
+      workspaceId: fixture.workspace.id,
+      policyId: theirs.data.id,
+      reviewDueDate: "2027-06-15",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+
+    await other.cleanup();
+  });
+});
+
+describe("Policy acknowledgement tracking (spec 018)", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let personId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const person = await prisma.person.create({ data: { workspaceId: fixture.workspace.id, name: "Jamie Consultant" } });
+    personId = person.id;
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  async function publishedPolicy() {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    if (!added.ok) throw new Error("setup failed");
+    await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+    await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+    await publishPolicyDraft({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+    return added.data.id;
+  }
+
+  it("marks a person as having acknowledged a published policy, and unmarks them", async () => {
+    const policyId = await publishedPolicy();
+
+    const marked = await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+    expect(marked.ok).toBe(true);
+
+    const ack = await prisma.governancePolicyAcknowledgement.findUnique({
+      where: { policyId_personId: { policyId, personId } },
+    });
+    expect(ack).not.toBeNull();
+
+    // Marking the same person again is idempotent — no duplicate row.
+    await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+    const count = await prisma.governancePolicyAcknowledgement.count({ where: { policyId, personId } });
+    expect(count).toBe(1);
+
+    const unmarked = await unmarkPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+    expect(unmarked.ok).toBe(true);
+    expect(
+      await prisma.governancePolicyAcknowledgement.findUnique({ where: { policyId_personId: { policyId, personId } } })
+    ).toBeNull();
+
+    // Unmarking again (already absent) is a no-op, not an error.
+    const unmarkedAgain = await unmarkPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+    expect(unmarkedAgain.ok).toBe(true);
+  });
+
+  it("rejects acknowledgement on a policy that has never been published", async () => {
+    const added = await addGovernancePolicy({ workspaceId: fixture.workspace.id, title: "T", body: "B" });
+    if (!added.ok) return;
+
+    const draftResult = await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId: added.data.id, personId });
+    expect(draftResult.ok).toBe(false);
+    if (!draftResult.ok) expect(draftResult.error).toBe("VALIDATION_ERROR");
+
+    await submitPolicyForReview({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+    const reviewResult = await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId: added.data.id, personId });
+    expect(reviewResult.ok).toBe(false);
+
+    await approvePolicyDraft({ workspaceId: fixture.workspace.id, policyId: added.data.id });
+    const approvedResult = await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId: added.data.id, personId });
+    expect(approvedResult.ok).toBe(false);
+  });
+
+  it("keeps an acknowledgement after the policy is retired", async () => {
+    const policyId = await publishedPolicy();
+    await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+
+    await retirePolicyDraft({ workspaceId: fixture.workspace.id, policyId });
+
+    const ack = await prisma.governancePolicyAcknowledgement.findUnique({
+      where: { policyId_personId: { policyId, personId } },
+    });
+    expect(ack).not.toBeNull();
+  });
+
+  it("rejects a non-EDITOR from marking or unmarking an acknowledgement", async () => {
+    const policyId = await publishedPolicy();
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+
+    const mark = await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+    expect(mark.ok).toBe(false);
+    if (!mark.ok) expect(mark.error).toBe("FORBIDDEN");
+
+    const unmark = await unmarkPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+    expect(unmark.ok).toBe(false);
+    if (!unmark.ok) expect(unmark.error).toBe("FORBIDDEN");
+  });
+
+  it("rejects a person from another workspace, even against an owned policy", async () => {
+    const policyId = await publishedPolicy();
+    const other = await createFixtureWorkspace();
+    const theirPerson = await prisma.person.create({ data: { workspaceId: other.workspace.id, name: "Not Yours" } });
+
+    const result = await markPolicyAcknowledgement({
+      workspaceId: fixture.workspace.id,
+      policyId,
+      personId: theirPerson.id,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+
+    await other.cleanup();
+  });
+
+  it("removes an acknowledgement when the underlying Person is deleted (schema cascade)", async () => {
+    const policyId = await publishedPolicy();
+    await markPolicyAcknowledgement({ workspaceId: fixture.workspace.id, policyId, personId });
+    expect(await prisma.governancePolicyAcknowledgement.count({ where: { personId } })).toBe(1);
+
+    await prisma.person.delete({ where: { id: personId } });
+
+    expect(await prisma.governancePolicyAcknowledgement.count({ where: { personId } })).toBe(0);
   });
 });
