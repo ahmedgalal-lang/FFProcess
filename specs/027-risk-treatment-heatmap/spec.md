@@ -56,7 +56,7 @@ Identifying a risk is half the job; the client also needs a decision about what 
 
 ### Functional Requirements
 
-- **FR-001**: The Risk Register MUST show a heat map with 3 likelihood rows and 4 impact columns, each cell counting the workspace's risks that aren't Closed.
+- **FR-001**: The Risk Register MUST show a heat map with 3 likelihood rows and 4 impact columns, each cell counting the risks the register is currently showing that aren't Closed. The register is already scoped to the active aspect tab, and the heat map must agree with the table beneath it, so clicking a cell filters to exactly the rows it counted. The workspace-wide picture is the dashboard's (spec 026) and the exported report's (spec 020).
 - **FR-002**: Each cell MUST be colored by the overall level the product already derives for that likelihood and impact, and MUST also carry a text label, so the map is readable without color.
 - **FR-003**: Clicking a non-empty cell MUST filter the register to exactly the risks it counts, with a visible way to clear the filter. The heat map MUST be operable by keyboard.
 - **FR-004**: System MUST let an Editor set a risk's treatment strategy (Mitigate, Transfer, Accept, Avoid) with a rationale.
