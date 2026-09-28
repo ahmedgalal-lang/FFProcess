@@ -23,6 +23,8 @@ import { GovernanceVendors, type VendorT } from "./governance-vendors";
 import { GovernanceEthics, type EthicsCaseT } from "./governance-ethics";
 import { formatCaseReference } from "@/lib/domain/ethics";
 import { GovernanceDashboard } from "./governance-dashboard";
+import { GovernanceActivityLog } from "./governance-activity-log";
+import { loadGovernanceActivity } from "@/lib/data/governance-activity";
 import { buildDashboardTiles, isDashboardEmpty } from "@/lib/domain/governance-dashboard";
 import { deriveRiskLevel } from "@/lib/domain/governance-risk";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
@@ -73,6 +75,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
     courses,
     vendors,
     ethicsCases,
+    activity,
   ] =
     await Promise.all([
     prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
@@ -143,6 +146,8 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           orderBy: { number: "desc" },
         })
       : Promise.resolve([]),
+    // The governance activity feed's first page (spec 019).
+    loadGovernanceActivity(workspaceId),
   ]);
 
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
@@ -614,6 +619,10 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           />
         </div>
       )}
+
+      <div className="mb-6">
+        <GovernanceActivityLog workspaceId={workspaceId} initialEntries={activity.entries} initialCursor={activity.nextCursor} />
+      </div>
 
       <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
         <div className="h-px flex-1 bg-slate-200" />

@@ -36,6 +36,7 @@ const {
   setPolicyReviewDueDate,
   markPolicyAcknowledgement,
   unmarkPolicyAcknowledgement,
+  listGovernanceActivity,
 } = await import("@/lib/actions/governance");
 const { setRiskTreatment, addRiskTreatmentAction, setRiskTreatmentActionDone, deleteRiskTreatmentAction } =
   await import("@/lib/actions/risk-treatment");
@@ -1715,5 +1716,197 @@ describe("Risk treatment plans (spec 027)", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error).toBe("FORBIDDEN");
     }
+  });
+});
+
+describe("Governance activity log (spec 019)", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let workspaceId: string;
+  let aspectId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    workspaceId = fixture.workspace.id;
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    mockRunGovernanceAssessment.mockReset();
+    aspectId = (await createGovernanceAspect(workspaceId, "Board Structure")).id;
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  const entries = () =>
+    prisma.governanceActivityLogEntry.findMany({ where: { workspaceId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const last = async () => (await entries()).at(-1)!;
+
+  it("logs aspect add, rename (keeping the old name) and delete", async () => {
+    const added = await addGovernanceAspect({ workspaceId, name: "Data Privacy" });
+    if (!added.ok) throw new Error("setup failed");
+    expect(await last()).toMatchObject({
+      entityType: "ASPECT",
+      entityId: added.data.id,
+      entityLabel: "Data Privacy",
+      summary: "Added",
+      actorUserId: fixture.adminUser.id,
+    });
+
+    await renameGovernanceAspect({ workspaceId, aspectId: added.data.id, name: "Privacy" });
+    expect(await last()).toMatchObject({ entityLabel: "Data Privacy", summary: "Renamed from 'Data Privacy' to 'Privacy'" });
+
+    await deleteGovernanceAspect({ workspaceId, aspectId: added.data.id });
+    expect(await last()).toMatchObject({ entityLabel: "Privacy", summary: "Deleted" });
+    expect(await entries()).toHaveLength(3);
+  });
+
+  it("logs risk add, a named single-field update, owner change, a multi-field update, and delete — readable after the delete", async () => {
+    const added = await addGovernanceRisk({ workspaceId, title: "Key-person dependency", description: "x", likelihood: "MEDIUM", impact: "HIGH" });
+    if (!added.ok) throw new Error("setup failed");
+    const riskId = added.data.id;
+    const role = await prisma.role.create({ data: { workspaceId, name: "COO" } });
+
+    await updateGovernanceRisk({ workspaceId, riskId, status: "ACCEPTED" });
+    expect((await last()).summary).toBe("Status changed to Accepted");
+    await updateGovernanceRisk({ workspaceId, riskId, ownerRoleId: role.id });
+    expect((await last()).summary).toBe("Owner changed");
+    await updateGovernanceRisk({ workspaceId, riskId, likelihood: "LOW", impact: "LOW" });
+    expect((await last()).summary).toBe("Updated");
+
+    await deleteGovernanceRisk({ workspaceId, riskId });
+    const all = await entries();
+    expect(all.map((e) => e.summary)).toEqual(["Added", "Status changed to Accepted", "Owner changed", "Updated", "Deleted"]);
+    expect(all.every((e) => e.entityType === "RISK" && e.entityId === riskId && e.entityLabel === "Key-person dependency")).toBe(true);
+  });
+
+  it("logs checklist item add, edit, status and delete, and a hand-edited summary", async () => {
+    const added = await addGovernanceChecklistItem({ workspaceId, aspectId, phase: "IMMEDIATE", title: "Appoint a chair", description: "x" });
+    if (!added.ok) throw new Error("setup failed");
+    await updateGovernanceChecklistItem({ workspaceId, itemId: added.data.id, title: "Appoint an independent chair" });
+    await setChecklistItemStatus({ workspaceId, itemId: added.data.id, status: "DONE" });
+    const assessment = await prisma.governanceAssessment.findUniqueOrThrow({ where: { aspectId } });
+    await updateGovernanceSummary({ workspaceId, assessmentId: assessment.id, summary: "Hand-written." });
+    await deleteGovernanceChecklistItem({ workspaceId, itemId: added.data.id });
+
+    expect((await entries()).map((e) => [e.entityType, e.entityLabel, e.summary])).toEqual([
+      ["CHECKLIST_ITEM", "Appoint a chair", "Added"],
+      ["CHECKLIST_ITEM", "Appoint an independent chair", "Edited"],
+      ["CHECKLIST_ITEM", "Appoint an independent chair", "Marked Done"],
+      ["ASSESSMENT", "Board Structure", "Executive summary edited"],
+      ["CHECKLIST_ITEM", "Appoint an independent chair", "Deleted"],
+    ]);
+  });
+
+  it("logs exactly one entry per generate run, with its counts, even when a rerun adds nothing", async () => {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+    await generateGovernanceAssessment({ workspaceId, aspectId });
+    await generateGovernanceAssessment({ workspaceId, aspectId });
+
+    const all = await entries();
+    expect(all).toHaveLength(2);
+    expect(all.map((e) => [e.entityType, e.entityLabel, e.summary])).toEqual([
+      ["ASSESSMENT", "Board Structure", "Generated assessment — 2 new checklist items, 1 new risk"],
+      ["ASSESSMENT", "Board Structure", "Regenerated assessment — 0 new checklist items, 0 new risks"],
+    ]);
+  });
+
+  it("logs every policy action", async () => {
+    const added = await addGovernancePolicy({ workspaceId, title: "Code of Conduct", body: "v1" });
+    if (!added.ok) throw new Error("setup failed");
+    const policyId = added.data.id;
+    const person = await prisma.person.create({ data: { workspaceId, name: "Ana Silva" } });
+
+    await updatePolicyDraft({ workspaceId, policyId, body: "v2" });
+    await submitPolicyForReview({ workspaceId, policyId });
+    await approvePolicyDraft({ workspaceId, policyId });
+    await publishPolicyDraft({ workspaceId, policyId });
+    await setPolicyReviewDueDate({ workspaceId, policyId, reviewDueDate: "2027-03-31" });
+    await setPolicyReviewDueDate({ workspaceId, policyId, reviewDueDate: null });
+    await markPolicyAcknowledgement({ workspaceId, policyId, personId: person.id });
+    await unmarkPolicyAcknowledgement({ workspaceId, policyId, personId: person.id });
+    await retirePolicyDraft({ workspaceId, policyId });
+    await deleteGovernancePolicy({ workspaceId, policyId });
+
+    const all = await entries();
+    expect(all.every((e) => e.entityType === "POLICY" && e.entityId === policyId && e.entityLabel === "Code of Conduct")).toBe(true);
+    expect(all.map((e) => e.summary)).toEqual([
+      "Added",
+      "Edited",
+      "Submitted for review",
+      "Approved",
+      "Published",
+      "Review-due date set to 2027-03-31",
+      "Review-due date cleared",
+      "Acknowledgement marked for Ana Silva",
+      "Acknowledgement unmarked for Ana Silva",
+      "Retired",
+      "Deleted",
+    ]);
+  });
+
+  it("logs nothing for a refused or invalid action, or for the governance profile", async () => {
+    await setGovernanceProfile({ workspaceId, companySize: "50-200 employees", jurisdiction: "EU" });
+    await addGovernanceAspect({ workspaceId, name: "Board Structure" }); // duplicate name
+    await submitPolicyForReview({ workspaceId, policyId: "missing" });
+
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+    await addGovernanceRisk({ workspaceId, title: "x", description: "x", likelihood: "LOW", impact: "LOW" });
+    await addGovernanceAspect({ workspaceId, name: "Anything" });
+
+    expect(await entries()).toHaveLength(0);
+  });
+
+  it("lists newest first, 50 per page with a cursor, for a Viewer too", async () => {
+    const actor = fixture.adminUser.id;
+    const base = Date.UTC(2026, 0, 1);
+    await prisma.governanceActivityLogEntry.createMany({
+      data: Array.from({ length: 53 }, (_, i) => ({
+        workspaceId,
+        entityType: "RISK" as const,
+        entityId: `r${i}`,
+        entityLabel: `Risk ${i}`,
+        summary: "Added",
+        actorUserId: actor,
+        createdAt: new Date(base + i * 1000),
+      })),
+    });
+
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+    const first = await listGovernanceActivity({ workspaceId });
+    if (!first.ok) throw new Error("list failed");
+    expect(first.data.entries).toHaveLength(50);
+    expect(first.data.entries[0]).toMatchObject({ entityLabel: "Risk 52", actorName: "Fixture Admin" });
+    expect(first.data.nextCursor).not.toBeNull();
+
+    const second = await listGovernanceActivity({ workspaceId, cursor: first.data.nextCursor! });
+    if (!second.ok) throw new Error("list failed");
+    expect(second.data.entries.map((e) => e.entityLabel)).toEqual(["Risk 2", "Risk 1", "Risk 0"]);
+    expect(second.data.nextCursor).toBeNull();
+
+    const other = await createFixtureWorkspace();
+    const outsider = await listGovernanceActivity({ workspaceId: other.workspace.id });
+    expect(outsider.ok).toBe(false);
+    const foreignCursor = await listGovernanceActivity({ workspaceId, cursor: "not-an-entry" });
+    expect(foreignCursor.ok).toBe(false);
+    await other.cleanup();
+  });
+
+  it("never logs ethics cases", async () => {
+    const { logEthicsCase } = await import("@/lib/actions/ethics");
+    await logEthicsCase({
+      workspaceId,
+      receivedOn: "2026-09-20",
+      channel: "HOTLINE",
+      category: "FRAUD",
+      severity: "HIGH",
+      description: "x",
+      anonymous: true,
+    });
+    expect(await entries()).toHaveLength(0);
   });
 });

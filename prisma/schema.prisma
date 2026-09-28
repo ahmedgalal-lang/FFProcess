@@ -32,10 +32,11 @@ model User {
   /// and every policy they've approved. Users are never deleted in this app
   /// (only Firm/Workspace membership records are), so these relations never
   /// actually need to survive a User row disappearing.
-  policyVersionsAuthored GovernancePolicyVersion[]
-  policiesApproved       GovernancePolicyDraft[]
-  dpiasApproved          Dpia[]                    @relation("DpiaApprover")
-  ethicsCaseNotes        EthicsCaseNote[]
+  policyVersionsAuthored       GovernancePolicyVersion[]
+  policiesApproved             GovernancePolicyDraft[]
+  dpiasApproved                Dpia[]                       @relation("DpiaApprover")
+  ethicsCaseNotes              EthicsCaseNote[]
+  governanceActivityLogEntries GovernanceActivityLogEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -194,9 +195,10 @@ model Workspace {
   trainingCourses       TrainingCourse[]
   vendors               Vendor[]
   ethicsCases           EthicsCase[]
+  governanceActivityLog GovernanceActivityLogEntry[]
   /// Spec 022: the next case's number. Only ever goes up, so a reference is
   /// never reused after a New case is deleted.
-  nextEthicsCaseNumber  Int                     @default(1)
+  nextEthicsCaseNumber  Int                          @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1462,4 +1464,34 @@ model EthicsCaseNote {
 
   @@index([caseId])
   @@map("ethics_case_notes")
+}
+
+enum GovernanceActivityEntityType {
+  ASPECT
+  ASSESSMENT
+  CHECKLIST_ITEM
+  RISK
+  POLICY
+}
+
+/// One completed governance action (spec 019), append-only. entityId is
+/// deliberately not a relation: the entry must outlive the record it
+/// describes, and entityLabel keeps that record's name as it was then.
+/// Ethics cases (spec 022) are never logged here.
+model GovernanceActivityLogEntry {
+  id          String                       @id @default(uuid())
+  workspaceId String
+  entityType  GovernanceActivityEntityType
+  entityId    String
+  entityLabel String
+  summary     String
+  actorUserId String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User      @relation(fields: [actorUserId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@map("governance_activity_log_entries")
 }

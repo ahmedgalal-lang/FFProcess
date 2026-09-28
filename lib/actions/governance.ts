@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { checkAssignableOwner } from "@/lib/data/owner-assignment";
+import { loadGovernanceActivity, type GovernanceActivityEntryT } from "@/lib/data/governance-activity";
 import { runGovernanceAssessment } from "@/lib/ai/governance-generator";
 import {
   normalizeFindingTitle,
@@ -13,12 +14,36 @@ import {
 } from "@/lib/domain/governance-findings";
 import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
 import type {
+  GovernanceActivityEntityType,
   GovernanceItemPhase,
   GovernanceItemStatus,
+  Prisma,
   RiskLikelihood,
   RiskImpact,
   RiskStatus,
 } from "@/app/generated/prisma/client";
+
+type ActivityEntry = {
+  workspaceId: string;
+  entityType: GovernanceActivityEntityType;
+  entityId: string;
+  /** The record's name as of this action, so the entry still reads after it's renamed or deleted. */
+  entityLabel: string;
+  summary: string;
+  actorUserId: string;
+};
+
+/**
+ * Records one completed governance action in the activity log (spec 019).
+ * Always written in the same transaction as the change it describes, so a
+ * refused or failed action logs nothing and a completed one can't go
+ * unlogged. There is no action that edits or deletes an entry.
+ */
+function logActivity(client: Pick<Prisma.TransactionClient, "governanceActivityLogEntry">, entry: ActivityEntry) {
+  return client.governanceActivityLogEntry.create({ data: entry });
+}
+
+const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, " ");
 
 /** Looks up a workspace's aspect by id, refusing one that doesn't exist or belongs elsewhere. */
 async function findOwnedAspect(workspaceId: string, aspectId: string) {
@@ -214,6 +239,17 @@ export async function generateGovernanceAssessment(
       });
     }
 
+    const itemCount = newItems.length;
+    const riskCount = newRisks.length;
+    await logActivity(tx, {
+      workspaceId,
+      entityType: "ASSESSMENT",
+      entityId: assessment.id,
+      entityLabel: aspect.name,
+      summary: `${existingAssessment ? "Regenerated" : "Generated"} assessment — ${itemCount} new checklist item${itemCount === 1 ? "" : "s"}, ${riskCount} new risk${riskCount === 1 ? "" : "s"}`,
+      actorUserId: access.data.userId,
+    });
+
     return assessment.id;
   });
 
@@ -275,13 +311,26 @@ export async function updateGovernanceSummary(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const assessment = await prisma.governanceAssessment.findUnique({ where: { id: parsed.data.assessmentId } });
+  const assessment = await prisma.governanceAssessment.findUnique({
+    where: { id: parsed.data.assessmentId },
+    include: { aspect: { select: { name: true } } },
+  });
   if (!assessment || assessment.workspaceId !== parsed.data.workspaceId) return notFound();
 
-  await prisma.governanceAssessment.update({
-    where: { id: parsed.data.assessmentId },
-    data: { summary: parsed.data.summary, summaryHandEdited: true },
-  });
+  await prisma.$transaction([
+    prisma.governanceAssessment.update({
+      where: { id: parsed.data.assessmentId },
+      data: { summary: parsed.data.summary, summaryHandEdited: true },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "ASSESSMENT",
+      entityId: assessment.id,
+      entityLabel: assessment.aspect.name,
+      summary: "Executive summary edited",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.assessmentId });
@@ -312,10 +361,20 @@ export async function setChecklistItemStatus(
   });
   if (!item || item.assessment.workspaceId !== parsed.data.workspaceId) return notFound();
 
-  await prisma.governanceChecklistItem.update({
-    where: { id: parsed.data.itemId },
-    data: { status: parsed.data.status as GovernanceItemStatus },
-  });
+  await prisma.$transaction([
+    prisma.governanceChecklistItem.update({
+      where: { id: parsed.data.itemId },
+      data: { status: parsed.data.status as GovernanceItemStatus },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "CHECKLIST_ITEM",
+      entityId: item.id,
+      entityLabel: item.title,
+      summary: `Marked ${titleCase(parsed.data.status)}`,
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.itemId });
@@ -364,9 +423,18 @@ export async function addGovernanceChecklistItem(
       create: { workspaceId, aspectId, summary: "" },
     });
 
-    return tx.governanceChecklistItem.create({
+    const created = await tx.governanceChecklistItem.create({
       data: { assessmentId: assessment.id, phase: phase as GovernanceItemPhase, title, description },
     });
+    await logActivity(tx, {
+      workspaceId,
+      entityType: "CHECKLIST_ITEM",
+      entityId: created.id,
+      entityLabel: title,
+      summary: "Added",
+      actorUserId: access.data.userId,
+    });
+    return created;
   });
 
   revalidatePath(`/workspaces/${workspaceId}/governance`);
@@ -421,16 +489,26 @@ export async function updateGovernanceChecklistItem(
     if (ownerProblem) return ownerProblem;
   }
 
-  await prisma.governanceChecklistItem.update({
-    where: { id: parsed.data.itemId },
-    data: {
-      ...(fields.phase !== undefined ? { phase: fields.phase as GovernanceItemPhase } : {}),
-      ...(fields.title !== undefined ? { title: fields.title } : {}),
-      ...(fields.description !== undefined ? { description: fields.description } : {}),
-      ...(ownerChanging ? { ownerRoleId, ownerPersonId } : {}),
-      ...(fields.dueDate !== undefined ? { dueDate: fields.dueDate ? new Date(fields.dueDate) : null } : {}),
-    },
-  });
+  await prisma.$transaction([
+    prisma.governanceChecklistItem.update({
+      where: { id: parsed.data.itemId },
+      data: {
+        ...(fields.phase !== undefined ? { phase: fields.phase as GovernanceItemPhase } : {}),
+        ...(fields.title !== undefined ? { title: fields.title } : {}),
+        ...(fields.description !== undefined ? { description: fields.description } : {}),
+        ...(ownerChanging ? { ownerRoleId, ownerPersonId } : {}),
+        ...(fields.dueDate !== undefined ? { dueDate: fields.dueDate ? new Date(fields.dueDate) : null } : {}),
+      },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "CHECKLIST_ITEM",
+      entityId: item.id,
+      entityLabel: fields.title ?? item.title,
+      summary: "Edited",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.itemId });
@@ -467,7 +545,17 @@ export async function deleteGovernanceChecklistItem(
   });
   if (!item || item.assessment.workspaceId !== parsed.data.workspaceId) return notFound();
 
-  await prisma.governanceChecklistItem.delete({ where: { id: parsed.data.itemId } });
+  await prisma.$transaction([
+    prisma.governanceChecklistItem.delete({ where: { id: parsed.data.itemId } }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "CHECKLIST_ITEM",
+      entityId: item.id,
+      entityLabel: item.title,
+      summary: "Deleted",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.itemId });
@@ -534,6 +622,14 @@ export async function updatePolicyDraft(
         createdByUserId: access.data.userId,
       },
     });
+    await logActivity(tx, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: newTitle,
+      summary: "Edited",
+      actorUserId: access.data.userId,
+    });
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
@@ -580,6 +676,14 @@ export async function addGovernancePolicy(
         createdByUserId: access.data.userId,
       },
     });
+    await logActivity(tx, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: created.id,
+      entityLabel: created.title,
+      summary: "Added",
+      actorUserId: access.data.userId,
+    });
     return created;
   });
 
@@ -605,7 +709,17 @@ export async function deleteGovernancePolicy(
   const policy = await prisma.governancePolicyDraft.findUnique({ where: { id: parsed.data.policyId } });
   if (!policy || policy.workspaceId !== parsed.data.workspaceId) return notFound();
 
-  await prisma.governancePolicyDraft.delete({ where: { id: parsed.data.policyId } });
+  await prisma.$transaction([
+    prisma.governancePolicyDraft.delete({ where: { id: parsed.data.policyId } }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: "Deleted",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -655,10 +769,20 @@ export async function submitPolicyForReview(
     );
   }
 
-  await prisma.governancePolicyDraft.update({
-    where: { id: parsed.data.policyId },
-    data: { lifecycleStatus: "IN_REVIEW" },
-  });
+  await prisma.$transaction([
+    prisma.governancePolicyDraft.update({
+      where: { id: parsed.data.policyId },
+      data: { lifecycleStatus: "IN_REVIEW" },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: "Submitted for review",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -687,10 +811,20 @@ export async function approvePolicyDraft(
     );
   }
 
-  await prisma.governancePolicyDraft.update({
-    where: { id: parsed.data.policyId },
-    data: { lifecycleStatus: "APPROVED", approvedByUserId: access.data.userId, approvedAt: new Date() },
-  });
+  await prisma.$transaction([
+    prisma.governancePolicyDraft.update({
+      where: { id: parsed.data.policyId },
+      data: { lifecycleStatus: "APPROVED", approvedByUserId: access.data.userId, approvedAt: new Date() },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: "Approved",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -722,10 +856,20 @@ export async function publishPolicyDraft(
 
   const effectiveDate = parsed.data.effectiveDate ? new Date(parsed.data.effectiveDate) : new Date();
 
-  await prisma.governancePolicyDraft.update({
-    where: { id: parsed.data.policyId },
-    data: { lifecycleStatus: "PUBLISHED", effectiveDate },
-  });
+  await prisma.$transaction([
+    prisma.governancePolicyDraft.update({
+      where: { id: parsed.data.policyId },
+      data: { lifecycleStatus: "PUBLISHED", effectiveDate },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: "Published",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -754,10 +898,20 @@ export async function retirePolicyDraft(
     );
   }
 
-  await prisma.governancePolicyDraft.update({
-    where: { id: parsed.data.policyId },
-    data: { lifecycleStatus: "RETIRED" },
-  });
+  await prisma.$transaction([
+    prisma.governancePolicyDraft.update({
+      where: { id: parsed.data.policyId },
+      data: { lifecycleStatus: "RETIRED" },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: "Retired",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -786,10 +940,21 @@ export async function setPolicyReviewDueDate(
   const policy = await findOwnedPolicy(parsed.data.workspaceId, parsed.data.policyId);
   if (!policy) return notFound();
 
-  await prisma.governancePolicyDraft.update({
-    where: { id: parsed.data.policyId },
-    data: { reviewDueDate: parsed.data.reviewDueDate ? new Date(parsed.data.reviewDueDate) : null },
-  });
+  const reviewDueDate = parsed.data.reviewDueDate ? new Date(parsed.data.reviewDueDate) : null;
+  await prisma.$transaction([
+    prisma.governancePolicyDraft.update({
+      where: { id: parsed.data.policyId },
+      data: { reviewDueDate },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: reviewDueDate ? `Review-due date set to ${reviewDueDate.toISOString().slice(0, 10)}` : "Review-due date cleared",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -827,11 +992,21 @@ export async function markPolicyAcknowledgement(
     return validationError("Only a policy that has been published can be marked as acknowledged.");
   }
 
-  await prisma.governancePolicyAcknowledgement.upsert({
-    where: { policyId_personId: { policyId: parsed.data.policyId, personId: parsed.data.personId } },
-    update: {},
-    create: { policyId: parsed.data.policyId, personId: parsed.data.personId },
-  });
+  await prisma.$transaction([
+    prisma.governancePolicyAcknowledgement.upsert({
+      where: { policyId_personId: { policyId: parsed.data.policyId, personId: parsed.data.personId } },
+      update: {},
+      create: { policyId: parsed.data.policyId, personId: parsed.data.personId },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: `Acknowledgement marked for ${person.name}`,
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -859,9 +1034,19 @@ export async function unmarkPolicyAcknowledgement(
   if (!policy) return notFound();
   if (!person || person.workspaceId !== parsed.data.workspaceId) return notFound();
 
-  await prisma.governancePolicyAcknowledgement.deleteMany({
-    where: { policyId: parsed.data.policyId, personId: parsed.data.personId },
-  });
+  await prisma.$transaction([
+    prisma.governancePolicyAcknowledgement.deleteMany({
+      where: { policyId: parsed.data.policyId, personId: parsed.data.personId },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "POLICY",
+      entityId: policy.id,
+      entityLabel: policy.title,
+      summary: `Acknowledgement unmarked for ${person.name}`,
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.policyId });
@@ -885,15 +1070,26 @@ export async function addGovernanceRisk(
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
   if (!access.ok) return access;
 
-  const risk = await prisma.governanceRisk.create({
-    data: {
+  const risk = await prisma.$transaction(async (tx) => {
+    const created = await tx.governanceRisk.create({
+      data: {
+        workspaceId: parsed.data.workspaceId,
+        title: parsed.data.title,
+        description: parsed.data.description,
+        likelihood: parsed.data.likelihood as RiskLikelihood,
+        impact: parsed.data.impact as RiskImpact,
+        handManaged: true,
+      },
+    });
+    await logActivity(tx, {
       workspaceId: parsed.data.workspaceId,
-      title: parsed.data.title,
-      description: parsed.data.description,
-      likelihood: parsed.data.likelihood as RiskLikelihood,
-      impact: parsed.data.impact as RiskImpact,
-      handManaged: true,
-    },
+      entityType: "RISK",
+      entityId: created.id,
+      entityLabel: created.title,
+      summary: "Added",
+      actorUserId: access.data.userId,
+    });
+    return created;
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
@@ -932,17 +1128,37 @@ export async function updateGovernanceRisk(
   void _workspaceId;
   void _riskId;
 
-  await prisma.governanceRisk.update({
-    where: { id: parsed.data.riskId },
-    data: {
-      ...(fields.status !== undefined ? { status: fields.status as RiskStatus } : {}),
-      ...(fields.likelihood !== undefined ? { likelihood: fields.likelihood as RiskLikelihood } : {}),
-      ...(fields.impact !== undefined ? { impact: fields.impact as RiskImpact } : {}),
-      ...(fields.ownerRoleId !== undefined ? { ownerRoleId: fields.ownerRoleId } : {}),
-      ...(fields.ownerPersonId !== undefined ? { ownerPersonId: fields.ownerPersonId } : {}),
-      handManaged: true,
-    },
-  });
+  // Name the change when it's exactly one field; otherwise just "Updated".
+  const changed = (["status", "likelihood", "impact"] as const).filter((k) => fields[k] !== undefined);
+  const ownerChanged = fields.ownerRoleId !== undefined || fields.ownerPersonId !== undefined;
+  const summary =
+    changed.length === 1 && !ownerChanged
+      ? `${titleCase(changed[0]!.toUpperCase())} changed to ${titleCase(fields[changed[0]!]!)}`
+      : changed.length === 0 && ownerChanged
+        ? "Owner changed"
+        : "Updated";
+
+  await prisma.$transaction([
+    prisma.governanceRisk.update({
+      where: { id: parsed.data.riskId },
+      data: {
+        ...(fields.status !== undefined ? { status: fields.status as RiskStatus } : {}),
+        ...(fields.likelihood !== undefined ? { likelihood: fields.likelihood as RiskLikelihood } : {}),
+        ...(fields.impact !== undefined ? { impact: fields.impact as RiskImpact } : {}),
+        ...(fields.ownerRoleId !== undefined ? { ownerRoleId: fields.ownerRoleId } : {}),
+        ...(fields.ownerPersonId !== undefined ? { ownerPersonId: fields.ownerPersonId } : {}),
+        handManaged: true,
+      },
+    }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "RISK",
+      entityId: risk.id,
+      entityLabel: risk.title,
+      summary,
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.riskId });
@@ -972,7 +1188,17 @@ export async function deleteGovernanceRisk(
   const risk = await prisma.governanceRisk.findUnique({ where: { id: parsed.data.riskId } });
   if (!risk || risk.workspaceId !== parsed.data.workspaceId) return notFound();
 
-  await prisma.governanceRisk.delete({ where: { id: parsed.data.riskId } });
+  await prisma.$transaction([
+    prisma.governanceRisk.delete({ where: { id: parsed.data.riskId } }),
+    logActivity(prisma, {
+      workspaceId: parsed.data.workspaceId,
+      entityType: "RISK",
+      entityId: risk.id,
+      entityLabel: risk.title,
+      summary: "Deleted",
+      actorUserId: access.data.userId,
+    }),
+  ]);
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
   return ok({ id: parsed.data.riskId });
@@ -1003,8 +1229,19 @@ export async function addGovernanceAspect(
   if (!access.ok) return access;
 
   try {
-    const aspect = await prisma.governanceAspect.create({
-      data: { workspaceId: parsed.data.workspaceId, name: parsed.data.name },
+    const aspect = await prisma.$transaction(async (tx) => {
+      const created = await tx.governanceAspect.create({
+        data: { workspaceId: parsed.data.workspaceId, name: parsed.data.name },
+      });
+      await logActivity(tx, {
+        workspaceId: parsed.data.workspaceId,
+        entityType: "ASPECT",
+        entityId: created.id,
+        entityLabel: created.name,
+        summary: "Added",
+        actorUserId: access.data.userId,
+      });
+      return created;
     });
     revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
     return ok({ id: aspect.id });
@@ -1042,10 +1279,21 @@ export async function renameGovernanceAspect(
   if (!aspect) return notFound();
 
   try {
-    await prisma.governanceAspect.update({
-      where: { id: parsed.data.aspectId },
-      data: { name: parsed.data.name },
-    });
+    await prisma.$transaction([
+      prisma.governanceAspect.update({
+        where: { id: parsed.data.aspectId },
+        data: { name: parsed.data.name },
+      }),
+      // The entry keeps the name as it was when this happened.
+      logActivity(prisma, {
+        workspaceId: parsed.data.workspaceId,
+        entityType: "ASPECT",
+        entityId: aspect.id,
+        entityLabel: aspect.name,
+        summary: `Renamed from '${aspect.name}' to '${parsed.data.name}'`,
+        actorUserId: access.data.userId,
+      }),
+    ]);
     revalidatePath(`/workspaces/${parsed.data.workspaceId}/governance`);
     return ok({ id: parsed.data.aspectId });
   } catch (error) {
@@ -1109,8 +1357,43 @@ export async function deleteGovernanceAspect(
     }
 
     await tx.governanceAspect.delete({ where: { id: aspectId } });
+    await logActivity(tx, {
+      workspaceId,
+      entityType: "ASPECT",
+      entityId: aspect.id,
+      entityLabel: aspect.name,
+      summary: "Deleted",
+      actorUserId: access.data.userId,
+    });
   });
 
   revalidatePath(`/workspaces/${workspaceId}/governance`);
   return ok({ id: aspectId });
+}
+
+/**
+ * One page of the workspace's governance activity feed (spec 019), newest
+ * first: readable by anyone who can read the workspace. Pass the previous
+ * page's nextCursor for the next one.
+ */
+const listActivitySchema = z.object({
+  workspaceId: z.string().min(1),
+  cursor: z.string().min(1).optional(),
+});
+
+export async function listGovernanceActivity(
+  input: z.infer<typeof listActivitySchema>
+): Promise<ActionResult<{ entries: GovernanceActivityEntryT[]; nextCursor: string | null }>> {
+  const parsed = listActivitySchema.safeParse(input);
+  if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
+
+  const access = await requireWorkspaceAccess(parsed.data.workspaceId, "VIEWER");
+  if (!access.ok) return access;
+
+  if (parsed.data.cursor) {
+    const at = await prisma.governanceActivityLogEntry.findUnique({ where: { id: parsed.data.cursor } });
+    if (!at || at.workspaceId !== parsed.data.workspaceId) return notFound();
+  }
+
+  return ok(await loadGovernanceActivity(parsed.data.workspaceId, parsed.data.cursor));
 }
