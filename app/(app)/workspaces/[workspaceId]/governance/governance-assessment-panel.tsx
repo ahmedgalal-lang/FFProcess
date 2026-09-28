@@ -43,7 +43,16 @@ export type ChecklistItemT = {
   description: string;
   status: "OPEN" | "EDITED" | "DONE" | "DISMISSED";
   policy: PolicyT | null;
+  /** Spec 028 — a role or a person, never both; the label marks an archived owner. */
+  ownerRoleId: string | null;
+  ownerPersonId: string | null;
+  ownerLabel: string | null;
+  /** YYYY-MM-DD, or null. */
+  dueDate: string | null;
+  overdue: boolean;
 };
+
+type OwnerOptionT = { id: string; name: string; archived: boolean };
 
 export type AssessmentT = {
   id: string;
@@ -70,6 +79,7 @@ export function GovernanceAssessmentPanel({
   risks,
   allPolicies,
   people,
+  roles,
 }: {
   workspaceId: string;
   hasProfile: boolean;
@@ -77,7 +87,8 @@ export function GovernanceAssessmentPanel({
   assessmentsByAspectId: Record<string, AssessmentT>;
   risks: RiskT[];
   allPolicies: PolicyT[];
-  people: { id: string; name: string }[];
+  people: OwnerOptionT[];
+  roles: OwnerOptionT[];
 }) {
   const canEdit = useCanEdit();
   const [aspectId, setAspectId] = useState<string>(aspects[0]?.id ?? "");
@@ -95,6 +106,9 @@ export function GovernanceAssessmentPanel({
   const router = useRouter();
 
   const assessment = assessmentsByAspectId[aspectId] ?? null;
+  const overdueByAspect: Record<string, number> = Object.fromEntries(
+    aspects.map((a) => [a.id, (assessmentsByAspectId[a.id]?.items ?? []).filter((i) => i.overdue).length])
+  );
   const focusLabel = aspects.find((a) => a.id === aspectId)?.name ?? "";
 
   const openPolicy = useMemo(
@@ -207,12 +221,18 @@ export function GovernanceAssessmentPanel({
     if (!title || !description) return;
     setError(null);
     startTransition(async () => {
+      // "role:<id>", "person:<id>", or "" for unassigned — one select, two fields.
+      const owner = String(data.get("owner") ?? "");
+      const dueDate = String(data.get("dueDate") ?? "");
       const result = await updateGovernanceChecklistItem({
         workspaceId,
         itemId,
         phase: String(data.get("phase") ?? "IMMEDIATE") as "IMMEDIATE" | "NEAR_TERM" | "LONG_TERM",
         title,
         description,
+        ownerRoleId: owner.startsWith("role:") ? owner.slice(5) : null,
+        ownerPersonId: owner.startsWith("person:") ? owner.slice(7) : null,
+        dueDate: dueDate || null,
       });
       if (!result.ok) {
         setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : result.error);
@@ -305,6 +325,18 @@ export function GovernanceAssessmentPanel({
                   }`}
                 >
                   {aspect.name}
+                  {/* Only when there is something overdue, so a tab's
+                      accessible name stays just its name otherwise. */}
+                  {overdueByAspect[aspect.id] ? (
+                    <>
+                      {/* Without a separator the name runs into the count:
+                          "ESG2 overdue". */}
+                      <span className="sr-only">, </span>
+                      <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        {overdueByAspect[aspect.id]} overdue
+                      </span>
+                    </>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -598,6 +630,51 @@ export function GovernanceAssessmentPanel({
                               <option value="NEAR_TERM">Near-term</option>
                               <option value="LONG_TERM">Long-term</option>
                             </select>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              name="owner"
+                              defaultValue={
+                                item.ownerRoleId
+                                  ? `role:${item.ownerRoleId}`
+                                  : item.ownerPersonId
+                                    ? `person:${item.ownerPersonId}`
+                                    : ""
+                              }
+                              aria-label="Owner"
+                              className="min-w-0 max-w-full flex-1 rounded-lg border border-slate-300 px-2 py-1 text-[10px]"
+                            >
+                              <option value="">Unassigned</option>
+                              <optgroup label="Roles">
+                                {roles
+                                  .filter((r) => !r.archived || r.id === item.ownerRoleId)
+                                  .map((r) => (
+                                    <option key={r.id} value={`role:${r.id}`}>
+                                      {r.name}
+                                      {r.archived ? " (archived)" : ""}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                              <optgroup label="People">
+                                {people
+                                  .filter((p) => !p.archived || p.id === item.ownerPersonId)
+                                  .map((p) => (
+                                    <option key={p.id} value={`person:${p.id}`}>
+                                      {p.name}
+                                      {p.archived ? " (archived)" : ""}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            </select>
+                            <input
+                              type="date"
+                              name="dueDate"
+                              defaultValue={item.dueDate ?? ""}
+                              aria-label="Due date"
+                              className="rounded-lg border border-slate-300 px-2 py-1 text-[10px]"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
                             <button
                               type="submit"
                               disabled={pending}
@@ -643,6 +720,17 @@ export function GovernanceAssessmentPanel({
                               {item.title}
                             </div>
                             <div className="mt-0.5 text-[11px] text-slate-500">{item.description}</div>
+                            {(item.ownerLabel || item.dueDate) && (
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-600">
+                                {item.ownerLabel && <span>Owner: {item.ownerLabel}</span>}
+                                {item.dueDate && <span>Due {item.dueDate}</span>}
+                                {item.overdue && (
+                                  <span className="rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 font-bold uppercase text-red-700">
+                                    Overdue
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {item.policy && (
                               <button
                                 type="button"

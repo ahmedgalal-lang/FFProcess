@@ -10,7 +10,7 @@ import {
   partitionNewChecklistItems,
   partitionNewRisks,
 } from "@/lib/domain/governance-findings";
-import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
+import { ok, notFound, validationError, aiUnavailable, type ActionResult, type ActionError } from "@/lib/actions/errors";
 import type {
   GovernanceItemPhase,
   GovernanceItemStatus,
@@ -18,6 +18,32 @@ import type {
   RiskImpact,
   RiskStatus,
 } from "@/app/generated/prisma/client";
+
+/**
+ * Whether a role or person may be made the owner of something in this
+ * workspace. It must belong to the workspace (else not-found, like every other
+ * id here) and must not be archived — unless it is the thing's current owner,
+ * so an item whose owner was archived after assignment can still be saved.
+ * Returns the error to send back, or null when the owner is fine.
+ */
+async function checkAssignableOwner(
+  workspaceId: string,
+  roleId: string | null,
+  personId: string | null,
+  current: { roleId: string | null; personId: string | null }
+): Promise<ActionError | null> {
+  if (roleId) {
+    const role = await prisma.role.findUnique({ where: { id: roleId } });
+    if (!role || role.workspaceId !== workspaceId) return notFound();
+    if (role.archivedAt && roleId !== current.roleId) return validationError(`"${role.name}" is archived.`);
+  }
+  if (personId) {
+    const person = await prisma.person.findUnique({ where: { id: personId } });
+    if (!person || person.workspaceId !== workspaceId) return notFound();
+    if (person.archivedAt && personId !== current.personId) return validationError(`"${person.name}" is archived.`);
+  }
+  return null;
+}
 
 /** Looks up a workspace's aspect by id, refusing one that doesn't exist or belongs elsewhere. */
 async function findOwnedAspect(workspaceId: string, aspectId: string) {
@@ -383,6 +409,12 @@ const updateChecklistItemSchema = z.object({
   phase: z.enum(["IMMEDIATE", "NEAR_TERM", "LONG_TERM"]).optional(),
   title: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
+  // Spec 028. Omitted = untouched, null = cleared. The owner is replaced as a
+  // pair: sending either owner field clears the other unless it is sent too,
+  // so switching from a role to a person can never leave both set.
+  ownerRoleId: z.string().min(1).nullable().optional(),
+  ownerPersonId: z.string().min(1).nullable().optional(),
+  dueDate: z.iso.date().nullable().optional(),
 });
 
 export async function updateGovernanceChecklistItem(
@@ -402,12 +434,26 @@ export async function updateGovernanceChecklistItem(
 
   const fields = parsed.data;
 
+  const ownerChanging = fields.ownerRoleId !== undefined || fields.ownerPersonId !== undefined;
+  const ownerRoleId = fields.ownerRoleId ?? null;
+  const ownerPersonId = fields.ownerPersonId ?? null;
+  if (ownerChanging) {
+    if (ownerRoleId && ownerPersonId) return validationError("An item is owned by a role or a person, not both.");
+    const ownerProblem = await checkAssignableOwner(parsed.data.workspaceId, ownerRoleId, ownerPersonId, {
+      roleId: item.ownerRoleId,
+      personId: item.ownerPersonId,
+    });
+    if (ownerProblem) return ownerProblem;
+  }
+
   await prisma.governanceChecklistItem.update({
     where: { id: parsed.data.itemId },
     data: {
       ...(fields.phase !== undefined ? { phase: fields.phase as GovernanceItemPhase } : {}),
       ...(fields.title !== undefined ? { title: fields.title } : {}),
       ...(fields.description !== undefined ? { description: fields.description } : {}),
+      ...(ownerChanging ? { ownerRoleId, ownerPersonId } : {}),
+      ...(fields.dueDate !== undefined ? { dueDate: fields.dueDate ? new Date(fields.dueDate) : null } : {}),
     },
   });
 

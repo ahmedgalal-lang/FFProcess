@@ -44,7 +44,7 @@ Once items have dates, the consultant needs to see which ones have slipped.
 
 ### Edge Cases
 
-- What happens to an item's owner when that role or person is removed from the workspace? The owner clears and the item reads as unassigned, matching how a risk's owner already behaves.
+- What happens to an item's owner when that role or person is archived (this app archives roles and people rather than deleting them)? The owner stays on the item, shown with "(archived)", and can be reassigned. Archived roles and people aren't offered for new assignments.
 - What happens when an assessment is regenerated? Existing items (and their owners and dates) are untouched. A regenerate only ever adds items whose titles it hasn't seen before, and it never revisits existing ones.
 - What happens when an item's phase is changed? Its due date stays as set. Phase and due date are independent.
 
@@ -57,7 +57,7 @@ Once items have dates, the consultant needs to see which ones have slipped.
 - **FR-003**: A newly created item, whether added by hand or generated, MUST start with no owner and no due date.
 - **FR-004**: An item that isn't Done or Dismissed and is past its due date MUST be flagged Overdue. A Done or Dismissed item MUST NOT be.
 - **FR-005**: Each aspect's overdue-item count MUST be visible alongside that aspect.
-- **FR-006**: Removing an owner's role or person from the workspace MUST clear the owner on affected items without removing the items.
+- **FR-006**: An item whose owner is archived MUST keep that owner, shown as archived. Archived roles and people MUST NOT be offered when assigning. Deleting a role or person outright (which only happens when a whole workspace is deleted) MUST NOT delete the item.
 - **FR-007**: Regenerating an assessment MUST NOT change any existing item's owner or due date.
 - **FR-008**: Owner and due-date fields MUST be readable by Viewers and above, and writable by Editors and above.
 

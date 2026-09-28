@@ -1394,3 +1394,160 @@ describe("Policy acknowledgement tracking (spec 018)", () => {
     expect(await prisma.governancePolicyAcknowledgement.count({ where: { personId } })).toBe(0);
   });
 });
+
+describe("Checklist item owners and due dates (spec 028)", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let aspectId: string;
+  let roleId: string;
+  let personId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    mockRunGovernanceAssessment.mockReset();
+    aspectId = (await createGovernanceAspect(fixture.workspace.id, "Board Structure")).id;
+    roleId = (await prisma.role.create({ data: { workspaceId: fixture.workspace.id, name: "Company Secretary" } })).id;
+    personId = (await prisma.person.create({ data: { workspaceId: fixture.workspace.id, name: "Dana Reyes" } })).id;
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  async function newItem(title = "Appoint an independent chair") {
+    const added = await addGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      aspectId,
+      phase: "NEAR_TERM",
+      title,
+      description: "Separate the chair from the CEO role.",
+    });
+    if (!added.ok) throw new Error("setup failed");
+    return added.data.id;
+  }
+
+  const read = (id: string) => prisma.governanceChecklistItem.findUniqueOrThrow({ where: { id } });
+
+  it("starts with no owner and no due date", async () => {
+    const item = await read(await newItem());
+    expect(item.ownerRoleId).toBeNull();
+    expect(item.ownerPersonId).toBeNull();
+    expect(item.dueDate).toBeNull();
+  });
+
+  it("sets a role owner and a due date, then switches to a person, clearing the role", async () => {
+    const itemId = await newItem();
+    const set = await updateGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      itemId,
+      ownerRoleId: roleId,
+      dueDate: "2027-03-31",
+    });
+    expect(set.ok).toBe(true);
+    let item = await read(itemId);
+    expect(item.ownerRoleId).toBe(roleId);
+    expect(item.dueDate?.toISOString().slice(0, 10)).toBe("2027-03-31");
+
+    // The owner is replaced as a pair: naming a person clears the role.
+    await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, ownerPersonId: personId });
+    item = await read(itemId);
+    expect(item.ownerPersonId).toBe(personId);
+    expect(item.ownerRoleId).toBeNull();
+  });
+
+  it("clears the owner and the due date with null, and leaves them alone when omitted", async () => {
+    const itemId = await newItem();
+    await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, ownerRoleId: roleId, dueDate: "2027-03-31" });
+
+    await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, title: "Renamed only" });
+    let item = await read(itemId);
+    expect(item.title).toBe("Renamed only");
+    expect(item.ownerRoleId).toBe(roleId);
+    expect(item.dueDate).not.toBeNull();
+
+    await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, ownerRoleId: null, ownerPersonId: null, dueDate: null });
+    item = await read(itemId);
+    expect(item.ownerRoleId).toBeNull();
+    expect(item.ownerPersonId).toBeNull();
+    expect(item.dueDate).toBeNull();
+  });
+
+  it("refuses both a role and a person as owner", async () => {
+    const itemId = await newItem();
+    const result = await updateGovernanceChecklistItem({
+      workspaceId: fixture.workspace.id,
+      itemId,
+      ownerRoleId: roleId,
+      ownerPersonId: personId,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("VALIDATION_ERROR");
+    expect((await read(itemId)).ownerRoleId).toBeNull();
+  });
+
+  it("refuses an owner from another workspace, and an archived one", async () => {
+    const itemId = await newItem();
+    const other = await createFixtureWorkspace();
+    const theirRole = await prisma.role.create({ data: { workspaceId: other.workspace.id, name: "Theirs" } });
+    const theirPerson = await prisma.person.create({ data: { workspaceId: other.workspace.id, name: "Not Ours" } });
+
+    for (const owner of [{ ownerRoleId: theirRole.id }, { ownerPersonId: theirPerson.id }]) {
+      const result = await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, ...owner });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+    }
+
+    await prisma.role.update({ where: { id: roleId }, data: { archivedAt: new Date() } });
+    const archived = await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, ownerRoleId: roleId });
+    expect(archived.ok).toBe(false);
+    if (!archived.ok) expect(archived.error).toBe("VALIDATION_ERROR");
+
+    await other.cleanup();
+  });
+
+  it("keeps an owner that is archived after being assigned, and survives a hard delete of it", async () => {
+    const itemId = await newItem();
+    await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, ownerRoleId: roleId });
+
+    await prisma.role.update({ where: { id: roleId }, data: { archivedAt: new Date() } });
+    expect((await read(itemId)).ownerRoleId).toBe(roleId);
+
+    // Still editable: a title change doesn't trip over the archived owner.
+    const edit = await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, title: "Still mine" });
+    expect(edit.ok).toBe(true);
+
+    await prisma.role.delete({ where: { id: roleId } });
+    const item = await read(itemId);
+    expect(item.ownerRoleId).toBeNull();
+    expect(item.title).toBe("Still mine");
+  });
+
+  it("refuses a VIEWER", async () => {
+    const itemId = await newItem();
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+    const result = await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId, dueDate: "2027-01-01" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("FORBIDDEN");
+  });
+
+  it("keeps an item's owner and due date through a regenerate", async () => {
+    await prisma.workspace.update({
+      where: { id: fixture.workspace.id },
+      data: { industry: "Manufacturing", governanceCompanySize: "50-200 employees", governanceJurisdiction: "EU" },
+    });
+    mockRunGovernanceAssessment.mockResolvedValue(outcome());
+    const generated = await generateGovernanceAssessment({ workspaceId: fixture.workspace.id, aspectId });
+    if (!generated.ok) throw new Error("setup failed");
+    const item = await prisma.governanceChecklistItem.findFirstOrThrow({
+      where: { assessmentId: generated.data.assessmentId, title: "Establish a risk committee" },
+    });
+    await updateGovernanceChecklistItem({ workspaceId: fixture.workspace.id, itemId: item.id, ownerPersonId: personId, dueDate: "2027-06-30" });
+
+    await generateGovernanceAssessment({ workspaceId: fixture.workspace.id, aspectId });
+
+    const after = await read(item.id);
+    expect(after.ownerPersonId).toBe(personId);
+    expect(after.dueDate?.toISOString().slice(0, 10)).toBe("2027-06-30");
+  });
+});

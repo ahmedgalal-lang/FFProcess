@@ -227,13 +227,14 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles     PersonRole[]
-  processSteps    ProcessStep[]    @relation("StepAssignedRole")
-  swimlaneSteps   ProcessStep[]    @relation("StepSwimlaneRole")
-  supportedSteps  ProcessStep[]    @relation("StepSupportingRoles")
-  raciAssignments RaciAssignment[]
-  authorityRules  AuthorityRule[]  @relation("AuthorityRuleRole")
-  governanceRisks GovernanceRisk[]
+  personRoles         PersonRole[]
+  processSteps        ProcessStep[]             @relation("StepAssignedRole")
+  swimlaneSteps       ProcessStep[]             @relation("StepSwimlaneRole")
+  supportedSteps      ProcessStep[]             @relation("StepSupportingRoles")
+  raciAssignments     RaciAssignment[]
+  authorityRules      AuthorityRule[]           @relation("AuthorityRuleRole")
+  governanceRisks     GovernanceRisk[]
+  checklistItemsOwned GovernanceChecklistItem[] @relation("ChecklistItemOwnerRole")
 
   createdAt DateTime @default(now())
 
@@ -257,6 +258,7 @@ model Person {
   authorityRules         AuthorityRule[]                   @relation("AuthorityRulePerson")
   governanceRisks        GovernanceRisk[]
   policyAcknowledgements GovernancePolicyAcknowledgement[]
+  checklistItemsOwned    GovernanceChecklistItem[]         @relation("ChecklistItemOwnerPerson")
 
   createdAt DateTime @default(now())
 
@@ -866,9 +868,18 @@ model GovernanceChecklistItem {
   description  String               @db.Text
   status       GovernanceItemStatus @default(OPEN)
 
-  assessment GovernanceAssessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  policy     GovernancePolicyDraft?
-  risks      GovernanceRisk[]
+  /// Spec 028 — who is doing this, and by when. A role or a person, never
+  /// both. Roles and people are archived rather than deleted, so an archived
+  /// owner stays here (shown as archived); SetNull only covers a hard delete.
+  ownerRoleId   String?
+  ownerPersonId String?
+  dueDate       DateTime?
+
+  assessment  GovernanceAssessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  policy      GovernancePolicyDraft?
+  risks       GovernanceRisk[]
+  ownerRole   Role?                  @relation("ChecklistItemOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  ownerPerson Person?                @relation("ChecklistItemOwnerPerson", fields: [ownerPersonId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

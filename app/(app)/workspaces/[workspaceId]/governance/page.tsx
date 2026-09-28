@@ -10,6 +10,7 @@ import type { PolicyT } from "./governance-policy-drawer";
 import type { RiskT } from "./governance-risk-register";
 import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 import { isPolicyOverdueForReview } from "@/lib/domain/policy-lifecycle";
+import { dayOf, isChecklistItemOverdue } from "@/lib/domain/checklist-due";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -62,6 +63,12 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
 
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
   const personNameById = new Map(people.map((p) => [p.id, p.name]));
+  // Roles and people are archived, never deleted, so an owner can be archived
+  // after being assigned; it stays named, marked as such (spec 028).
+  const roleById = new Map(roles.map((r) => [r.id, r]));
+  const personById = new Map(people.map((p) => [p.id, p]));
+  const ownerLabel = (owner: { name: string; archivedAt: Date | null } | undefined) =>
+    owner ? `${owner.name}${owner.archivedAt ? " (archived)" : ""}` : null;
   const aspectNameById = new Map(aspects.map((a) => [a.id, a.name]));
 
   // One assessment id -> its aspect's id, so a policy or a risk sourced from
@@ -117,6 +124,15 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         // The same object the library holds, so the drawer opens one policy
         // whichever side it was reached from.
         policy: item.policy ? (policyById.get(item.policy.id) ?? null) : null,
+        ownerRoleId: item.ownerRoleId,
+        ownerPersonId: item.ownerPersonId,
+        ownerLabel: item.ownerRoleId
+          ? ownerLabel(roleById.get(item.ownerRoleId))
+          : item.ownerPersonId
+            ? ownerLabel(personById.get(item.ownerPersonId))
+            : null,
+        dueDate: item.dueDate ? dayOf(item.dueDate) : null,
+        overdue: isChecklistItemOverdue(item.status, item.dueDate, now),
       };
     });
     assessmentsByAspectId[assessment.aspectId] = {
@@ -233,7 +249,8 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
           assessmentsByAspectId={assessmentsByAspectId}
           risks={risksForPanel}
           allPolicies={allPolicies}
-          people={people.map((p) => ({ id: p.id, name: p.name }))}
+          people={people.map((p) => ({ id: p.id, name: p.name, archived: p.archivedAt !== null }))}
+          roles={roles.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null }))}
         />
       </div>
 

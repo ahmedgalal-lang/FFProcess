@@ -16,13 +16,18 @@ workspace (a role or person from another workspace is refused as
 not-found). The form sends a single select value (`role:<id>`,
 `person:<id>`, or empty), decoded client-side into the two fields.
 
-## Decision 3 — `onDelete: SetNull` on both owner relations
+## Decision 3 — Archived owners stay, labelled; SetNull only for hard deletes
 
-FR-006: removing a role or person clears the owner and keeps the item. An
-optional relation's default is already SetNull in this schema (verified in
-spec 018's research against `governance_risks_ownerPersonId_fkey`), but it
-is stated explicitly on these relations so the behavior doesn't rest on a
-default.
+Found while building: roles and people are never deleted through the app —
+`archiveRole`/`archivePerson` (`lib/actions/org.ts`) set `archivedAt`. So a
+SetNull foreign key would never fire in practice, and the spec's original
+"the owner clears" assumption didn't match the app. The Risk Register
+already keeps showing an archived owner's name. FR-006 was corrected: an
+archived owner stays on the item, labelled "(archived)", and can be
+reassigned; the owner select offers only active roles and people (plus the
+item's current owner). `onDelete: SetNull` stays on both relations for the
+hard-delete path (a whole workspace being deleted), so an item is never
+blocked or removed by its owner going away.
 
 ## Decision 4 — Overdue is derived, server-side, like "needs review"
 
