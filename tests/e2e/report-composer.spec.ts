@@ -68,6 +68,10 @@ const SECTION_TITLES = [
   "Cover page",
   "Org Structure",
   "Helicopter View",
+  // Spec 020: the workspace-wide governance pack section, between the Value
+  // Chain and the process body. Its parts print specific empty messages
+  // rather than "No data yet", so this adds one line whatever is recorded.
+  "Governance & Risk",
   "Processes in This Report",
   "Executive Summary",
   "Process Map & Narrative",
@@ -273,11 +277,15 @@ async function deckText(page: import("@playwright/test").Page): Promise<string> 
 test("the deck follows the arrangement too", async ({ page }) => {
   await signIn(page);
 
-  expect(await deckText(page)).toContain("Governance");
+  // The section's own title, not just "Governance": since spec 020 the
+  // workspace-wide Governance & Risk slides can carry that word too, and
+  // whether they print depends on what the demo workspace has recorded.
+  const perProcessTitle = /Governance,\s+Controls\s+&amp;\s+Metrics/;
+  expect(await deckText(page)).toMatch(perProcessTitle);
 
   await openPicker(page);
   await page.getByRole("checkbox", { name: "Include Governance, Controls & Metrics" }).uncheck();
   await expect.poll(() => arrangeRows(page)).not.toContainEqual("4.0 Governance, Controls & Metrics");
 
-  expect(await deckText(page)).not.toContain("Governance");
+  expect(await deckText(page)).not.toMatch(perProcessTitle);
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ARRANGEMENT_VERSION,
   BLOCKS,
+  PACK_SECTIONS,
   PROCESS_SECTIONS,
   isBlockEmpty,
   isSectionEmpty,
@@ -98,6 +99,43 @@ describe("resolveArrangement — merging with the catalogue", () => {
   it("includes the cover page however the stored value is shaped", () => {
     const r = resolveArrangement(stored({ pack: [{ id: "cover", on: false }] }));
     expect(r.pack.find((s) => s.id === "cover")!.on).toBe(true);
+  });
+});
+
+describe("resolveArrangement — pack sections added after a client was arranged", () => {
+  /** The pack as it was stored before the Governance & Risk section existed. */
+  const beforeGovernance = ["cover", "org", "heli", "chain", "index", "closing"].map((id) => ({ id, on: true }));
+
+  it("places Governance & Risk between the Value Chain and the process body by default", () => {
+    expect(PACK_SECTIONS.map((s) => s.id)).toEqual(["cover", "org", "heli", "chain", "governance", "index", "closing"]);
+    expect(ids(resolveArrangement(null).pack)).toEqual(PACK_SECTIONS.map((s) => s.id));
+  });
+
+  it("inserts a missing pack section at its catalogue position, included — never after the closing page", () => {
+    // Appending (the rule for process sections) would print it after
+    // "Thank you" for every workspace arranged before it shipped.
+    const r = resolveArrangement(stored({ pack: beforeGovernance }));
+    expect(ids(r.pack)).toEqual(["cover", "org", "heli", "chain", "governance", "index", "closing"]);
+    expect(r.pack.find((s) => s.id === "governance")!.on).toBe(true);
+  });
+
+  it("follows its catalogue predecessor wherever the client moved it", () => {
+    const moved = ["cover", "org", "heli", "index", "chain", "closing"].map((id) => ({ id, on: true }));
+    const r = resolveArrangement(stored({ pack: moved }));
+    expect(ids(r.pack)).toEqual(["cover", "org", "heli", "index", "chain", "governance", "closing"]);
+  });
+
+  it("falls back to an earlier predecessor when its immediate one was dropped from the stored list", () => {
+    const withoutChain = ["cover", "org", "heli", "index", "closing"].map((id) => ({ id, on: true }));
+    const r = resolveArrangement(stored({ pack: withoutChain }));
+    // chain and governance are both missing: each lands after the nearest
+    // catalogue predecessor already placed.
+    expect(ids(r.pack)).toEqual(["cover", "org", "heli", "chain", "governance", "index", "closing"]);
+  });
+
+  it("keeps a client's choice to exclude it once they have saved one", () => {
+    const r = resolveArrangement(stored({ pack: [...beforeGovernance, { id: "governance", on: false }] }));
+    expect(r.pack.find((s) => s.id === "governance")!.on).toBe(false);
   });
 });
 

@@ -18,6 +18,13 @@ import {
   isSectionEmpty,
   type ResolvedArrangement,
 } from "@/lib/domain/report-arrangement";
+import {
+  formatReportDate,
+  POLICY_LIFECYCLE_LABEL,
+  RISK_STATUS_LABEL,
+  titleCase,
+  type GovernanceReport,
+} from "@/lib/domain/governance-report";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
@@ -166,6 +173,7 @@ export function ExportPreview({
   valueChain,
   unphasedActivityCount,
   railProcesses,
+  governance,
   arrangement,
   mapLayout: initialMapLayout,
   canEdit,
@@ -185,6 +193,7 @@ export function ExportPreview({
   valueChain: ValueChainColumn[];
   unphasedActivityCount: number;
   railProcesses: RailProcess[];
+  governance: GovernanceReport;
   arrangement: ResolvedArrangement;
   mapLayout: "FLOW" | "ROLES";
   /** Whether this viewer may change the client's settings — the layout control is theirs alone. */
@@ -566,6 +575,8 @@ export function ExportPreview({
               ) : (
                 <EmptyPackSection key={section.id} title={`${companyName} Value Chain`} />
               );
+            case "governance":
+              return <GovernancePackSection key={section.id} governance={governance} companyName={companyName} />;
             case "index":
               return (
                 <Fragment key={section.id}>
@@ -966,6 +977,114 @@ function EmptyPackSection({ title }: { title: string }) {
       <NothingRecorded />
     </section>
   );
+}
+
+/**
+ * The workspace-wide governance section (spec 020): assessment summaries, the
+ * Risk Register, and a Policy Library index. Each part says specifically what
+ * is missing rather than the generic "No data yet" marker, so the pack's
+ * outline doesn't change shape depending on what happens to be recorded.
+ */
+const RISK_LEVEL_TONE: Record<string, string> = {
+  HIGH: "bg-red-50 text-red-700 border-red-200",
+  MEDIUM: "bg-amber-50 text-amber-700 border-amber-200",
+  LOW: "bg-slate-50 text-slate-600 border-slate-200",
+};
+
+function GovernancePackSection({ governance, companyName }: { governance: GovernanceReport; companyName: string }) {
+  return (
+    <section className="print-page">
+      <TwoToneRule />
+      <h2 className="text-xl font-semibold text-slate-900">Governance &amp; Risk</h2>
+      <p className="mt-1 mb-2 text-sm text-slate-500">
+        The governance programme across {companyName} — the assessment, the Risk Register and the Policy Library,
+        which apply to the whole organisation rather than to any one process.
+      </p>
+
+      <h3 className="mt-4 text-base font-semibold text-slate-900">Governance Assessment</h3>
+      {governance.summaries.length === 0 ? (
+        <GovernanceEmpty>No governance assessment has been written yet.</GovernanceEmpty>
+      ) : (
+        governance.summaries.map((s) => (
+          <div key={s.aspectName} className="print-keep">
+            <SubHeading>{s.aspectName}</SubHeading>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{s.summary}</p>
+          </div>
+        ))
+      )}
+
+      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Risk Register</h3>
+      {governance.risks.length === 0 ? (
+        <GovernanceEmpty>No risks have been recorded on the Risk Register yet.</GovernanceEmpty>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Risk</th>
+                <th className="px-3 py-2">Likelihood</th>
+                <th className="px-3 py-2">Impact</th>
+                <th className="px-3 py-2">Level</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Owner</th>
+              </tr>
+            </thead>
+            <tbody>
+              {governance.risks.map((risk, i) => (
+                <tr key={i} className="border-t border-slate-100 align-top">
+                  <td className="px-3 py-2">
+                    <div className="font-semibold text-slate-900">{risk.title}</div>
+                    <div className="text-xs text-slate-600">{risk.description}</div>
+                  </td>
+                  <td className="px-3 py-2 text-slate-800">{titleCase(risk.likelihood)}</td>
+                  <td className="px-3 py-2 text-slate-800">{titleCase(risk.impact)}</td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${RISK_LEVEL_TONE[risk.level]}`}>
+                      {titleCase(risk.level)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-slate-800">{RISK_STATUS_LABEL[risk.status]}</td>
+                  <td className="px-3 py-2 text-slate-800">{risk.owner ?? "Unassigned"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Policy Library</h3>
+      {governance.policies.length === 0 ? (
+        <GovernanceEmpty>No policies have been written yet.</GovernanceEmpty>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Policy</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Effective</th>
+              </tr>
+            </thead>
+            <tbody>
+              {governance.policies.map((policy, i) => (
+                <tr key={i} className="border-t border-slate-100">
+                  <td className="px-3 py-2 font-semibold text-slate-900">{policy.title}</td>
+                  <td className="px-3 py-2 text-slate-800">{POLICY_LIFECYCLE_LABEL[policy.lifecycleStatus]}</td>
+                  <td className="px-3 py-2 text-slate-800">
+                    {policy.effectiveDate ? formatReportDate(policy.effectiveDate) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function GovernanceEmpty({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{children}</p>;
 }
 
 /** What an included section or block prints when there is nothing to show. */

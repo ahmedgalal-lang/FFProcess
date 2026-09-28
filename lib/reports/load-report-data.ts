@@ -21,6 +21,7 @@ import { valueChainSummary, type ActivityCard, type PhaseRef } from "@/lib/domai
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ExportProcessData, ValueChainColumn } from "@/app/reports/[workspaceId]/export-preview";
 import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
+import { buildGovernanceReport, type GovernanceReport } from "@/lib/domain/governance-report";
 
 export type ReportData = {
   workspaceId: string;
@@ -41,7 +42,38 @@ export type ReportData = {
   valueChain: ValueChainColumn[];
   unphasedActivityCount: number;
   railProcesses: RailProcess[];
+  /**
+   * The Governance page's Risk Register, Policy Library and assessment
+   * summaries (spec 020) — workspace-wide, so not filtered by which
+   * processes this pack was picked for.
+   */
+  governance: GovernanceReport;
 };
+
+/** The workspace's governance records, shaped for the report. */
+async function loadGovernanceReport(workspaceId: string): Promise<GovernanceReport> {
+  const [aspects, assessments, risks, policies] = await Promise.all([
+    prisma.governanceAspect.findMany({ where: { workspaceId }, orderBy: { createdAt: "asc" }, select: { id: true, name: true } }),
+    prisma.governanceAssessment.findMany({ where: { workspaceId }, select: { aspectId: true, summary: true } }),
+    prisma.governanceRisk.findMany({
+      where: { workspaceId },
+      include: { ownerRole: { select: { id: true, name: true } }, ownerPerson: { select: { id: true, name: true } } },
+    }),
+    prisma.governancePolicyDraft.findMany({
+      where: { workspaceId },
+      select: { title: true, lifecycleStatus: true, effectiveDate: true },
+    }),
+  ]);
+
+  return buildGovernanceReport({
+    aspects,
+    assessments,
+    risks,
+    policies,
+    roleNameById: new Map(risks.flatMap((r) => (r.ownerRole ? [[r.ownerRole.id, r.ownerRole.name] as const] : []))),
+    personNameById: new Map(risks.flatMap((r) => (r.ownerPerson ? [[r.ownerPerson.id, r.ownerPerson.name] as const] : []))),
+  });
+}
 
 /**
  * Everything the Export Report needs, for a given workspace and the set of
@@ -354,5 +386,6 @@ export async function loadReportData(workspaceId: string, processIds: string[]):
     valueChain,
     unphasedActivityCount: chain.unphasedCount,
     railProcesses,
+    governance: await loadGovernanceReport(workspaceId),
   };
 }

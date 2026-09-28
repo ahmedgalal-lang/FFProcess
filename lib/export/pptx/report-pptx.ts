@@ -13,6 +13,14 @@ import {
 import type { RaciCode } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ReportData } from "@/lib/reports/load-report-data";
+import {
+  formatReportDate,
+  isGovernanceReportEmpty,
+  POLICY_LIFECYCLE_LABEL,
+  RISK_STATUS_LABEL,
+  titleCase,
+  type GovernanceReport,
+} from "@/lib/domain/governance-report";
 import type { ExportProcessData, ValueChainColumn } from "@/app/reports/[workspaceId]/export-preview";
 
 // A 16:9 widescreen canvas, the closest built-in match to the A4-landscape
@@ -76,6 +84,9 @@ export async function buildReportPptx(
       case "chain":
         if (data.valueChain.length > 0)
           addValueChainSlides(pptx, data.valueChain, data.companyName, accent, ink);
+        break;
+      case "governance":
+        if (!isGovernanceReportEmpty(data.governance)) addGovernancePackSlides(pptx, data.governance, data.companyName);
         break;
       case "index":
         if (data.processes.length > 0) addProcessIndexSlide(pptx, data.processes, accent);
@@ -410,6 +421,75 @@ function addValueChainSlides(pptx: PptxGenJS, columns: ValueChainColumn[], compa
         valign: "top",
         shrinkText: true,
       });
+    });
+  }
+}
+
+/**
+ * The workspace-wide Governance & Risk section (spec 020) — one slide per
+ * part that has something in it, mirroring the printed section's order. The
+ * caller has already skipped the section when all three parts are empty.
+ */
+function addGovernancePackSlides(pptx: PptxGenJS, governance: GovernanceReport, companyName: string) {
+  const title = (slide: PptxGenJS.Slide, text: string, subtitle: string) => {
+    slide.addText(text, { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 20, bold: true, color: INK_DARK });
+    slide.addText(subtitle, { x: MARGIN, y: 0.72, w: CONTENT_W, h: 0.3, fontFace: FONT, fontSize: 11, color: INK_MUTED });
+  };
+  const headerFill = { color: "f1f5f9" };
+  const th = (text: string): PptxGenJS.TableCell => ({ text, options: { bold: true, fontSize: 9, fill: headerFill } });
+
+  if (governance.summaries.length > 0) {
+    const slide = pptx.addSlide();
+    title(slide, "Governance Assessment", `The governance programme across ${companyName}.`);
+    const lines = governance.summaries.flatMap((s) => [
+      { text: s.aspectName, options: { fontSize: 11, bold: true, color: INK_DARK, breakLine: true } },
+      { text: s.summary, options: { fontSize: 10, color: INK_DARK, breakLine: true, paraSpaceAfter: 8 } },
+    ]);
+    slide.addText(lines, { x: MARGIN, y: 1.2, w: CONTENT_W, h: SLIDE_H - 1.2 - MARGIN, fontFace: FONT, valign: "top", shrinkText: true });
+  }
+
+  if (governance.risks.length > 0) {
+    const slide = pptx.addSlide();
+    title(slide, "Risk Register", `${governance.risks.length} risk${governance.risks.length === 1 ? "" : "s"}, open before closed, most severe first.`);
+    const rows: PptxGenJS.TableRow[] = governance.risks.map((r) => [
+      { text: `${r.title}\n${r.description}`, options: { fontSize: 9 } },
+      { text: titleCase(r.likelihood), options: { fontSize: 9 } },
+      { text: titleCase(r.impact), options: { fontSize: 9 } },
+      { text: titleCase(r.level), options: { fontSize: 9, bold: true } },
+      { text: RISK_STATUS_LABEL[r.status], options: { fontSize: 9 } },
+      { text: r.owner ?? "Unassigned", options: { fontSize: 9 } },
+    ]);
+    slide.addTable([[th("Risk"), th("Likelihood"), th("Impact"), th("Level"), th("Status"), th("Owner")], ...rows], {
+      x: MARGIN,
+      y: 1.2,
+      w: CONTENT_W,
+      colW: [CONTENT_W - 1.1 * 4 - 1.9, 1.1, 1.1, 1.1, 1.1, 1.9],
+      fontFace: FONT,
+      border: { type: "solid", color: BORDER, pt: 0.5 },
+      autoPage: true,
+      autoPageRepeatHeader: true,
+      autoPageHeaderRows: 1,
+    });
+  }
+
+  if (governance.policies.length > 0) {
+    const slide = pptx.addSlide();
+    title(slide, "Policy Library", `${governance.policies.length} polic${governance.policies.length === 1 ? "y" : "ies"} and where each stands.`);
+    const rows: PptxGenJS.TableRow[] = governance.policies.map((p) => [
+      { text: p.title, options: { fontSize: 9, bold: true } },
+      { text: POLICY_LIFECYCLE_LABEL[p.lifecycleStatus], options: { fontSize: 9 } },
+      { text: p.effectiveDate ? formatReportDate(p.effectiveDate) : "—", options: { fontSize: 9 } },
+    ]);
+    slide.addTable([[th("Policy"), th("Status"), th("Effective")], ...rows], {
+      x: MARGIN,
+      y: 1.2,
+      w: CONTENT_W,
+      colW: [CONTENT_W - 2 - 2, 2, 2],
+      fontFace: FONT,
+      border: { type: "solid", color: BORDER, pt: 0.5 },
+      autoPage: true,
+      autoPageRepeatHeader: true,
+      autoPageHeaderRows: 1,
     });
   }
 }

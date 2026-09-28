@@ -55,6 +55,10 @@ export const PACK_SECTIONS: readonly SectionSpec[] = [
   { id: "org", title: "Org Structure", kind: "pack" },
   { id: "heli", title: "Helicopter View", kind: "pack" },
   { id: "chain", title: "Value Chain", kind: "pack" },
+  // Workspace-wide (Risk Register, Policy Library, assessment summaries) —
+  // distinct from the per-process "Governance, Controls & Metrics" below,
+  // which is Key Control Points and KPIs from each process's Authority Matrix.
+  { id: "governance", title: "Governance & Risk", kind: "pack" },
   { id: "index", title: "Processes in This Report", kind: "pack" },
   { id: "closing", title: "Closing page", kind: "pack" },
 ];
@@ -155,6 +159,43 @@ function orderBy<T extends { id: string }>(
   return out;
 }
 
+/**
+ * orderBy's pack-section variant: an entry the stored list never mentions is
+ * inserted after its nearest catalogue predecessor already placed, not
+ * appended. The pack has a front and a back — appending would print a
+ * section added after a client was arranged *after the closing page*.
+ * Process sections and blocks keep orderBy's append rule.
+ */
+function orderPackBy<T extends { id: string }>(
+  catalogue: readonly T[],
+  stored: { id: string; on: boolean }[] | undefined
+): { spec: T; on: boolean }[] {
+  const byId = new Map(catalogue.map((c) => [c.id, c]));
+  const out: { spec: T; on: boolean }[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of stored ?? []) {
+    const spec = byId.get(entry.id);
+    if (!spec || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    out.push({ spec, on: entry.on !== false });
+  }
+  catalogue.forEach((spec, i) => {
+    if (seen.has(spec.id)) return;
+    let at = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const placed = out.findIndex((o) => o.spec.id === catalogue[j]!.id);
+      if (placed !== -1) {
+        at = placed + 1;
+        break;
+      }
+    }
+    out.splice(at, 0, { spec, on: true });
+    seen.add(spec.id);
+  });
+  return out;
+}
+
 function isStored(value: unknown): value is StoredArrangement {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Partial<StoredArrangement>;
@@ -173,7 +214,7 @@ function isStored(value: unknown): value is StoredArrangement {
 export function resolveArrangement(stored: unknown): ResolvedArrangement {
   const value = isStored(stored) ? stored : null;
 
-  const pack = orderBy(PACK_SECTIONS, value?.pack).map(({ spec, on }) => ({
+  const pack = orderPackBy(PACK_SECTIONS, value?.pack).map(({ spec, on }) => ({
     id: spec.id,
     title: spec.title,
     kind: spec.kind,
