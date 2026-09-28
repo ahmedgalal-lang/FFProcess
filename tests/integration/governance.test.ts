@@ -37,6 +37,8 @@ const {
   markPolicyAcknowledgement,
   unmarkPolicyAcknowledgement,
 } = await import("@/lib/actions/governance");
+const { setRiskTreatment, addRiskTreatmentAction, setRiskTreatmentActionDone, deleteRiskTreatmentAction } =
+  await import("@/lib/actions/risk-treatment");
 const { prisma } = await import("@/lib/db/client");
 
 /** A full, well-formed AI outcome — every test starts from a copy of this and edits what it needs. */
@@ -1549,5 +1551,169 @@ describe("Checklist item owners and due dates (spec 028)", () => {
     const after = await read(item.id);
     expect(after.ownerPersonId).toBe(personId);
     expect(after.dueDate?.toISOString().slice(0, 10)).toBe("2027-06-30");
+  });
+});
+
+describe("Risk treatment plans (spec 027)", () => {
+  let fixture: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  let riskId: string;
+  let roleId: string;
+  let personId: string;
+
+  beforeEach(async () => {
+    fixture = await createFixtureWorkspace();
+    mockAuth.mockResolvedValue({ user: { id: fixture.adminUser.id } });
+    const risk = await prisma.governanceRisk.create({
+      data: {
+        workspaceId: fixture.workspace.id,
+        title: "Single supplier for a critical part",
+        description: "No qualified backup vendor.",
+        likelihood: "HIGH",
+        impact: "CRITICAL",
+      },
+    });
+    riskId = risk.id;
+    roleId = (await prisma.role.create({ data: { workspaceId: fixture.workspace.id, name: "Procurement Lead" } })).id;
+    personId = (await prisma.person.create({ data: { workspaceId: fixture.workspace.id, name: "Sam Ortiz" } })).id;
+  });
+
+  afterEach(async () => {
+    await fixture.cleanup();
+  });
+
+  const readRisk = () => prisma.governanceRisk.findUniqueOrThrow({ where: { id: riskId }, include: { treatmentActions: true } });
+
+  it("sets a strategy, rationale and target, marks the risk hand-managed, and clears them with null", async () => {
+    const set = await setRiskTreatment({
+      workspaceId: fixture.workspace.id,
+      riskId,
+      strategy: "MITIGATE",
+      rationale: "Qualify a second supplier.",
+      targetLikelihood: "LOW",
+      targetImpact: "MEDIUM",
+    });
+    expect(set.ok).toBe(true);
+    let risk = await readRisk();
+    expect(risk).toMatchObject({
+      treatmentStrategy: "MITIGATE",
+      treatmentRationale: "Qualify a second supplier.",
+      targetLikelihood: "LOW",
+      targetImpact: "MEDIUM",
+      handManaged: true,
+    });
+
+    await setRiskTreatment({
+      workspaceId: fixture.workspace.id,
+      riskId,
+      strategy: null,
+      rationale: null,
+      targetLikelihood: null,
+      targetImpact: null,
+    });
+    risk = await readRisk();
+    expect(risk.treatmentStrategy).toBeNull();
+    expect(risk.targetLikelihood).toBeNull();
+  });
+
+  it("adds actions with a role or person owner, marks one done and undone, and deletes one", async () => {
+    const a = await addRiskTreatmentAction({
+      workspaceId: fixture.workspace.id,
+      riskId,
+      description: "Qualify a second supplier",
+      ownerRoleId: roleId,
+      dueDate: "2027-01-31",
+    });
+    const b = await addRiskTreatmentAction({
+      workspaceId: fixture.workspace.id,
+      riskId,
+      description: "Hold three months of buffer stock",
+      ownerPersonId: personId,
+    });
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect((await readRisk()).handManaged).toBe(true);
+
+    await setRiskTreatmentActionDone({ workspaceId: fixture.workspace.id, actionId: a.data.id, done: true });
+    let action = await prisma.governanceRiskTreatmentAction.findUniqueOrThrow({ where: { id: a.data.id } });
+    expect(action.doneAt).not.toBeNull();
+    await setRiskTreatmentActionDone({ workspaceId: fixture.workspace.id, actionId: a.data.id, done: false });
+    action = await prisma.governanceRiskTreatmentAction.findUniqueOrThrow({ where: { id: a.data.id } });
+    expect(action.doneAt).toBeNull();
+
+    await deleteRiskTreatmentAction({ workspaceId: fixture.workspace.id, actionId: b.data.id });
+    expect((await readRisk()).treatmentActions.map((x) => x.id)).toEqual([a.data.id]);
+  });
+
+  it("refuses both owners, and owners, risks or actions from another workspace", async () => {
+    const both = await addRiskTreatmentAction({
+      workspaceId: fixture.workspace.id,
+      riskId,
+      description: "x",
+      ownerRoleId: roleId,
+      ownerPersonId: personId,
+    });
+    expect(both.ok).toBe(false);
+    if (!both.ok) expect(both.error).toBe("VALIDATION_ERROR");
+
+    const other = await createFixtureWorkspace();
+    const theirRole = await prisma.role.create({ data: { workspaceId: other.workspace.id, name: "Theirs" } });
+    const theirRisk = await prisma.governanceRisk.create({
+      data: { workspaceId: other.workspace.id, title: "Theirs", description: "x", likelihood: "LOW", impact: "LOW" },
+    });
+    const theirAction = await prisma.governanceRiskTreatmentAction.create({ data: { riskId: theirRisk.id, description: "x" } });
+
+    const results = await Promise.all([
+      addRiskTreatmentAction({ workspaceId: fixture.workspace.id, riskId, description: "x", ownerRoleId: theirRole.id }),
+      addRiskTreatmentAction({ workspaceId: fixture.workspace.id, riskId: theirRisk.id, description: "x" }),
+      setRiskTreatment({ workspaceId: fixture.workspace.id, riskId: theirRisk.id, strategy: "ACCEPT", rationale: null, targetLikelihood: null, targetImpact: null }),
+      setRiskTreatmentActionDone({ workspaceId: fixture.workspace.id, actionId: theirAction.id, done: true }),
+      deleteRiskTreatmentAction({ workspaceId: fixture.workspace.id, actionId: theirAction.id }),
+    ]);
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("NOT_FOUND");
+    }
+    await other.cleanup();
+  });
+
+  it("deletes a risk's actions with the risk, and keeps an action whose owner is hard-deleted", async () => {
+    const added = await addRiskTreatmentAction({ workspaceId: fixture.workspace.id, riskId, description: "x", ownerRoleId: roleId });
+    if (!added.ok) throw new Error("setup failed");
+
+    await prisma.role.delete({ where: { id: roleId } });
+    const kept = await prisma.governanceRiskTreatmentAction.findUniqueOrThrow({ where: { id: added.data.id } });
+    expect(kept.ownerRoleId).toBeNull();
+
+    await prisma.governanceRisk.delete({ where: { id: riskId } });
+    expect(await prisma.governanceRiskTreatmentAction.findUnique({ where: { id: added.data.id } })).toBeNull();
+  });
+
+  it("refuses an archived role or person as a new action's owner", async () => {
+    await prisma.role.update({ where: { id: roleId }, data: { archivedAt: new Date() } });
+    await prisma.person.update({ where: { id: personId }, data: { archivedAt: new Date() } });
+    const results = await Promise.all([
+      addRiskTreatmentAction({ workspaceId: fixture.workspace.id, riskId, description: "x", ownerRoleId: roleId }),
+      addRiskTreatmentAction({ workspaceId: fixture.workspace.id, riskId, description: "x", ownerPersonId: personId }),
+    ]);
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("VALIDATION_ERROR");
+    }
+    expect((await readRisk()).treatmentActions).toHaveLength(0);
+  });
+
+  it("refuses a VIEWER on every treatment action", async () => {
+    const { user: viewer } = await fixture.addMember("VIEWER");
+    mockAuth.mockResolvedValue({ user: { id: viewer.id } });
+    const results = await Promise.all([
+      setRiskTreatment({ workspaceId: fixture.workspace.id, riskId, strategy: "ACCEPT", rationale: null, targetLikelihood: null, targetImpact: null }),
+      addRiskTreatmentAction({ workspaceId: fixture.workspace.id, riskId, description: "x" }),
+      setRiskTreatmentActionDone({ workspaceId: fixture.workspace.id, actionId: "any", done: true }),
+      deleteRiskTreatmentAction({ workspaceId: fixture.workspace.id, actionId: "any" }),
+    ]);
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("FORBIDDEN");
+    }
   });
 });

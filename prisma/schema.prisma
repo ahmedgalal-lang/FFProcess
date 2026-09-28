@@ -227,14 +227,15 @@ model Role {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  personRoles         PersonRole[]
-  processSteps        ProcessStep[]             @relation("StepAssignedRole")
-  swimlaneSteps       ProcessStep[]             @relation("StepSwimlaneRole")
-  supportedSteps      ProcessStep[]             @relation("StepSupportingRoles")
-  raciAssignments     RaciAssignment[]
-  authorityRules      AuthorityRule[]           @relation("AuthorityRuleRole")
-  governanceRisks     GovernanceRisk[]
-  checklistItemsOwned GovernanceChecklistItem[] @relation("ChecklistItemOwnerRole")
+  personRoles           PersonRole[]
+  processSteps          ProcessStep[]                   @relation("StepAssignedRole")
+  swimlaneSteps         ProcessStep[]                   @relation("StepSwimlaneRole")
+  supportedSteps        ProcessStep[]                   @relation("StepSupportingRoles")
+  raciAssignments       RaciAssignment[]
+  authorityRules        AuthorityRule[]                 @relation("AuthorityRuleRole")
+  governanceRisks       GovernanceRisk[]
+  checklistItemsOwned   GovernanceChecklistItem[]       @relation("ChecklistItemOwnerRole")
+  treatmentActionsOwned GovernanceRiskTreatmentAction[] @relation("TreatmentActionOwnerRole")
 
   createdAt DateTime @default(now())
 
@@ -259,6 +260,7 @@ model Person {
   governanceRisks        GovernanceRisk[]
   policyAcknowledgements GovernancePolicyAcknowledgement[]
   checklistItemsOwned    GovernanceChecklistItem[]         @relation("ChecklistItemOwnerPerson")
+  treatmentActionsOwned  GovernanceRiskTreatmentAction[]   @relation("TreatmentActionOwnerPerson")
 
   createdAt DateTime @default(now())
 
@@ -994,15 +996,53 @@ model GovernanceRisk {
   ownerRoleId   String?
   ownerPersonId String?
 
-  workspace   Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Spec 027 — what the client will do about it, and the level it should
+  /// reach once treated. All optional: a risk can be recorded before anyone
+  /// has decided.
+  treatmentStrategy  RiskTreatmentStrategy?
+  treatmentRationale String?                @db.Text
+  targetLikelihood   RiskLikelihood?
+  targetImpact       RiskImpact?
+
+  workspace        Workspace                       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   /// SetNull, not Cascade: the risk outlives the run that found it.
-  sourceItem  GovernanceChecklistItem? @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
-  ownerRole   Role?                    @relation(fields: [ownerRoleId], references: [id])
-  ownerPerson Person?                  @relation(fields: [ownerPersonId], references: [id])
+  sourceItem       GovernanceChecklistItem?        @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+  ownerRole        Role?                           @relation(fields: [ownerRoleId], references: [id])
+  ownerPerson      Person?                         @relation(fields: [ownerPersonId], references: [id])
+  treatmentActions GovernanceRiskTreatmentAction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([workspaceId])
   @@map("governance_risks")
+}
+
+enum RiskTreatmentStrategy {
+  MITIGATE
+  TRANSFER
+  ACCEPT
+  AVOID
+}
+
+/// One planned step to bring a risk down (spec 027). Deleted with its risk;
+/// an owner that is hard-deleted leaves the action unassigned.
+model GovernanceRiskTreatmentAction {
+  id            String    @id @default(uuid())
+  riskId        String
+  description   String    @db.Text
+  ownerRoleId   String?
+  ownerPersonId String?
+  dueDate       DateTime?
+  doneAt        DateTime?
+
+  risk        GovernanceRisk @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  ownerRole   Role?          @relation("TreatmentActionOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  ownerPerson Person?        @relation("TreatmentActionOwnerPerson", fields: [ownerPersonId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([riskId])
+  @@map("governance_risk_treatment_actions")
 }

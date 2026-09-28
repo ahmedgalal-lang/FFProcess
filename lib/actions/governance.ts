@@ -4,13 +4,14 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
+import { checkAssignableOwner } from "@/lib/data/owner-assignment";
 import { runGovernanceAssessment } from "@/lib/ai/governance-generator";
 import {
   normalizeFindingTitle,
   partitionNewChecklistItems,
   partitionNewRisks,
 } from "@/lib/domain/governance-findings";
-import { ok, notFound, validationError, aiUnavailable, type ActionResult, type ActionError } from "@/lib/actions/errors";
+import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
 import type {
   GovernanceItemPhase,
   GovernanceItemStatus,
@@ -18,32 +19,6 @@ import type {
   RiskImpact,
   RiskStatus,
 } from "@/app/generated/prisma/client";
-
-/**
- * Whether a role or person may be made the owner of something in this
- * workspace. It must belong to the workspace (else not-found, like every other
- * id here) and must not be archived — unless it is the thing's current owner,
- * so an item whose owner was archived after assignment can still be saved.
- * Returns the error to send back, or null when the owner is fine.
- */
-async function checkAssignableOwner(
-  workspaceId: string,
-  roleId: string | null,
-  personId: string | null,
-  current: { roleId: string | null; personId: string | null }
-): Promise<ActionError | null> {
-  if (roleId) {
-    const role = await prisma.role.findUnique({ where: { id: roleId } });
-    if (!role || role.workspaceId !== workspaceId) return notFound();
-    if (role.archivedAt && roleId !== current.roleId) return validationError(`"${role.name}" is archived.`);
-  }
-  if (personId) {
-    const person = await prisma.person.findUnique({ where: { id: personId } });
-    if (!person || person.workspaceId !== workspaceId) return notFound();
-    if (person.archivedAt && personId !== current.personId) return validationError(`"${person.name}" is archived.`);
-  }
-  return null;
-}
 
 /** Looks up a workspace's aspect by id, refusing one that doesn't exist or belongs elsewhere. */
 async function findOwnedAspect(workspaceId: string, aspectId: string) {

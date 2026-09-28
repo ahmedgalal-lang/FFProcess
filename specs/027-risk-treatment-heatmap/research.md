@@ -27,7 +27,9 @@ target likelihood/impact are one-per-risk facts → columns on
 `GovernanceRisk`. Treatment actions are many-per-risk with their own owner,
 due date and completion → a new `GovernanceRiskTreatmentAction` table,
 `onDelete: Cascade` from the risk (deleted with it), owner relations
-`SetNull` (removing a role/person unassigns the action, keeps it).
+`SetNull` (only matters for a hard delete: roles and people are archived in
+this app, never deleted, so an archived owner stays on the action, labelled
+"(archived)", and isn't offered for new assignment).
 
 ## Decision 4 — Any treatment edit marks the risk hand-managed
 

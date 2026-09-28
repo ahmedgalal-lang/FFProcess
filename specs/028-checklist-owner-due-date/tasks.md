@@ -42,5 +42,8 @@
 
 ## Phase 4: Polish
 
-- [ ] T010 Lint, `tsc --noEmit`, full Vitest and Playwright suites.
-- [ ] T011 Blast-radius check via `git diff --stat`.
+- [X] T010 Lint, `tsc --noEmit`, full Vitest and Playwright suites.
+      Result: clean; 776/776 Vitest; 193/193 Playwright.
+- [X] T011 Blast-radius check via `git diff --stat`.
+      Result: schema + migration, `updateGovernanceChecklistItem`, the new
+      `checklist-due.ts`, the Governance page and panel, and tests only.

@@ -868,7 +868,7 @@ export function GovernanceAssessmentPanel({
         </section>
       )}
 
-      <GovernanceRiskRegister workspaceId={workspaceId} risks={risksForTab} />
+      <GovernanceRiskRegister workspaceId={workspaceId} risks={risksForTab} roles={roles} people={people} />
       <GovernancePolicyLibrary workspaceId={workspaceId} policies={policiesForTab} onOpen={setOpenPolicyId} />
 
       <GovernancePolicyDrawer

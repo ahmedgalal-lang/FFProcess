@@ -11,6 +11,7 @@ import type { RiskT } from "./governance-risk-register";
 import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 import { isPolicyOverdueForReview } from "@/lib/domain/policy-lifecycle";
 import { dayOf, isChecklistItemOverdue } from "@/lib/domain/checklist-due";
+import { isTreatmentActionOverdue } from "@/lib/domain/risk-treatment";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -45,7 +46,11 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       where: { workspaceId },
       include: { items: { include: { policy: true }, orderBy: { createdAt: "asc" } } },
     }),
-    prisma.governanceRisk.findMany({ where: { workspaceId }, orderBy: { createdAt: "desc" } }),
+    prisma.governanceRisk.findMany({
+      where: { workspaceId },
+      include: { treatmentActions: { orderBy: { createdAt: "asc" } } },
+      orderBy: { createdAt: "desc" },
+    }),
     // Read straight off the workspace rather than walking every assessment's
     // items: a policy written by hand in the Policy Library has no checklist
     // item to be found through, and would be invisible if gathered that way.
@@ -158,6 +163,22 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
     // Resolved below, via each risk's sourceItem -> assessment -> aspect.
     sourceLabel: null as string | null,
     sourceFocusArea: null as string | null,
+    treatmentStrategy: r.treatmentStrategy,
+    treatmentRationale: r.treatmentRationale,
+    targetLikelihood: r.targetLikelihood,
+    targetImpact: r.targetImpact,
+    treatmentActions: r.treatmentActions.map((a) => ({
+      id: a.id,
+      description: a.description,
+      ownerLabel: a.ownerRoleId
+        ? ownerLabel(roleById.get(a.ownerRoleId))
+        : a.ownerPersonId
+          ? ownerLabel(personById.get(a.ownerPersonId))
+          : null,
+      dueDate: a.dueDate ? dayOf(a.dueDate) : null,
+      done: a.doneAt !== null,
+      overdue: isTreatmentActionOverdue(a.dueDate, a.doneAt, now),
+    })),
   }));
 
   // A risk's sourceLabel names the aspect of the assessment that surfaced
