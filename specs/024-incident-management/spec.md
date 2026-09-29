@@ -4,9 +4,11 @@
 
 **Created**: 2026-09-28
 
-**Status**: Draft
+**Status**: Withdrawn
 
 **Input**: User description: "Backlog #11 — incident / issue management (severity, root cause, corrective action), distinct from the risk register."
+
+> **Withdrawn 2026-09-29.** Built, then removed at the client's request: the Governance area keeps the policies that govern each aspect rather than operational registers. The code, tables and tests were deleted (migration `remove_operational_registers`); this spec and the implementation in git history remain as a record.
 
 ## User Scenarios & Testing *(mandatory)*
 

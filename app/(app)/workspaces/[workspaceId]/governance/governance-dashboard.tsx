@@ -20,7 +20,7 @@ export function GovernanceDashboard({ basePath, tiles, empty }: { basePath: stri
       </h2>
       {empty ? (
         <p className="text-xs text-slate-600">
-          Nothing has been recorded yet. Generate an assessment, or add risks, policies, incidents or other records, and a
+          Nothing has been recorded yet. Generate an assessment, or add risks, policies or checklist items, and a
           summary of what needs attention will appear here.
         </p>
       ) : (

@@ -4,9 +4,11 @@
 
 **Created**: 2026-09-28
 
-**Status**: Draft
+**Status**: Withdrawn
 
 **Input**: User description: "Backlog #8 — conflict-of-interest register, code-of-conduct attestations, and training/certification tracking with expiry, for each client workspace's people."
+
+> **Withdrawn 2026-09-29.** Built, then removed at the client's request: the Governance area keeps the policies that govern each aspect rather than operational registers. The code, tables and tests were deleted (migration `remove_operational_registers`); this spec and the implementation in git history remain as a record.
 
 ## User Scenarios & Testing *(mandatory)*
 

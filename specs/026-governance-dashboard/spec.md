@@ -8,6 +8,8 @@
 
 **Input**: User description: "Backlog #13 — consolidated GRC dashboard." Confirmed with the user: per-workspace only, one client at a time on its Governance page. No firm-wide portfolio view.
 
+> **Scope change 2026-09-29.** Specs 021–025 were withdrawn, so the panel's tiles cover risks, treatment actions, policies and the checklist only; the incident, vendor, conflict, training, privacy and ethics tiles in User Story 2 were removed with their registers.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - One summary of what needs attention (Priority: P1) 🎯 MVP

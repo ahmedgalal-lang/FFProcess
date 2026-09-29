@@ -1895,18 +1895,4 @@ describe("Governance activity log (spec 019)", () => {
     expect(foreignCursor.ok).toBe(false);
     await other.cleanup();
   });
-
-  it("never logs ethics cases", async () => {
-    const { logEthicsCase } = await import("@/lib/actions/ethics");
-    await logEthicsCase({
-      workspaceId,
-      receivedOn: "2026-09-20",
-      channel: "HOTLINE",
-      category: "FRAUD",
-      severity: "HIGH",
-      description: "x",
-      anonymous: true,
-    });
-    expect(await entries()).toHaveLength(0);
-  });
 });

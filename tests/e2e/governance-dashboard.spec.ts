@@ -2,7 +2,7 @@ import "dotenv/config";
 import { Client } from "pg";
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { signIn, E2E_EDITOR } from "./sign-in";
+import { signIn } from "./sign-in";
 
 /**
  * The Governance summary panel (spec 026). Counts in the seeded workspace
@@ -24,7 +24,6 @@ async function sql(query: string, params: unknown[] = []) {
 
 async function cleanup() {
   await sql(`DELETE FROM governance_risks WHERE "workspaceId" = $1 AND title LIKE 'Dashboard Test%'`, [WORKSPACE]);
-  await sql(`DELETE FROM ethics_cases WHERE "workspaceId" = $1 AND description LIKE 'Dashboard Test%'`, [WORKSPACE]);
   await sql(`DELETE FROM workspaces WHERE id = $1`, [EMPTY_WORKSPACE]);
 }
 
@@ -74,25 +73,6 @@ test.describe("governance summary panel", () => {
 
     const results = await new AxeBuilder({ page }).include("main").analyze();
     expect(results.violations).toEqual([]);
-  });
-
-  test("shows the ethics tile to an Admin only", async ({ page }) => {
-    await sql(
-      `INSERT INTO ethics_cases (id, "workspaceId", number, "receivedOn", channel, category, severity, description, anonymous, status, "createdAt", "updatedAt")
-       VALUES (gen_random_uuid()::text, $1, 800000 + floor(random() * 99999)::int, now(), 'HOTLINE', 'FRAUD', 'HIGH', 'Dashboard Test case', true, 'NEW', now(), now())`,
-      [WORKSPACE]
-    );
-    await signIn(page);
-    await page.goto(`/workspaces/${WORKSPACE}/governance`);
-    await expect(tile(page, "ethics-open")).toBeVisible();
-
-    const editorPage = await (await page.context().browser()!.newContext()).newPage();
-    await signIn(editorPage, E2E_EDITOR);
-    await editorPage.goto(`/workspaces/${WORKSPACE}/governance`);
-    await expect(summary(editorPage)).toBeVisible();
-    await expect(tile(editorPage, "ethics-open")).toHaveCount(0);
-    await expect(summary(editorPage)).not.toContainText("ethics");
-    await editorPage.close();
   });
 
   test("says nothing is recorded yet on a workspace with no governance records", async ({ page }) => {
