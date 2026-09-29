@@ -18,6 +18,7 @@ import { loadGovernanceActivity } from "@/lib/data/governance-activity";
 import { buildDashboardTiles, isDashboardEmpty } from "@/lib/domain/governance-dashboard";
 import { deriveRiskLevel } from "@/lib/domain/governance-risk";
 import { aspectPolicyState } from "@/lib/domain/governing-policy";
+import { SectionGuide } from "./section-guide";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -334,6 +335,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
         <div className="h-px flex-1 bg-slate-200" />
         Key Control Points &amp; KPIs, from each process&apos;s Authority Matrix
+        <SectionGuide id="controls" />
         <div className="h-px flex-1 bg-slate-200" />
       </div>
 

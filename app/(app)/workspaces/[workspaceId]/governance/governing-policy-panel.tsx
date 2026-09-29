@@ -6,6 +6,7 @@ import { useCanEdit } from "../workspace-access";
 import { createGoverningPolicy, draftGoverningPolicyWithAi, setGoverningPolicy } from "@/lib/actions/governing-policy";
 import { rankTemplates } from "@/lib/domain/policy-templates";
 import type { PolicyT } from "./governance-policy-drawer";
+import { SectionGuide } from "./section-guide";
 
 const LIFECYCLE_LABEL: Record<PolicyT["lifecycleStatus"], string> = {
   DRAFT: "Draft",
@@ -82,9 +83,12 @@ export function GoverningPolicyPanel({
 
   return (
     <section id="governing-policy" aria-labelledby={`${idBase}-heading`} className="rounded-xl border border-slate-200 bg-white p-5 text-xs">
-      <h2 id={`${idBase}-heading`} className="text-sm font-bold text-slate-900">
-        Governing policy — {aspect.name}
-      </h2>
+      <div className="flex items-center gap-1.5">
+        <h2 id={`${idBase}-heading`} className="text-sm font-bold text-slate-900">
+          Governing policy — {aspect.name}
+        </h2>
+        <SectionGuide id="governing" />
+      </div>
       <p className="mb-3 text-slate-500">The one policy that sets the rules for this aspect as a whole.</p>
 
       {policy ? (

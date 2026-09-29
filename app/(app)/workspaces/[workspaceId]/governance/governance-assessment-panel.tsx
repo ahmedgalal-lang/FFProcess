@@ -19,6 +19,7 @@ import { GovernanceRiskRegister, type RiskT } from "./governance-risk-register";
 import { GoverningPolicyPanel } from "./governing-policy-panel";
 import { aspectPolicyState } from "@/lib/domain/governing-policy";
 import { GovernancePolicyLibrary } from "./governance-policy-library";
+import { SectionGuide } from "./section-guide";
 
 export type AspectT = { id: string; name: string };
 
@@ -293,7 +294,10 @@ export function GovernanceAssessmentPanel({
   return (
     <div className="flex flex-col gap-4">
       <section id="governance-assessment" className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="mb-1 text-sm font-bold text-slate-900">Evaluated against four pillars</h2>
+        <div className="mb-1 flex items-center gap-1.5">
+          <h2 className="text-sm font-bold text-slate-900">Evaluated against four pillars</h2>
+          <SectionGuide id="assessment" />
+        </div>
         <p className="mb-3 text-xs text-slate-500">
           Every summary is framed against these, not left as an unstructured paragraph.
         </p>
@@ -573,7 +577,10 @@ export function GovernanceAssessmentPanel({
       {assessment ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="mb-3 flex items-start justify-between gap-3">
-            <h2 className="text-sm font-bold text-slate-900">Governance checklist</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-bold text-slate-900">Governance checklist</h2>
+              <SectionGuide id="checklist" />
+            </div>
             {canEdit && (
               <button
                 type="button"

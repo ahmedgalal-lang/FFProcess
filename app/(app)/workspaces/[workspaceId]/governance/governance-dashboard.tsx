@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { DashboardTile } from "@/lib/domain/governance-dashboard";
+import { SectionGuide } from "./section-guide";
 
 const TONE_STYLE: Record<DashboardTile["tone"], string> = {
   alert: "border-red-200 bg-red-50 text-red-900 hover:border-red-300",
@@ -15,9 +16,12 @@ const TONE_STYLE: Record<DashboardTile["tone"], string> = {
 export function GovernanceDashboard({ basePath, tiles, empty }: { basePath: string; tiles: DashboardTile[]; empty: boolean }) {
   return (
     <section aria-labelledby="governance-summary-heading" className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-      <h2 id="governance-summary-heading" className="mb-3 text-sm font-bold text-slate-900">
-        What needs attention
-      </h2>
+      <div className="mb-3 flex items-center gap-1.5">
+        <h2 id="governance-summary-heading" className="text-sm font-bold text-slate-900">
+          What needs attention
+        </h2>
+        <SectionGuide id="attention" />
+      </div>
       {empty ? (
         <p className="text-xs text-slate-600">
           Nothing has been recorded yet. Generate an assessment, or add risks, policies or checklist items, and a

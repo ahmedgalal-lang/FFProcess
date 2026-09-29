@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { listGovernanceActivity } from "@/lib/actions/governance";
 import type { GovernanceActivityEntryT } from "@/lib/data/governance-activity";
+import { SectionGuide } from "./section-guide";
 
 const TYPE_LABEL: Record<GovernanceActivityEntryT["entityType"], string> = {
   ASPECT: "Aspect",
@@ -77,7 +78,10 @@ export function GovernanceActivityLog({
     <section id="activity-log" className="rounded-xl border border-slate-200 bg-white p-5 text-xs">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-900">Activity</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-bold text-slate-900">Activity</h2>
+            <SectionGuide id="activity" />
+          </div>
           <p className="text-slate-500">
             Changes to aspects, assessments, checklist items, risks and policies, newest first.
           </p>

@@ -8,6 +8,7 @@ import { deriveRiskLevel } from "@/lib/domain/governance-risk";
 import { heatMapCells } from "@/lib/domain/risk-treatment";
 import { RiskHeatMap, type HeatMapSelection } from "./risk-heat-map";
 import { RiskTreatmentPanel } from "./risk-treatment-panel";
+import { SectionGuide } from "./section-guide";
 
 export type RiskT = {
   id: string;
@@ -144,7 +145,10 @@ export function GovernanceRiskRegister({
     <section id="risk-register" className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-900">Risk register</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-bold text-slate-900">Risk register</h2>
+            <SectionGuide id="risk" />
+          </div>
           <p className="text-xs text-slate-500">
             Identified risks, tracked on their own — scored, owned, and carried forward independent of any one checklist
             run. Populated by an assessment or added by hand.

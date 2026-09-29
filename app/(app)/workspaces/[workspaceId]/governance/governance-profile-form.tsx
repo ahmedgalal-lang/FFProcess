@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCanEdit } from "../workspace-access";
 import { setGovernanceProfile } from "@/lib/actions/governance";
+import { SectionGuide } from "./section-guide";
 
 const COMPANY_SIZES = [
   "Early-stage startup",
@@ -52,7 +53,10 @@ export function GovernanceProfileForm({
 
   return (
     <div>
-      <h2 className="text-sm font-bold text-slate-900">Governance profile</h2>
+      <div className="flex items-center gap-1.5">
+        <h2 className="text-sm font-bold text-slate-900">Governance profile</h2>
+        <SectionGuide id="profile" />
+      </div>
       <p className="mb-3 text-xs text-slate-500">
         Grounds every assessment in this client&apos;s actual scale and legal context, rather than generic
         advice.

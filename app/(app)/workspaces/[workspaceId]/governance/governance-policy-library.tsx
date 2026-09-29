@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCanEdit } from "../workspace-access";
 import { addGovernancePolicy } from "@/lib/actions/governance";
 import type { PolicyT } from "./governance-policy-drawer";
+import { SectionGuide } from "./section-guide";
 
 const STATUS_LABEL: Record<string, string> = { OPEN: "Draft", EDITED: "Edited" };
 const STATUS_STYLE: Record<string, string> = {
@@ -68,7 +69,10 @@ export function GovernancePolicyLibrary({
     <section id="policy-library" className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-900">Policy library</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-bold text-slate-900">Policy library</h2>
+            <SectionGuide id="policy" />
+          </div>
           <p className="text-xs text-slate-500">
             Every policy across every focus area, in one place. Drafted by an assessment, or written
             here by hand.
