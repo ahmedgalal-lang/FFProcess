@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [X] No [NEEDS CLARIFICATION] markers remain
 - [X] Requirements are testable and unambiguous
 - [X] Success criteria are measurable
 - [X] Success criteria are technology-agnostic (no implementation details)
@@ -31,9 +31,8 @@
 
 ## Notes
 
-- One open question (FR-014): whether to add standard aspects for the
-  governance areas whose registers were removed. It changes the aspect list
-  every workspace starts with, so it is the user's call.
+- FR-014 resolved with the user: no new standard aspects; the removed
+  areas' topics stay available as templates.
 - Decided as stated defaults: one governing policy per aspect and one
   aspect per policy; three creation routes (template, AI draft, by hand)
   plus the assessment drafting one when none exists; completeness shown

@@ -90,7 +90,7 @@ A client's governance is only as complete as its weakest aspect. The consultant 
 - **FR-011**: The exported report's Governance & Risk section MUST list each aspect with its governing policy's title, lifecycle status and effective date, or state that it has none.
 - **FR-012**: Designating, replacing and removing a governing policy MUST be recorded in the governance activity log (spec 019).
 - **FR-013**: All of this MUST be workspace-scoped, readable by Viewers and above, and changeable by Editors and above; approval and publishing remain Admin-only, as in spec 018.
-- **FR-014**: [NEEDS CLARIFICATION: Should every workspace also get standard aspects for the governance areas whose registers were removed (for example Conflicts of Interest, Whistleblowing, Anti-bribery, Third-party Management, Incident Management, Data Protection, Training & Awareness), each with its own governing policy, or should the aspect list stay as it is (the seven defaults plus whatever the consultant adds)?]
+- **FR-014**: The aspect list MUST NOT change: no standard aspects are added for the governance areas whose registers were removed. Their topics are covered by the template catalogue, available to any aspect, including one a consultant adds.
 
 ### Key Entities
 
@@ -106,6 +106,12 @@ A client's governance is only as complete as its weakest aspect. The consultant 
 - **SC-002**: For any workspace, anyone reading the Governance page can tell within 5 seconds which aspects lack a Published governing policy.
 - **SC-003**: Every aspect in the exported report shows its governing policy or states that it has none.
 - **SC-004**: No policy is ever deleted or overwritten as a side effect of designating, replacing, regenerating or deleting an aspect.
+
+## Clarifications
+
+### Session 2026-09-29
+
+- Q: Should every workspace also get standard aspects for the areas whose registers were removed (Conflicts of Interest, Whistleblowing, Anti-bribery, Third-party Management, Incident Management, Data Protection, Training & Awareness)? → A: No. The aspect list stays as the seven defaults plus whatever the consultant adds; those topics remain available as templates.
 
 ## Assumptions
 
