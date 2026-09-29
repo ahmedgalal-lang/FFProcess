@@ -61,7 +61,7 @@ async function loadGovernanceReport(workspaceId: string): Promise<GovernanceRepo
     }),
     prisma.governancePolicyDraft.findMany({
       where: { workspaceId },
-      select: { title: true, lifecycleStatus: true, effectiveDate: true },
+      select: { title: true, lifecycleStatus: true, effectiveDate: true, governsAspectId: true },
     }),
   ]);
 

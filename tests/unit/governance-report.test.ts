@@ -126,4 +126,25 @@ describe("isGovernanceReportEmpty", () => {
       )
     ).toBe(false);
   });
+
+  it("lists every aspect in tab order with its governing policy, or none (spec 029)", () => {
+    const report = buildGovernanceReport({
+      aspects: [
+        { id: "a1", name: "Board Structure" },
+        { id: "a2", name: "ESG" },
+      ],
+      assessments: [],
+      risks: [],
+      policies: [
+        { title: "Board Charter", lifecycleStatus: "PUBLISHED", effectiveDate: new Date("2026-01-15"), governsAspectId: "a1" },
+        { title: "Supplier Code", lifecycleStatus: "DRAFT", effectiveDate: null, governsAspectId: null },
+      ],
+      roleNameById: new Map(),
+      personNameById: new Map(),
+    });
+    expect(report.governing).toEqual([
+      { aspectName: "Board Structure", policy: { title: "Board Charter", lifecycleStatus: "PUBLISHED", effectiveDate: new Date("2026-01-15") } },
+      { aspectName: "ESG", policy: null },
+    ]);
+  });
 });

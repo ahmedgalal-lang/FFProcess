@@ -17,6 +17,7 @@ import { GovernanceActivityLog } from "./governance-activity-log";
 import { loadGovernanceActivity } from "@/lib/data/governance-activity";
 import { buildDashboardTiles, isDashboardEmpty } from "@/lib/domain/governance-dashboard";
 import { deriveRiskLevel } from "@/lib/domain/governance-risk";
+import { aspectPolicyState } from "@/lib/domain/governing-policy";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -108,7 +109,9 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
   const now = new Date();
   const allPolicies: PolicyT[] = policies.map((policy) => {
     const assessmentId = policy.checklistItem?.assessmentId;
-    const aspectId = assessmentId ? aspectIdByAssessmentId.get(assessmentId) : undefined;
+    // A governing policy belongs to the aspect it governs (spec 029), even one
+    // written by hand; otherwise it's the aspect whose checklist drafted it.
+    const aspectId = policy.governsAspectId ?? (assessmentId ? aspectIdByAssessmentId.get(assessmentId) : undefined);
     return {
       id: policy.id,
       title: policy.title,
@@ -135,6 +138,8 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         personName: a.person.name,
         acknowledgedAt: formatDate(a.acknowledgedAt),
       })),
+      governsAspectId: policy.governsAspectId,
+      governsAspectName: policy.governsAspectId ? (aspectNameById.get(policy.governsAspectId) ?? null) : null,
     };
   });
   const policyById = new Map(allPolicies.map((p) => [p.id, p]));
@@ -232,6 +237,10 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
       total: checklistItems.filter((i) => i.status !== "DISMISSED").length,
       overdue: checklistItems.filter((i) => i.overdue).length,
     },
+    aspects: aspects.map((a) => ({
+      hasPublishedPolicy:
+        aspectPolicyState(allPolicies.find((p) => p.governsAspectId === a.id) ?? null) === "PUBLISHED",
+    })),
     treatment: { overdueActions: risksForPanel.reduce((n, r) => n + r.treatmentActions.filter((a) => a.overdue).length, 0) },
   };
 

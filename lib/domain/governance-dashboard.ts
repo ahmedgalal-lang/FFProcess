@@ -23,6 +23,8 @@ export type DashboardInput = {
   policies: { needsReview: boolean }[];
   checklist: { done: number; total: number; overdue: number };
   treatment: { overdueActions: number };
+  /** Spec 029: one entry per aspect. Optional so callers without aspects add no tile. */
+  aspects?: { hasPublishedPolicy: boolean }[];
 };
 
 const tone = (count: number, whenNonZero: DashboardTone): DashboardTone => (count > 0 ? whenNonZero : "neutral");
@@ -51,6 +53,18 @@ export function buildDashboardTiles(input: DashboardInput): DashboardTile[] {
 
   const reviewDue = input.policies.filter((p) => p.needsReview).length;
   tiles.push({ id: "policies-review", label: "Policies overdue for review", count: reviewDue, tone: tone(reviewDue, "warn"), href: "#policy-library" });
+
+  if (input.aspects && input.aspects.length > 0) {
+    const ungoverned = input.aspects.filter((a) => !a.hasPublishedPolicy).length;
+    tiles.push({
+      id: "aspects-without-policy",
+      label: "Aspects without a published governing policy",
+      count: ungoverned,
+      detail: `of ${input.aspects.length}`,
+      tone: tone(ungoverned, "warn"),
+      href: "#governance-assessment",
+    });
+  }
 
   tiles.push({
     id: "checklist-done",

@@ -16,6 +16,8 @@ import {
 } from "@/lib/actions/governance";
 import { GovernancePolicyDrawer, type PolicyT } from "./governance-policy-drawer";
 import { GovernanceRiskRegister, type RiskT } from "./governance-risk-register";
+import { GoverningPolicyPanel } from "./governing-policy-panel";
+import { aspectPolicyState } from "@/lib/domain/governing-policy";
 import { GovernancePolicyLibrary } from "./governance-policy-library";
 
 export type AspectT = { id: string; name: string };
@@ -113,6 +115,9 @@ export function GovernanceAssessmentPanel({
     aspects.map((a) => [a.id, (assessmentsByAspectId[a.id]?.items ?? []).filter((i) => i.overdue).length])
   );
   const focusLabel = aspects.find((a) => a.id === aspectId)?.name ?? "";
+  // Spec 029: each aspect's governing policy, and the policies free to become one.
+  const governingByAspect = new Map(allPolicies.filter((p) => p.governsAspectId).map((p) => [p.governsAspectId!, p]));
+  const ungovernedPolicies = allPolicies.filter((p) => !p.governsAspectId);
 
   const openPolicy = useMemo(
     () => allPolicies.find((p) => p.id === openPolicyId) ?? null,
@@ -312,6 +317,11 @@ export function GovernanceAssessmentPanel({
                   type="button"
                   role="tab"
                   aria-selected={aspectId === aspect.id}
+                  aria-describedby={
+                    aspectPolicyState(governingByAspect.get(aspect.id) ?? null) !== "PUBLISHED"
+                      ? `policy-state-${aspect.id}`
+                      : undefined
+                  }
                   onClick={() => {
                     setAspectId(aspect.id);
                     setAddingItem(false);
@@ -328,6 +338,23 @@ export function GovernanceAssessmentPanel({
                   }`}
                 >
                   {aspect.name}
+                  {/* Spec 029: a dot when the aspect lacks a Published governing
+                      policy, described rather than named so the tab's name stays
+                      its own. */}
+                  {aspectPolicyState(governingByAspect.get(aspect.id) ?? null) !== "PUBLISHED" && (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        title="No published governing policy"
+                        className={`ml-1.5 inline-block h-2 w-2 rounded-full align-middle ${
+                          aspectId === aspect.id ? "bg-amber-300" : "bg-amber-500"
+                        }`}
+                      />
+                      <span id={`policy-state-${aspect.id}`} hidden>
+                        No published governing policy
+                      </span>
+                    </>
+                  )}
                   {/* Only when there is something overdue, so a tab's
                       accessible name stays just its name otherwise. */}
                   {overdueByAspect[aspect.id] ? (
@@ -474,6 +501,18 @@ export function GovernanceAssessmentPanel({
         )}
         {error && <p className="mt-2 text-xs font-medium text-red-600">{error}</p>}
       </section>
+
+      {aspectId && (
+        <GoverningPolicyPanel
+          key={aspectId}
+          workspaceId={workspaceId}
+          aspect={{ id: aspectId, name: focusLabel }}
+          policy={governingByAspect.get(aspectId) ?? null}
+          candidates={ungovernedPolicies}
+          hasProfile={hasProfile}
+          onOpen={setOpenPolicyId}
+        />
+      )}
 
       {assessment && (assessment.summary.trim() !== "" || canEdit) && (
         <section className="rounded-xl border border-slate-200 bg-white p-5">

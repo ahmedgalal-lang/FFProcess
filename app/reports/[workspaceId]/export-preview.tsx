@@ -1052,6 +1052,40 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
         </div>
       )}
 
+      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Governing Policies</h3>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2">Aspect</th>
+              <th className="px-3 py-2">Governing policy</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Effective</th>
+            </tr>
+          </thead>
+          <tbody>
+            {governance.governing.map((row, i) => (
+              <tr key={i} className="border-t border-slate-100">
+                <td className="px-3 py-2 font-semibold text-slate-900">{row.aspectName}</td>
+                {row.policy ? (
+                  <>
+                    <td className="px-3 py-2 text-slate-800">{row.policy.title}</td>
+                    <td className="px-3 py-2 text-slate-800">{POLICY_LIFECYCLE_LABEL[row.policy.lifecycleStatus]}</td>
+                    <td className="px-3 py-2 text-slate-800">
+                      {row.policy.effectiveDate ? formatReportDate(row.policy.effectiveDate) : "—"}
+                    </td>
+                  </>
+                ) : (
+                  <td colSpan={3} className="px-3 py-2 text-slate-600">
+                    No governing policy
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Policy Library</h3>
       {governance.policies.length === 0 ? (
         <GovernanceEmpty>No policies have been written yet.</GovernanceEmpty>

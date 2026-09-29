@@ -27,7 +27,13 @@ export type GovernanceReportInput = {
     ownerRoleId: string | null;
     ownerPersonId: string | null;
   }[];
-  policies: { title: string; lifecycleStatus: GovernancePolicyLifecycleStatus; effectiveDate: Date | null }[];
+  policies: {
+    title: string;
+    lifecycleStatus: GovernancePolicyLifecycleStatus;
+    effectiveDate: Date | null;
+    /** Spec 029: the aspect this policy governs, if any. */
+    governsAspectId?: string | null;
+  }[];
   roleNameById: ReadonlyMap<string, string>;
   personNameById: ReadonlyMap<string, string>;
 };
@@ -47,6 +53,11 @@ export type GovernanceReport = {
   risks: GovernanceReportRisk[];
   /** An index only — a policy's body is deliberately not carried (FR-009). */
   policies: { title: string; lifecycleStatus: GovernancePolicyLifecycleStatus; effectiveDate: Date | null }[];
+  /** Spec 029: every aspect in tab order, with its governing policy or null. */
+  governing: {
+    aspectName: string;
+    policy: { title: string; lifecycleStatus: GovernancePolicyLifecycleStatus; effectiveDate: Date | null } | null;
+  }[];
 };
 
 const LEVEL_RANK: Record<RiskLevel, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
@@ -86,7 +97,18 @@ export function buildGovernanceReport(input: GovernanceReportInput): GovernanceR
     .map((p) => ({ title: p.title, lifecycleStatus: p.lifecycleStatus, effectiveDate: p.effectiveDate }))
     .sort((a, b) => a.title.localeCompare(b.title));
 
-  return { summaries, risks, policies };
+  const governingByAspect = new Map(
+    input.policies.flatMap((p) => (p.governsAspectId ? [[p.governsAspectId, p] as const] : []))
+  );
+  const governing = input.aspects.map((aspect) => {
+    const p = governingByAspect.get(aspect.id);
+    return {
+      aspectName: aspect.name,
+      policy: p ? { title: p.title, lifecycleStatus: p.lifecycleStatus, effectiveDate: p.effectiveDate } : null,
+    };
+  });
+
+  return { summaries, risks, policies, governing };
 }
 
 export function isGovernanceReportEmpty(report: GovernanceReport): boolean {

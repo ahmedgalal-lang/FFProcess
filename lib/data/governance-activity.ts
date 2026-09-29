@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db/client";
+import type { GovernanceActivityEntityType, Prisma } from "@/app/generated/prisma/client";
 
 /** Entries per page of the governance activity feed (spec 019). */
 export const ACTIVITY_PAGE_SIZE = 50;
@@ -41,4 +42,24 @@ export async function loadGovernanceActivity(
     })),
     nextCursor: rows.length > ACTIVITY_PAGE_SIZE ? page[page.length - 1]!.id : null,
   };
+}
+
+export type ActivityEntry = {
+  workspaceId: string;
+  entityType: GovernanceActivityEntityType;
+  entityId: string;
+  /** The record's name as of this action, so the entry still reads after it's renamed or deleted. */
+  entityLabel: string;
+  summary: string;
+  actorUserId: string;
+};
+
+/**
+ * Records one completed governance action in the activity log (spec 019).
+ * Always written in the same transaction as the change it describes, so a
+ * refused or failed action logs nothing and a completed one can't go
+ * unlogged. There is no action that edits or deletes an entry.
+ */
+export function logGovernanceActivity(client: Pick<Prisma.TransactionClient, "governanceActivityLogEntry">, entry: ActivityEntry) {
+  return client.governanceActivityLogEntry.create({ data: entry });
 }

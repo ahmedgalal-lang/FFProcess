@@ -472,6 +472,29 @@ function addGovernancePackSlides(pptx: PptxGenJS, governance: GovernanceReport, 
     });
   }
 
+  if (governance.governing.length > 0) {
+    const slide = pptx.addSlide();
+    const governed = governance.governing.filter((g) => g.policy?.lifecycleStatus === "PUBLISHED").length;
+    title(slide, "Governing Policies", `${governed} of ${governance.governing.length} aspects have a published governing policy.`);
+    const rows: PptxGenJS.TableRow[] = governance.governing.map((g) => [
+      { text: g.aspectName, options: { fontSize: 9, bold: true } },
+      { text: g.policy?.title ?? "No governing policy", options: { fontSize: 9 } },
+      { text: g.policy ? POLICY_LIFECYCLE_LABEL[g.policy.lifecycleStatus] : "—", options: { fontSize: 9 } },
+      { text: g.policy?.effectiveDate ? formatReportDate(g.policy.effectiveDate) : "—", options: { fontSize: 9 } },
+    ]);
+    slide.addTable([[th("Aspect"), th("Governing policy"), th("Status"), th("Effective")], ...rows], {
+      x: MARGIN,
+      y: 1.2,
+      w: CONTENT_W,
+      colW: [2.4, CONTENT_W - 2.4 - 1.6 - 1.6, 1.6, 1.6],
+      fontFace: FONT,
+      border: { type: "solid", color: BORDER, pt: 0.5 },
+      autoPage: true,
+      autoPageRepeatHeader: true,
+      autoPageHeaderRows: 1,
+    });
+  }
+
   if (governance.policies.length > 0) {
     const slide = pptx.addSlide();
     title(slide, "Policy Library", `${governance.policies.length} polic${governance.policies.length === 1 ? "y" : "ies"} and where each stands.`);

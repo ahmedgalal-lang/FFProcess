@@ -48,6 +48,9 @@ export type PolicyT = {
   needsReview: boolean;
   versions: PolicyVersionT[];
   acknowledgements: PolicyAcknowledgementT[];
+  /** Spec 029: the aspect this policy governs, if any. */
+  governsAspectId: string | null;
+  governsAspectName: string | null;
 };
 
 const STATUS_LABEL: Record<string, string> = { OPEN: "Draft", EDITED: "Edited" };

@@ -140,7 +140,12 @@ export function GovernancePolicyLibrary({
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-slate-900">{policy.title}</span>
                 <span className="block text-[11px] text-slate-500">
-                  {policy.focusAreaLabel ?? "Added manually"} · updated {policy.updatedAt}
+                  {policy.governsAspectName ? (
+                    <span className="font-semibold text-indigo-700">Governs {policy.governsAspectName}</span>
+                  ) : (
+                    (policy.focusAreaLabel ?? "Added manually")
+                  )}{" "}
+                  · updated {policy.updatedAt}
                 </span>
               </span>
               {policy.needsReview && (

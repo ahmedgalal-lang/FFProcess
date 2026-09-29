@@ -26,6 +26,12 @@ export type GovernanceAssessmentResult = {
   checklist: GovernanceChecklistItemResult[];
   policies: GovernancePolicyResult[];
   risks: GovernanceRiskResult[];
+  /**
+   * Spec 029: the document that governs this aspect as a whole (for Board
+   * Structure, a Board Charter). Used only when the aspect has none yet.
+   * Optional so an outcome without it is still well-formed.
+   */
+  governingPolicy?: GovernancePolicyResult | null;
 };
 
 export type GovernanceAssessmentOutcome =
@@ -120,9 +126,15 @@ const GOVERNANCE_ASSESSMENT_SCHEMA: Schema = {
     checklist: { type: Type.ARRAY, items: CHECKLIST_ITEM_SCHEMA },
     policies: { type: Type.ARRAY, items: POLICY_SCHEMA },
     risks: { type: Type.ARRAY, items: RISK_SCHEMA },
+    governingPolicy: {
+      ...POLICY_SCHEMA,
+      nullable: true,
+      description:
+        "The single policy that governs this focus area as a whole (for board structure, a Board Charter; for risk and controls, a Risk Management Policy): a full document with numbered sections covering purpose, scope, definitions, policy statements, roles and responsibilities, and monitoring and review.",
+    },
   },
-  required: ["summary", "checklist", "policies", "risks"],
-  propertyOrdering: ["summary", "checklist", "policies", "risks"],
+  required: ["summary", "checklist", "policies", "risks", "governingPolicy"],
+  propertyOrdering: ["summary", "checklist", "policies", "risks", "governingPolicy"],
 };
 
 /**
@@ -137,5 +149,30 @@ export async function runGovernanceAssessment(promptText: string): Promise<Gover
     schema: GOVERNANCE_ASSESSMENT_SCHEMA,
     notConfiguredMessage: "AI governance assessment isn't configured for this deployment yet.",
     malformedMessage: "The model did not return a structured assessment.",
+  });
+}
+
+export type GoverningPolicyOutcome =
+  | { ok: true; data: GovernancePolicyResult }
+  | { ok: false; reason: "NOT_CONFIGURED" | "REQUEST_FAILED"; message: string };
+
+const GOVERNING_POLICY_PROMPT =
+  "You are an expert corporate governance adviser drafting the governing policy for one area of a client's " +
+  "governance: the single document that sets the rules for that area as a whole (for board structure, a Board " +
+  "Charter; for risk and controls, a Risk Management Policy). Write a full, professional, template-ready " +
+  "document with numbered sections: Purpose, Scope, Definitions, Policy statements, Roles and responsibilities, " +
+  "Monitoring and review, and Approval and version control. Ground it in the company's actual size, industry " +
+  "and jurisdiction, name the laws and bodies that genuinely apply there, and keep it proportionate to the " +
+  "company's size. Do not invent facts about the company; use bracketed placeholders such as [policy owner] " +
+  "where a detail is unknown.";
+
+/** Drafts one aspect's governing policy on request (spec 029). Same graceful no-op when AI isn't configured. */
+export async function runGoverningPolicyDraft(promptText: string): Promise<GoverningPolicyOutcome> {
+  return generateStructured<GovernancePolicyResult>({
+    systemPrompt: GOVERNING_POLICY_PROMPT,
+    promptText,
+    schema: POLICY_SCHEMA,
+    notConfiguredMessage: "AI policy drafting isn't configured for this deployment yet.",
+    malformedMessage: "The model did not return a structured policy.",
   });
 }

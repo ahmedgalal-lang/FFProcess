@@ -52,4 +52,11 @@ describe("buildDashboardTiles", () => {
     expect(tile(empty, "treatment-overdue")).toBeUndefined();
     expect(tile({ ...empty, treatment: { overdueActions: 2 } }, "treatment-overdue")).toMatchObject({ count: 2, tone: "alert", href: "#risk-register" });
   });
+
+  it("counts aspects without a published governing policy, only when aspects are given", () => {
+    expect(tile(empty, "aspects-without-policy")).toBeUndefined();
+    const input = { ...empty, aspects: [{ hasPublishedPolicy: true }, { hasPublishedPolicy: false }, { hasPublishedPolicy: false }] };
+    expect(tile(input, "aspects-without-policy")).toMatchObject({ count: 2, detail: "of 3", tone: "warn", href: "#governance-assessment" });
+    expect(tile({ ...empty, aspects: [{ hasPublishedPolicy: true }] }, "aspects-without-policy")).toMatchObject({ count: 0, tone: "neutral" });
+  });
 });

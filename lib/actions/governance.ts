@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { checkAssignableOwner } from "@/lib/data/owner-assignment";
-import { loadGovernanceActivity, type GovernanceActivityEntryT } from "@/lib/data/governance-activity";
+import { loadGovernanceActivity, logGovernanceActivity, type GovernanceActivityEntryT } from "@/lib/data/governance-activity";
 import { runGovernanceAssessment } from "@/lib/ai/governance-generator";
 import {
   normalizeFindingTitle,
@@ -14,34 +14,12 @@ import {
 } from "@/lib/domain/governance-findings";
 import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
 import type {
-  GovernanceActivityEntityType,
   GovernanceItemPhase,
   GovernanceItemStatus,
-  Prisma,
   RiskLikelihood,
   RiskImpact,
   RiskStatus,
 } from "@/app/generated/prisma/client";
-
-type ActivityEntry = {
-  workspaceId: string;
-  entityType: GovernanceActivityEntityType;
-  entityId: string;
-  /** The record's name as of this action, so the entry still reads after it's renamed or deleted. */
-  entityLabel: string;
-  summary: string;
-  actorUserId: string;
-};
-
-/**
- * Records one completed governance action in the activity log (spec 019).
- * Always written in the same transaction as the change it describes, so a
- * refused or failed action logs nothing and a completed one can't go
- * unlogged. There is no action that edits or deletes an entry.
- */
-function logActivity(client: Pick<Prisma.TransactionClient, "governanceActivityLogEntry">, entry: ActivityEntry) {
-  return client.governanceActivityLogEntry.create({ data: entry });
-}
 
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, " ");
 
@@ -125,12 +103,14 @@ export async function generateGovernanceAssessment(
     );
   }
 
-  const [existingAssessment, allWorkspaceRisks] = await Promise.all([
+  const [existingAssessment, allWorkspaceRisks, governingPolicy] = await Promise.all([
     prisma.governanceAssessment.findUnique({
       where: { aspectId },
       include: { items: true },
     }),
     prisma.governanceRisk.findMany({ where: { workspaceId } }),
+    // Spec 029: an aspect that already has a governing policy keeps it.
+    prisma.governancePolicyDraft.findUnique({ where: { governsAspectId: aspectId }, select: { title: true } }),
   ]);
 
   const trackedChecklistTitles = new Set(
@@ -148,6 +128,7 @@ export async function generateGovernanceAssessment(
     focusAreaLabel: aspect.name,
     alreadyTrackedChecklistTitles: [...trackedChecklistTitles],
     alreadyTrackedRiskTitles: [...trackedRiskTitles],
+    existingGoverningPolicyTitle: governingPolicy?.title ?? null,
   });
 
   const outcome = await runGovernanceAssessment(promptText);
@@ -239,14 +220,30 @@ export async function generateGovernanceAssessment(
       });
     }
 
+    const draftedGoverning = !governingPolicy && outcome.data.governingPolicy ? outcome.data.governingPolicy : null;
+    if (draftedGoverning) {
+      const created = await tx.governancePolicyDraft.create({
+        data: { workspaceId, governsAspectId: aspectId, title: draftedGoverning.title, body: draftedGoverning.body },
+      });
+      await tx.governancePolicyVersion.create({
+        data: {
+          policyId: created.id,
+          versionNumber: 1,
+          title: created.title,
+          body: created.body,
+          createdByUserId: access.data.userId,
+        },
+      });
+    }
+
     const itemCount = newItems.length;
     const riskCount = newRisks.length;
-    await logActivity(tx, {
+    await logGovernanceActivity(tx, {
       workspaceId,
       entityType: "ASSESSMENT",
       entityId: assessment.id,
       entityLabel: aspect.name,
-      summary: `${existingAssessment ? "Regenerated" : "Generated"} assessment — ${itemCount} new checklist item${itemCount === 1 ? "" : "s"}, ${riskCount} new risk${riskCount === 1 ? "" : "s"}`,
+      summary: `${existingAssessment ? "Regenerated" : "Generated"} assessment — ${itemCount} new checklist item${itemCount === 1 ? "" : "s"}, ${riskCount} new risk${riskCount === 1 ? "" : "s"}${draftedGoverning ? ", governing policy drafted" : ""}`,
       actorUserId: access.data.userId,
     });
 
@@ -264,6 +261,7 @@ function buildGovernancePrompt(params: {
   focusAreaLabel: string;
   alreadyTrackedChecklistTitles: string[];
   alreadyTrackedRiskTitles: string[];
+  existingGoverningPolicyTitle: string | null;
 }): string {
   const lines = [
     `Company size: ${params.companySize}`,
@@ -279,6 +277,11 @@ function buildGovernancePrompt(params: {
   if (params.alreadyTrackedRiskTitles.length > 0) {
     lines.push(
       `Risks already on this company's register — do not repeat these: ${params.alreadyTrackedRiskTitles.join("; ")}`
+    );
+  }
+  if (params.existingGoverningPolicyTitle) {
+    lines.push(
+      `This focus area already has a governing policy ("${params.existingGoverningPolicyTitle}") — return governingPolicy as null.`
     );
   }
   return lines.join("\n");
@@ -322,7 +325,7 @@ export async function updateGovernanceSummary(
       where: { id: parsed.data.assessmentId },
       data: { summary: parsed.data.summary, summaryHandEdited: true },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "ASSESSMENT",
       entityId: assessment.id,
@@ -366,7 +369,7 @@ export async function setChecklistItemStatus(
       where: { id: parsed.data.itemId },
       data: { status: parsed.data.status as GovernanceItemStatus },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "CHECKLIST_ITEM",
       entityId: item.id,
@@ -426,7 +429,7 @@ export async function addGovernanceChecklistItem(
     const created = await tx.governanceChecklistItem.create({
       data: { assessmentId: assessment.id, phase: phase as GovernanceItemPhase, title, description },
     });
-    await logActivity(tx, {
+    await logGovernanceActivity(tx, {
       workspaceId,
       entityType: "CHECKLIST_ITEM",
       entityId: created.id,
@@ -500,7 +503,7 @@ export async function updateGovernanceChecklistItem(
         ...(fields.dueDate !== undefined ? { dueDate: fields.dueDate ? new Date(fields.dueDate) : null } : {}),
       },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "CHECKLIST_ITEM",
       entityId: item.id,
@@ -547,7 +550,7 @@ export async function deleteGovernanceChecklistItem(
 
   await prisma.$transaction([
     prisma.governanceChecklistItem.delete({ where: { id: parsed.data.itemId } }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "CHECKLIST_ITEM",
       entityId: item.id,
@@ -622,7 +625,7 @@ export async function updatePolicyDraft(
         createdByUserId: access.data.userId,
       },
     });
-    await logActivity(tx, {
+    await logGovernanceActivity(tx, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -676,7 +679,7 @@ export async function addGovernancePolicy(
         createdByUserId: access.data.userId,
       },
     });
-    await logActivity(tx, {
+    await logGovernanceActivity(tx, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: created.id,
@@ -711,7 +714,7 @@ export async function deleteGovernancePolicy(
 
   await prisma.$transaction([
     prisma.governancePolicyDraft.delete({ where: { id: parsed.data.policyId } }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -774,7 +777,7 @@ export async function submitPolicyForReview(
       where: { id: parsed.data.policyId },
       data: { lifecycleStatus: "IN_REVIEW" },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -816,7 +819,7 @@ export async function approvePolicyDraft(
       where: { id: parsed.data.policyId },
       data: { lifecycleStatus: "APPROVED", approvedByUserId: access.data.userId, approvedAt: new Date() },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -861,7 +864,7 @@ export async function publishPolicyDraft(
       where: { id: parsed.data.policyId },
       data: { lifecycleStatus: "PUBLISHED", effectiveDate },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -903,7 +906,7 @@ export async function retirePolicyDraft(
       where: { id: parsed.data.policyId },
       data: { lifecycleStatus: "RETIRED" },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -946,7 +949,7 @@ export async function setPolicyReviewDueDate(
       where: { id: parsed.data.policyId },
       data: { reviewDueDate },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -998,7 +1001,7 @@ export async function markPolicyAcknowledgement(
       update: {},
       create: { policyId: parsed.data.policyId, personId: parsed.data.personId },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -1038,7 +1041,7 @@ export async function unmarkPolicyAcknowledgement(
     prisma.governancePolicyAcknowledgement.deleteMany({
       where: { policyId: parsed.data.policyId, personId: parsed.data.personId },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "POLICY",
       entityId: policy.id,
@@ -1081,7 +1084,7 @@ export async function addGovernanceRisk(
         handManaged: true,
       },
     });
-    await logActivity(tx, {
+    await logGovernanceActivity(tx, {
       workspaceId: parsed.data.workspaceId,
       entityType: "RISK",
       entityId: created.id,
@@ -1150,7 +1153,7 @@ export async function updateGovernanceRisk(
         handManaged: true,
       },
     }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "RISK",
       entityId: risk.id,
@@ -1190,7 +1193,7 @@ export async function deleteGovernanceRisk(
 
   await prisma.$transaction([
     prisma.governanceRisk.delete({ where: { id: parsed.data.riskId } }),
-    logActivity(prisma, {
+    logGovernanceActivity(prisma, {
       workspaceId: parsed.data.workspaceId,
       entityType: "RISK",
       entityId: risk.id,
@@ -1233,7 +1236,7 @@ export async function addGovernanceAspect(
       const created = await tx.governanceAspect.create({
         data: { workspaceId: parsed.data.workspaceId, name: parsed.data.name },
       });
-      await logActivity(tx, {
+      await logGovernanceActivity(tx, {
         workspaceId: parsed.data.workspaceId,
         entityType: "ASPECT",
         entityId: created.id,
@@ -1285,7 +1288,7 @@ export async function renameGovernanceAspect(
         data: { name: parsed.data.name },
       }),
       // The entry keeps the name as it was when this happened.
-      logActivity(prisma, {
+      logGovernanceActivity(prisma, {
         workspaceId: parsed.data.workspaceId,
         entityType: "ASPECT",
         entityId: aspect.id,
@@ -1357,7 +1360,7 @@ export async function deleteGovernanceAspect(
     }
 
     await tx.governanceAspect.delete({ where: { id: aspectId } });
-    await logActivity(tx, {
+    await logGovernanceActivity(tx, {
       workspaceId,
       entityType: "ASPECT",
       entityId: aspect.id,

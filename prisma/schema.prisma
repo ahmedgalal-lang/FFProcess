@@ -818,8 +818,10 @@ model GovernanceAspect {
   workspaceId String
   name        String
 
-  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  assessments GovernanceAssessment[]
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessments     GovernanceAssessment[]
+  /// Spec 029: at most one governing policy.
+  governingPolicy GovernancePolicyDraft? @relation("AspectGoverningPolicy")
 
   createdAt DateTime @default(now())
 
@@ -924,9 +926,14 @@ model GovernancePolicyDraft {
   effectiveDate    DateTime?
   /// Independent of lifecycleStatus — settable at any point (FR-011).
   reviewDueDate    DateTime?
+  /// Spec 029: the aspect this policy governs, if any. Unique: an aspect has
+  /// at most one governing policy and a policy governs at most one aspect.
+  /// SetNull: deleting the aspect keeps the policy.
+  governsAspectId  String?                         @unique
 
   workspace        Workspace                         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   checklistItem    GovernanceChecklistItem?          @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  governsAspect    GovernanceAspect?                 @relation("AspectGoverningPolicy", fields: [governsAspectId], references: [id], onDelete: SetNull)
   approvedByUser   User?                             @relation(fields: [approvedByUserId], references: [id])
   versions         GovernancePolicyVersion[]
   acknowledgements GovernancePolicyAcknowledgement[]
