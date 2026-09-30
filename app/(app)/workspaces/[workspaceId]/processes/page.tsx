@@ -197,6 +197,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                       workspaceId={workspaceId}
                       process={{
                         id: p.id,
+                        code: p.code,
                         name: p.name,
                         description: p.description ?? "",
                         categoryId: p.categoryId,

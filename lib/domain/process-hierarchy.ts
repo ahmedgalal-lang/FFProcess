@@ -41,6 +41,74 @@ function deriveNamePrefix(name: string): string {
   return (letters + "XXX").slice(0, 3) || "PRC";
 }
 
+type CodedProcess = { id: string; code: string; name: string; parentProcessId: string | null };
+
+const codePrefix = (code: string) => (code.match(/^[A-Za-z]+/)?.[0] ?? "").toUpperCase();
+
+/**
+ * New codes for the processes a rename or re-parenting affects, keyed by id,
+ * so a code keeps following the rule generateProcessCode made it by: a
+ * top-level process takes its name's prefix, a sub-process its parent's.
+ *
+ * Only a code that still follows that rule moves; one chosen some other way
+ * (the seeded PUR100 for "Procure-to-Pay Program", an imported "FIN-01") is
+ * left alone, and so are its sub-processes. A moved code keeps its number
+ * when that's free under the new prefix, otherwise it takes the next free
+ * one. Sub-processes sharing a moved code's old prefix move with it, all the
+ * way down. Returns an empty map when nothing needs to change.
+ */
+export function recodeAfterChange(
+  processes: readonly CodedProcess[],
+  change: { id: string; name?: string; parentProcessId?: string | null }
+): Map<string, string> {
+  const byId = new Map(processes.map((p) => [p.id, p]));
+  const target = byId.get(change.id);
+  const recoded = new Map<string, string>();
+  if (!target) return recoded;
+
+  const expectedPrefix = (p: CodedProcess, codeOf: (id: string) => string | undefined) => {
+    if (p.parentProcessId) return codePrefix(codeOf(p.parentProcessId) ?? "") || "PRC";
+    return deriveNamePrefix(p.name);
+  };
+  const currentCode = (id: string) => recoded.get(id) ?? byId.get(id)?.code;
+
+  const before = expectedPrefix(target, (id) => byId.get(id)?.code);
+  const after = expectedPrefix(
+    {
+      ...target,
+      name: change.name ?? target.name,
+      parentProcessId: change.parentProcessId !== undefined ? change.parentProcessId : target.parentProcessId,
+    },
+    currentCode
+  );
+  // Generated codes are letters then digits, nothing else ("TES100").
+  const followsRule = (p: CodedProcess, prefix: string) => /^[A-Za-z]+\d+$/.test(p.code) && codePrefix(p.code) === prefix;
+  if (!followsRule(target, before) || before === after) return recoded;
+
+  const taken = new Set(processes.map((p) => p.code.toUpperCase()));
+  const assign = (p: CodedProcess, prefix: string) => {
+    taken.delete(p.code.toUpperCase());
+    const number = p.code.match(/(\d+)$/)?.[1];
+    let code = number ? `${prefix}${number}` : "";
+    if (!code || taken.has(code)) code = generateProcessCode({ name: "", parentCode: prefix, existingCodes: [...taken] });
+    taken.add(code);
+    recoded.set(p.id, code);
+  };
+
+  assign(target, after);
+  // Sub-processes that shared a moved code's prefix move with it, level by level.
+  const queue = [{ id: target.id, oldPrefix: before, newPrefix: after }];
+  while (queue.length > 0) {
+    const { id, oldPrefix, newPrefix } = queue.shift()!;
+    for (const child of processes.filter((p) => p.parentProcessId === id)) {
+      if (!followsRule(child, oldPrefix) || recoded.has(child.id)) continue;
+      assign(child, newPrefix);
+      queue.push({ id: child.id, oldPrefix, newPrefix });
+    }
+  }
+  return recoded;
+}
+
 /**
  * True if setting `candidateParentId` as `processId`'s parent would make
  * `processId` its own ancestor, walking the existing parent chain from

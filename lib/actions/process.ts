@@ -7,6 +7,7 @@ import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import {
   generateProcessCode,
   isCodeAvailable,
+  recodeAfterChange,
   wouldCreateBranchCycle,
   wouldCreateCycle,
 } from "@/lib/domain/process-hierarchy";
@@ -322,7 +323,7 @@ export async function updateProcess(
 
   const allProcesses = await prisma.process.findMany({
     where: { workspaceId: parsed.data.workspaceId },
-    select: { id: true, code: true, parentProcessId: true },
+    select: { id: true, code: true, name: true, parentProcessId: true },
   });
 
   if (parsed.data.code) {
@@ -348,16 +349,41 @@ export async function updateProcess(
     if (!branch.ok) return branch.error;
   }
 
-  const updated = await prisma.process.update({
-    where: { id: parsed.data.processId },
-    data: {
-      code: parsed.data.code ? parsed.data.code.trim().toUpperCase() : undefined,
-      name: parsed.data.name,
-      description: parsed.data.description,
-      categoryId: parsed.data.categoryId,
-      parentProcessId: parsed.data.parentProcessId,
-      branchFromStepId: parsed.data.branchFromStepId,
-    },
+  // A code nobody typed follows the process's name (top level) or its
+  // parent (sub-process), so a rename or move carries it, and its
+  // sub-processes' codes, along. A code typed here always wins.
+  const nameChanged = parsed.data.name !== undefined && parsed.data.name.trim() !== process.name;
+  const parentChanged =
+    parsed.data.parentProcessId !== undefined && (parsed.data.parentProcessId ?? null) !== process.parentProcessId;
+  const recoded =
+    !parsed.data.code && (nameChanged || parentChanged)
+      ? recodeAfterChange(allProcesses, {
+          id: parsed.data.processId,
+          name: nameChanged ? parsed.data.name!.trim() : undefined,
+          parentProcessId: parentChanged ? (parsed.data.parentProcessId ?? null) : undefined,
+        })
+      : new Map<string, string>();
+
+  const updated = await prisma.$transaction(async (tx) => {
+    // Through temporary codes first, so two codes trading places can't
+    // collide on the workspace's unique-code rule mid-way.
+    for (const id of recoded.keys()) {
+      await tx.process.update({ where: { id }, data: { code: `~${id}` } });
+    }
+    for (const [id, code] of recoded) {
+      if (id !== parsed.data.processId) await tx.process.update({ where: { id }, data: { code } });
+    }
+    return tx.process.update({
+      where: { id: parsed.data.processId },
+      data: {
+        code: parsed.data.code ? parsed.data.code.trim().toUpperCase() : recoded.get(parsed.data.processId),
+        name: parsed.data.name,
+        description: parsed.data.description,
+        categoryId: parsed.data.categoryId,
+        parentProcessId: parsed.data.parentProcessId,
+        branchFromStepId: parsed.data.branchFromStepId,
+      },
+    });
   });
 
   revalidatePath(`/workspaces/${parsed.data.workspaceId}/processes`);

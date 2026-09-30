@@ -394,6 +394,7 @@ export function EditProcessButton({
   workspaceId: string;
   process: {
     id: string;
+    code: string;
     name: string;
     description: string;
     categoryId: string | null;
@@ -407,6 +408,7 @@ export function EditProcessButton({
   const canEdit = useCanEdit();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(process.name);
+  const [code, setCode] = useState(process.code);
   const [description, setDescription] = useState(process.description);
   const [categoryId, setCategoryId] = useState(process.categoryId ?? "");
   const [parentProcessId, setParentProcessId] = useState(process.parentProcessId ?? "");
@@ -428,6 +430,7 @@ export function EditProcessButton({
         type="button"
         onClick={() => {
           setName(process.name);
+          setCode(process.code);
           setDescription(process.description);
           setCategoryId(process.categoryId ?? "");
           setParentProcessId(process.parentProcessId ?? "");
@@ -463,6 +466,8 @@ export function EditProcessButton({
             const result = await updateProcess({
               workspaceId,
               processId: process.id,
+              // Sent only when changed: an untouched code follows the name.
+              code: code.trim().toUpperCase() !== process.code ? code : undefined,
               name,
               description,
               categoryId: categoryId || null,
@@ -489,6 +494,21 @@ export function EditProcessButton({
             className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
           />
         </label>
+        <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Process code
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            required
+            minLength={2}
+            maxLength={20}
+            aria-describedby={`code-hint-${process.id}`}
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 font-mono text-sm uppercase"
+          />
+        </label>
+        <p id={`code-hint-${process.id}`} className="mt-1 text-xs text-slate-500">
+          Follows the name automatically when you rename the process. Change it here to set your own.
+        </p>
         <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-600">
           Description
           <textarea

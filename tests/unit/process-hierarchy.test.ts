@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  recodeAfterChange,
   generateProcessCode,
   isCodeAvailable,
   orderProcessTree,
@@ -189,5 +190,58 @@ describe("orderProcessTree", () => {
   it("keeps the order it was given among siblings", () => {
     const rows = orderProcessTree([p("top"), p("b", "top"), p("a", "top")]);
     expect(rows.map((r) => r.process.id)).toEqual(["top", "b", "a"]);
+  });
+});
+
+describe("recodeAfterChange", () => {
+  type P = { id: string; code: string; name: string; parentProcessId: string | null };
+  const p = (id: string, code: string, name: string, parentProcessId: string | null = null): P => ({ id, code, name, parentProcessId });
+
+  it("moves a renamed top-level process to its new name's prefix, keeping its number", () => {
+    const processes = [p("a", "TES100", "Test process")];
+    expect(recodeAfterChange(processes, { id: "a", name: "End to end high-level" })).toEqual(new Map([["a", "END100"]]));
+  });
+
+  it("carries its sub-processes along, and their sub-processes, keeping their numbers", () => {
+    const processes = [
+      p("a", "TES100", "Test process"),
+      p("b", "TES101", "Intake", "a"),
+      p("c", "TES102", "Review", "b"),
+      p("x", "OTH100", "Other"),
+    ];
+    expect(recodeAfterChange(processes, { id: "a", name: "End to end" })).toEqual(
+      new Map([
+        ["a", "END100"],
+        ["b", "END101"],
+        ["c", "END102"],
+      ])
+    );
+  });
+
+  it("takes the next free number when the same number is taken under the new prefix", () => {
+    const processes = [p("a", "TES100", "Test"), p("e", "END100", "Endpoint"), p("f", "END101", "Endgame")];
+    expect(recodeAfterChange(processes, { id: "a", name: "End to end" }).get("a")).toBe("END102");
+  });
+
+  it("leaves a code that doesn't follow the naming rule alone, and its sub-processes with it", () => {
+    // The seeded "Procure-to-Pay Program" is PUR100, not PRO100: a chosen code.
+    const processes = [p("a", "PUR100", "Procure-to-Pay Program"), p("b", "PUR101", "Purchase-to-Pay", "a")];
+    expect(recodeAfterChange(processes, { id: "a", name: "Source-to-Settle" }).size).toBe(0);
+    expect(recodeAfterChange([p("a", "FIN-01", "Finance")], { id: "a", name: "Treasury" }).size).toBe(0);
+  });
+
+  it("changes nothing when the prefix doesn't change", () => {
+    expect(recodeAfterChange([p("a", "TES100", "Test one")], { id: "a", name: "Testing two" }).size).toBe(0);
+  });
+
+  it("recodes a process moved under a new parent to that parent's prefix, and one made top-level to its name's", () => {
+    const processes = [p("a", "PUR100", "Purchasing"), p("b", "SAL100", "Sales"), p("c", "PUR101", "Quotes", "a")];
+    expect(recodeAfterChange(processes, { id: "c", parentProcessId: "b" }).get("c")).toBe("SAL101");
+    expect(recodeAfterChange(processes, { id: "c", parentProcessId: null }).get("c")).toBe("QUO101");
+  });
+
+  it("leaves a sub-process's code alone when only its name changes", () => {
+    const processes = [p("a", "PUR100", "Purchasing"), p("c", "PUR101", "Quotes", "a")];
+    expect(recodeAfterChange(processes, { id: "c", name: "Tenders" }).size).toBe(0);
   });
 });

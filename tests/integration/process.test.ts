@@ -539,6 +539,33 @@ describe("updateProcess / archiveProcess", () => {
     expect(row?.categoryId).toBe(category.data.id);
   });
 
+  it("moves a renamed process's code, and its sub-processes' codes, to the new name's prefix", async () => {
+    const parent = await createProcess({ workspaceId: fixture.workspace.id, name: "Test process" });
+    if (!parent.ok) throw new Error("setup failed");
+    const child = await createProcess({ workspaceId: fixture.workspace.id, name: "Intake", parentProcessId: parent.data.id });
+    if (!child.ok) throw new Error("setup failed");
+    const codeOf = async (id: string) => (await prisma.process.findUniqueOrThrow({ where: { id } })).code;
+    expect([await codeOf(parent.data.id), await codeOf(child.data.id)]).toEqual(["TES100", "TES101"]);
+
+    await updateProcess({ workspaceId: fixture.workspace.id, processId: parent.data.id, name: "End to end high-level" });
+    expect([await codeOf(parent.data.id), await codeOf(child.data.id)]).toEqual(["END100", "END101"]);
+
+    // Saving without a name change, or with a code typed in, leaves the automatic rule out of it.
+    await updateProcess({ workspaceId: fixture.workspace.id, processId: parent.data.id, name: "End to end high-level", description: "x" });
+    expect(await codeOf(parent.data.id)).toBe("END100");
+    await updateProcess({ workspaceId: fixture.workspace.id, processId: parent.data.id, name: "Onboarding", code: "e2e100" });
+    expect(await codeOf(parent.data.id)).toBe("E2E100");
+    expect(await codeOf(child.data.id)).toBe("END101");
+  });
+
+  it("leaves a code that doesn't follow the name alone when the process is renamed", async () => {
+    const chosen = await prisma.process.create({
+      data: { workspaceId: fixture.workspace.id, code: "PUR100", name: "Procure-to-Pay Program" },
+    });
+    await updateProcess({ workspaceId: fixture.workspace.id, processId: chosen.id, name: "Source to Settle" });
+    expect((await prisma.process.findUniqueOrThrow({ where: { id: chosen.id } })).code).toBe("PUR100");
+  });
+
   it("rejects a parent selection that would create a circular hierarchy", async () => {
     const parent = await createProcess({ workspaceId: fixture.workspace.id, name: "Parent" });
     if (!parent.ok) throw new Error("setup failed");
