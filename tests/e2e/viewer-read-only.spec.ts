@@ -121,6 +121,7 @@ test("a Viewer keeps the read-only work: export, and the report itself", async (
   // at all — it must survive the lockdown.
   await page.goto("/workspaces/workspace-acme/export");
   await expect(page.getByRole("button", { name: /Preview report/i })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await expect(page.locator("main > section").first()).toBeVisible();
@@ -225,6 +226,7 @@ test("a Viewer cannot arrange the report pack, but can still export it", async (
   await expect(page.getByRole("checkbox", { name: /^Include PUR101/ })).toBeVisible();
 
   await expect(page.getByRole("button", { name: /Preview report/i })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await expect(page.locator("main.report-paper")).toBeVisible();

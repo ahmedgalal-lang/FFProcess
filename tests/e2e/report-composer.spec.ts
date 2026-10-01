@@ -92,6 +92,7 @@ const SECTION_TITLES = [
 
 async function reportText(page: import("@playwright/test").Page) {
   await page.goto(`/workspaces/${WORKSPACE}/export`);
+  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await page.waitForSelector(".report-paper");
@@ -101,6 +102,7 @@ async function reportText(page: import("@playwright/test").Page) {
 
 async function reportOutline(page: import("@playwright/test").Page) {
   await page.goto(`/workspaces/${WORKSPACE}/export`);
+  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await page.waitForSelector(".report-paper");
@@ -252,6 +254,7 @@ test("a ticked block with no data prints marked, and unticking removes it", asyn
 /** Every text run in a .pptx, flattened — pptxgenjs splits text per word. */
 async function deckText(page: import("@playwright/test").Page): Promise<string> {
   await page.goto(`/workspaces/${WORKSPACE}/export`);
+  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   const href = await page.locator('a:has-text("Download PPTX")').getAttribute("href");

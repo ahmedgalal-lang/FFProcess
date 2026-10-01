@@ -250,6 +250,7 @@ test.describe("Core workflows", () => {
     await expect(page.locator("h1")).toHaveText("Export Report");
     await expect(page.locator("tr", { hasText: "PUR101" })).toBeVisible();
 
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.click('button:has-text("Preview report")');
     await page.waitForURL("**/reports/**");
 
@@ -294,6 +295,7 @@ test.describe("Core workflows", () => {
 
   test("Export Report's Helicopter View shows the pack's rails before the process index", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.click('button:has-text("Preview report")');
     await page.waitForURL("**/reports/**");
 

@@ -25,11 +25,13 @@ const prepareSchema = z.object({ workspaceId: z.string().min(1) });
 /**
  * Translates every entry the workspace's full report would print, ahead of
  * exporting, so the consultant sees what was left untranslated and why
- * before handing anything to a client.
+ * before handing anything to a client. One call is one round of about
+ * twenty seconds; the picker repeats it while `pending` is true, so no single
+ * request outlives the hosting proxy's timeout.
  */
 export async function prepareReportTranslations(
   input: z.infer<typeof prepareSchema>
-): Promise<ActionResult<{ total: number; untranslated: number; failureKind: TranslationFailureKind | null }>> {
+): Promise<ActionResult<{ total: number; untranslated: number; failureKind: TranslationFailureKind | null; pending: boolean }>> {
   const parsed = prepareSchema.safeParse(input);
   if (!parsed.success) return validationError("Invalid input", parsed.error.issues);
   const access = await requireWorkspaceAccess(parsed.data.workspaceId, "EDITOR");
@@ -45,7 +47,13 @@ export async function prepareReportTranslations(
 
   const outcome = await localizeReportData(data, "ar", { allowAi: true });
   revalidate(workspaceId);
-  return ok({ total: outcome.total, untranslated: outcome.untranslated, failureKind: outcome.failureKind });
+  return ok({
+    total: outcome.total,
+    untranslated: outcome.untranslated,
+    failureKind: outcome.failureKind,
+    // One round per call: the picker calls again while this is true.
+    pending: outcome.pending,
+  });
 }
 
 const updateSchema = z.object({

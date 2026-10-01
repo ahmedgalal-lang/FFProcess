@@ -13,8 +13,10 @@ export type BatchOutcome =
   | { ok: true; translations: Map<string, string> }
   | { ok: false; reason: "NOT_CONFIGURED" | "REQUEST_FAILED"; message: string };
 
-export const BATCH_MAX_ITEMS = 60;
-export const BATCH_MAX_CHARS = 8000;
+// Small enough that one AI request stays short, so a call's time budget is
+// never overshot by much.
+export const BATCH_MAX_ITEMS = 40;
+export const BATCH_MAX_CHARS = 5000;
 
 /**
  * Splits items into batches of at most BATCH_MAX_ITEMS and about

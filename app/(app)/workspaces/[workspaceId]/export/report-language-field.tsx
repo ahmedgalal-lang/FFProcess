@@ -39,21 +39,44 @@ export function ReportLanguageField({
 
   const translated = status.total - status.untranslated;
 
+  /** Entries still to do while Translate now is working through them. */
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  /**
+   * Translates in rounds: each call is one short request, so none outlives
+   * the hosting proxy's timeout (which answers with an HTML error page, not
+   * JSON). Stops when nothing is left, the AI fails, or a round makes no progress.
+   */
   function translateNow() {
     setError(null);
     setResult(null);
     startTransition(async () => {
-      const outcome = await prepareReportTranslations({ workspaceId });
-      if (!outcome.ok) {
-        setError(outcome.error === "VALIDATION_ERROR" ? (outcome.message ?? m.common.couldNotSave) : m.common.couldNotSave);
-        return;
+      let last = status.untranslated;
+      try {
+        for (let round = 0; round < 60; round++) {
+          const outcome = await prepareReportTranslations({ workspaceId });
+          if (!outcome.ok) {
+            setError(outcome.error === "VALIDATION_ERROR" ? (outcome.message ?? m.common.couldNotSave) : m.common.couldNotSave);
+            break;
+          }
+          const stalled = outcome.data.untranslated >= last;
+          last = outcome.data.untranslated;
+          setRemaining(last);
+          setResult({
+            untranslated: last,
+            failure: outcome.data.failureKind,
+            translated: status.untranslated - last,
+          });
+          if (!outcome.data.pending || stalled) break;
+        }
+      } catch {
+        // The request itself failed (a timeout or a dropped connection), not the
+        // translation: what was saved so far is kept, and trying again continues.
+        setError(t.requestFailed);
+      } finally {
+        setRemaining(null);
+        router.refresh();
       }
-      setResult({
-        untranslated: outcome.data.untranslated,
-        failure: outcome.data.failureKind,
-        translated: status.untranslated - outcome.data.untranslated,
-      });
-      router.refresh();
     });
   }
 
@@ -88,7 +111,7 @@ export function ReportLanguageField({
                 disabled={pending}
                 className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
               >
-                {pending ? t.translating : t.translateNow}
+                {pending ? (remaining === null ? t.translating : t.translatingLeft(remaining)) : t.translateNow}
               </button>
             ) : (
               <span className="text-slate-500">{t.needsEditor}</span>

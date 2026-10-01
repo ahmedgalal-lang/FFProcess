@@ -15,6 +15,7 @@ test.describe("Export Report print layout", () => {
 
   test("Org Chart in the report has no live zoom controls or export button baked in", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.click('button:has-text("Preview report")');
     await page.waitForURL("**/reports/**");
 
@@ -30,6 +31,7 @@ test.describe("Export Report print layout", () => {
 
   test("Every process starts on its own page, even one with no content beyond its title", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.click('button:has-text("Preview report")');
     await page.waitForURL("**/reports/**");
 
@@ -57,6 +59,7 @@ test.describe("Export Report print layout", () => {
 
   test("Spacing control retunes how much fits on a page, and never prints itself", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.click('button:has-text("Preview report")');
     await page.waitForURL("**/reports/**");
 

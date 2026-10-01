@@ -51,6 +51,24 @@ export function ExportPickerForm({
   translationStatus?: { total: number; untranslated: number };
 }) {
   const [ordered, setOrdered] = useState(processes);
+  // Nothing is ticked to begin with: a pack is picked, not trimmed down from
+  // everything. Held here, not left to the checkboxes, so Select all can set them.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const allSelected = ordered.length > 0 && ordered.every((p) => selected.has(p.id));
+  const someSelected = selected.size > 0 && !allSelected;
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(ordered.map((p) => p.id)));
+  }
 
   function move(index: number, direction: -1 | 1) {
     const to = index + direction;
@@ -71,6 +89,23 @@ export function ExportPickerForm({
 
       <form action={`/reports/${workspaceId}`} method="GET">
       <ReportLanguageField workspaceId={workspaceId} defaultLocale={defaultLocale} status={translationStatus} />
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-2 font-semibold text-slate-800">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => {
+              if (el) el.indeterminate = someSelected;
+            }}
+            onChange={toggleAll}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Select all processes
+        </label>
+        <span role="status" className="text-xs text-slate-600">
+          {selected.size} of {ordered.length} selected
+        </span>
+      </div>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
@@ -97,7 +132,8 @@ export function ExportPickerForm({
                     type="checkbox"
                     name="ids"
                     value={p.id}
-                    defaultChecked
+                    checked={selected.has(p.id)}
+                    onChange={() => toggleOne(p.id)}
                     aria-label={`Include ${p.code} — ${p.name}`}
                     className="h-4 w-4 rounded border-slate-300"
                   />
@@ -139,10 +175,12 @@ export function ExportPickerForm({
 
       <button
         type="submit"
-        className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+        disabled={selected.size === 0}
+        className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         Preview report →
       </button>
+      {selected.size === 0 && <p className="mt-1 text-xs text-slate-600">Tick at least one process to preview the report.</p>}
       </form>
     </>
   );

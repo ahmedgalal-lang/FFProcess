@@ -9,6 +9,9 @@ export const reportEn = {
     allTranslated: "Every entry has an Arabic translation.",
     translateNow: "Translate now",
     translating: "Translating…",
+    translatingLeft: (n: number) => `Translating… ${n} left`,
+    requestFailed:
+      "The request didn't complete. What was translated so far is saved; press Translate now to continue.",
     translatedNow: (n: number) => `${plural(n, "entry", "entries")} translated.`,
     leftUntranslated: (n: number, reason: string | null) =>
       `${plural(n, "entry was", "entries were")} not translated${reason ? `: ${reason}` : "."} They print as typed.`,

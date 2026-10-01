@@ -125,6 +125,24 @@ describe("saved translations (spec 032)", () => {
     expect(outcome.lookup("Operations")).toBe("Operations");
   });
 
+  it("stops starting AI requests when its time budget is spent, and says to call again", async () => {
+    const many = Array.from({ length: 100 }, (_, i) => `Step number ${i}`);
+    const none = await translateTexts(workspaceId, many, "ar", { budgetMs: 0 });
+    expect(mockTranslateBatch).not.toHaveBeenCalled();
+    expect(none).toMatchObject({ untranslated: 100, pending: true, failure: null });
+
+    // A later call picks up where this one left off, and finishes.
+    const rest = await translateTexts(workspaceId, many, "ar");
+    expect(rest).toMatchObject({ untranslated: 0, pending: false });
+    expect(await prisma.contentTranslation.count({ where: { workspaceId } })).toBe(100);
+  });
+
+  it("does not call a failure 'pending': there is nothing to wait for", async () => {
+    mockTranslateBatch.mockResolvedValue({ ok: false, reason: "REQUEST_FAILED", message: "overloaded" });
+    const outcome = await translateTexts(workspaceId, ["Approve order"], "ar");
+    expect(outcome).toMatchObject({ untranslated: 1, pending: false, failureKind: "REQUEST_FAILED" });
+  });
+
   it("does nothing at all for English", async () => {
     const outcome = await translateTexts(workspaceId, ["Finance"], "en");
     expect(outcome.lookup("Finance")).toBe("Finance");

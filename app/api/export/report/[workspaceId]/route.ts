@@ -40,7 +40,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ work
   // The same saved translations the report uses (spec 032); only an editor's
   // download asks the AI for missing ones, as on the report page.
   const editor = await requireWorkspaceAccess(workspaceId, "EDITOR");
-  const localized = await localizeReportData(data, locale, { allowAi: editor.ok });
+  const localized = await localizeReportData(data, locale, { allowAi: editor.ok, budgetMs: 8_000 });
 
   const buffer = await buildReportPptx(localized.data, resolveArrangement(workspace?.reportArrangement), locale);
 

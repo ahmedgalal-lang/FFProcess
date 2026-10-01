@@ -58,6 +58,7 @@ test.describe("Arabic reports and exports", () => {
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
     await page.getByRole("radio", { name: "العربية" }).check();
     await expect(page.getByRole("status").filter({ hasText: "entries translated into Arabic" })).toBeVisible();
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.getByRole("button", { name: /Preview report/ }).click();
 
     await expect(page).toHaveURL(/lang=ar/);

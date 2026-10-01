@@ -37,6 +37,7 @@ test.describe("Export", () => {
 
   test("Export Report's Download PPTX returns a well-formed slide deck", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.click('button:has-text("Preview report")');
     await page.waitForURL("**/reports/**");
 

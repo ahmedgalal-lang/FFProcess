@@ -43,6 +43,7 @@ test.describe("Export report ordering", () => {
     await expect.poll(() => codeOf(0)).toBe(secondBefore);
     await expect.poll(() => codeOf(1)).toBe(firstBefore);
 
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.getByRole("button", { name: /Preview report/i }).click();
     await page.waitForURL("**/reports/**");
 
@@ -62,6 +63,7 @@ test.describe("Export report ordering", () => {
     const rows = page.locator("tbody tr");
 
     await rows.nth(0).getByRole("button", { name: /Move .* later in the report/ }).click();
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.getByRole("button", { name: /Preview report/i }).click();
     await page.waitForURL("**/reports/**");
     const arrangedUrl = page.url();
@@ -88,6 +90,7 @@ test.describe("Export report ordering", () => {
       .nth(0)
       .getByRole("button", { name: /Move .* later in the report/ })
       .click();
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.getByRole("button", { name: /Preview report/i }).click();
     await page.waitForURL("**/reports/**");
 
@@ -104,6 +107,7 @@ test.describe("Export report ordering", () => {
 
   test("a report link naming a process that no longer exists still renders", async ({ page }) => {
     await page.goto("/workspaces/workspace-acme/export");
+    await page.getByRole("checkbox", { name: "Select all processes" }).check();
     await page.getByRole("button", { name: /Preview report/i }).click();
     await page.waitForURL("**/reports/**");
 

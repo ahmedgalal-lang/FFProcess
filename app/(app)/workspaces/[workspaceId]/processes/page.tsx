@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
 import { WorkspacePageHeader } from "../workspace-page-header";
-import { CreateProcessForm, CloneProcessButton, EditProcessButton, ArchiveProcessButton } from "./process-forms";
+import { CreateProcessForm } from "./process-forms";
+import { ProcessTable } from "./process-table";
 import { GenerateTemplateForm } from "./template-form";
 import { ImportPanel } from "./import-panel";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
@@ -120,122 +121,30 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
         </p>
       )}
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-2">Code</th>
-              <th className="px-4 py-2">Process</th>
-              <th className="px-4 py-2">Category</th>
-              <th className="px-4 py-2">Steps</th>
-              <th className="px-4 py-2">RACI</th>
-              <th className="px-4 py-2 text-end">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ process: p, depth }) => (
-              <tr key={p.id} className="border-t border-slate-100">
-                <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">
-                  {/* Indented by how deep it actually sits, so a sub-process of
-                      a sub-process reads as one rather than as a sibling of
-                      its own parent. */}
-                  {depth > 0 ? (
-                    <span className="me-1 text-slate-300" style={{ paddingLeft: (depth - 1) * 12 }}>
-                      ↳
-                    </span>
-                  ) : null}
-                  {p.code}
-                </td>
-                <td className="px-4 py-2 font-medium text-slate-900">
-                  {p.name}
-                  {p.parentProcessId && (
-                    <span className="ms-2 text-xs font-normal text-slate-500">
-                      sub-process of {p.parentProcess?.code}
-                      {/* The parent is loaded regardless of its own deletion, so
-                          without this the row named a code that is nowhere on
-                          the list — the child looked misfiled rather than
-                          orphaned. */}
-                      {p.parentProcess?.archivedAt ? " (deleted)" : ""}
-                    </span>
-                  )}
-                  {p.branchFromStep && (
-                    <span className="block text-xs font-normal text-amber-700">
-                      ↰ branches from {p.branchFromStep.process.code} · {p.branchFromStep.label}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  {p.category ? (
-                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-                      {p.category.name}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-slate-500">{p._count.steps}</td>
-                <td className="px-4 py-2">
-                  {p.raciMatrixStatus ? (
-                    <span
-                      className={
-                        p.raciMatrixStatus.status === "FINAL"
-                          ? "rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
-                          : "rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700"
-                      }
-                    >
-                      {p.raciMatrixStatus.status === "FINAL" ? "Final" : "Draft"}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-end">
-                  <div className="flex items-center justify-end gap-3">
-                    <EditProcessButton
-                      workspaceId={workspaceId}
-                      process={{
-                        id: p.id,
-                        code: p.code,
-                        name: p.name,
-                        description: p.description ?? "",
-                        categoryId: p.categoryId,
-                        parentProcessId: p.parentProcessId,
-                        branchFromStepId: p.branchFromStepId,
-                        branchFromProcessId: p.branchFromStep?.process.id ?? null,
-                      }}
-                      processes={processOptions}
-                      categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-                    />
-                    <CloneProcessButton
-                      workspaceId={workspaceId}
-                      sourceProcessId={p.id}
-                      sourceName={p.name}
-                      sourceParentProcessId={p.parentProcessId}
-                      processes={processOptions}
-                    />
-                    <ArchiveProcessButton workspaceId={workspaceId} processId={p.id} />
-                    <Link
-                      href={`/workspaces/${workspaceId}/processes/${p.id}/map`}
-                      className="text-xs font-semibold text-slate-700 hover:text-slate-900"
-                    >
-                      Open →
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                  {q ? `No processes match "${q}".` : "No processes yet — create one below."}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ProcessTable
+        workspaceId={workspaceId}
+        rows={rows.map(({ process: p, depth }) => ({
+          id: p.id,
+          depth,
+          code: p.code,
+          name: p.name,
+          description: p.description ?? "",
+          categoryId: p.categoryId,
+          categoryName: p.category?.name ?? null,
+          parentProcessId: p.parentProcessId,
+          parentCode: p.parentProcess?.code ?? null,
+          parentArchived: Boolean(p.parentProcess?.archivedAt),
+          branchFromStepId: p.branchFromStepId,
+          branchFrom: p.branchFromStep
+            ? { processId: p.branchFromStep.process.id, code: p.branchFromStep.process.code, label: p.branchFromStep.label }
+            : null,
+          stepCount: p._count.steps,
+          raci: p.raciMatrixStatus?.status ?? null,
+        }))}
+        processOptions={processOptions}
+        categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+        emptyMessage={q ? `No processes match "${q}".` : "No processes yet — create one below."}
+      />
 
       <div className="mt-4 flex flex-col gap-3">
         <CreateProcessForm

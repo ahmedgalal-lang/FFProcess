@@ -59,6 +59,7 @@ async function seed() {
 
 async function openReport(page: import("@playwright/test").Page) {
   await page.goto(`/workspaces/${WORKSPACE}/export`);
+  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await page.waitForSelector(".report-paper");

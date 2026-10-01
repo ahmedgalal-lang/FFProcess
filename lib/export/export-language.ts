@@ -31,7 +31,7 @@ export async function exportLanguage(request: Request, workspaceId: string): Pro
     translator: async (texts) => {
       if (locale === "en") return (text) => text;
       const editor = await requireWorkspaceAccess(workspaceId, "EDITOR");
-      const outcome = await translateTexts(workspaceId, texts, locale, { allowAi: editor.ok });
+      const outcome = await translateTexts(workspaceId, texts, locale, { allowAi: editor.ok, budgetMs: 8_000 });
       return outcome.lookup;
     },
   };

@@ -17,6 +17,8 @@ export const reportAr: ReportMessages = {
     allTranslated: "لكل المدخلات ترجمة عربية.",
     translateNow: "ترجمة الآن",
     translating: "جارٍ الترجمة…",
+    translatingLeft: (n) => `جارٍ الترجمة… بقي ${n}`,
+    requestFailed: "لم يكتمل الطلب. ما تُرجم حتى الآن محفوظ؛ اضغط «ترجمة الآن» للمتابعة.",
     translatedNow: (n) => `تُرجم ${entries(n)}.`,
     leftUntranslated: (n, reason) =>
       `لم يُترجم ${entries(n)}${reason ? `: ${reason}` : "."} وسيُطبع كما كُتب.`,

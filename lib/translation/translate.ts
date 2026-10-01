@@ -15,6 +15,8 @@ export type TranslationOutcome = {
   failure: string | null;
   /** The kind of failure, for wording it in the reader's language. */
   failureKind: TranslationFailureKind | null;
+  /** True when the time budget ran out with entries still to translate: call again to continue. */
+  pending: boolean;
 };
 
 export type TranslationFailureKind = "NOT_CONFIGURED" | "REQUEST_FAILED";
@@ -22,7 +24,22 @@ export type TranslationFailureKind = "NOT_CONFIGURED" | "REQUEST_FAILED";
 /** How many AI requests run at once for one export. */
 const CONCURRENCY = 3;
 
-const identity: TranslationOutcome = { lookup: (text) => text, total: 0, untranslated: 0, failure: null, failureKind: null };
+/**
+ * How long one call keeps starting new AI requests. A request a browser is
+ * waiting on must finish well inside the hosting proxy's timeout, or the
+ * proxy answers with its own HTML error page instead: so a large first
+ * translation is done in rounds, and the caller asks again to continue.
+ */
+export const DEFAULT_TRANSLATION_BUDGET_MS = 20_000;
+
+const identity: TranslationOutcome = {
+  lookup: (text) => text,
+  total: 0,
+  untranslated: 0,
+  failure: null,
+  failureKind: null,
+  pending: false,
+};
 
 /**
  * The saved translations of a workspace's texts into `locale` (spec 032),
@@ -37,9 +54,10 @@ export async function translateTexts(
   workspaceId: string,
   texts: Iterable<string>,
   locale: Locale,
-  options: { allowAi?: boolean } = {}
+  options: { allowAi?: boolean; budgetMs?: number } = {}
 ): Promise<TranslationOutcome> {
   if (locale === "en") return identity;
+  const deadline = Date.now() + (options.budgetMs ?? DEFAULT_TRANSLATION_BUDGET_MS);
 
   const byHash = new Map<string, string>();
   for (const text of texts) {
@@ -56,6 +74,7 @@ export async function translateTexts(
 
   let failure: string | null = null;
   let failureKind: TranslationFailureKind | null = null;
+  let pending = false;
   const missing: TranslationItem[] = [...byHash].filter(([hash]) => !translated.has(hash)).map(([id, text]) => ({ id, text }));
 
   if (missing.length > 0 && options.allowAi !== false) {
@@ -63,6 +82,11 @@ export async function translateTexts(
     let next = 0;
     const worker = async () => {
       while (next < batches.length) {
+        // Out of time: leave the rest for the next call rather than outlive the request.
+        if (Date.now() >= deadline) {
+          pending = true;
+          return;
+        }
         const batch = batches[next++]!;
         const outcome = await translateBatch(batch);
         if (!outcome.ok) {
@@ -107,5 +131,6 @@ export async function translateTexts(
     untranslated,
     failure: untranslated > 0 ? failure : null,
     failureKind: untranslated > 0 ? failureKind : null,
+    pending: pending && untranslated > 0 && failureKind === null,
   };
 }

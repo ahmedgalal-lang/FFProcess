@@ -49,7 +49,9 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
   // Entries in the report's language. Only an editor's request asks the AI for
   // missing translations, since that writes to the workspace and costs money;
   // anyone else gets the saved ones and a notice for the rest.
-  const localized = await localizeReportData(data, locale, { allowAi: editorAccess.ok });
+  // A short budget: a large first translation belongs to the picker's
+  // Translate now, which works in rounds; the page must answer promptly.
+  const localized = await localizeReportData(data, locale, { allowAi: editorAccess.ok, budgetMs: 8_000 });
 
   return (
     <ExportPreview

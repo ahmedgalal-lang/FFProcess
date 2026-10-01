@@ -12,6 +12,8 @@ export type LocalizedReport = {
   untranslated: number;
   failure: string | null;
   failureKind: TranslationFailureKind | null;
+  /** More entries to translate after this call's time budget: call again. */
+  pending: boolean;
 };
 
 /**
@@ -22,9 +24,9 @@ export type LocalizedReport = {
 export async function localizeReportData(
   data: ReportData,
   locale: Locale,
-  options: { allowAi?: boolean } = {}
+  options: { allowAi?: boolean; budgetMs?: number } = {}
 ): Promise<LocalizedReport> {
-  if (locale === "en") return { data, total: 0, untranslated: 0, failure: null, failureKind: null };
+  if (locale === "en") return { data, total: 0, untranslated: 0, failure: null, failureKind: null, pending: false };
   const outcome = await translateTexts(data.workspaceId, collectReportTexts(data, locale), locale, options);
   return {
     data: applyReportTranslations(data, locale, outcome.lookup),
@@ -32,5 +34,6 @@ export async function localizeReportData(
     untranslated: outcome.untranslated,
     failure: outcome.failure,
     failureKind: outcome.failureKind,
+    pending: outcome.pending,
   };
 }

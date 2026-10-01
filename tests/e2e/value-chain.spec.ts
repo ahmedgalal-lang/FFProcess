@@ -155,6 +155,7 @@ test("Value Chain: import a spreadsheet, then read, filter and re-phase the boar
 
   // --- The chain reaches the Export Report as a page of its own ---
   await page.goto("/workspaces/workspace-acme/export");
+  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
