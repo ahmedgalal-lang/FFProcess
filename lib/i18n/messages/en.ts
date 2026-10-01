@@ -10,6 +10,14 @@ export const en = {
     english: "English",
     arabic: "العربية",
   },
+  login: {
+    title: "Sign in",
+    intro: "Process mapping, RACI, and authority matrices for client engagements.",
+    email: "Email",
+    password: "Password",
+    submit: "Sign in",
+    submitting: "Signing in…",
+  },
   common: {
     save: "Save",
     saving: "Saving…",

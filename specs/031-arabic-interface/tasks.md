@@ -2,8 +2,8 @@
 
 ## Stage 1
 - [x] T001 i18n core: locale, cookie, `getMessages`/`useMessages`, provider, `setLocale` action, unit tests (Arabic dictionary has every English key).
-- [ ] T002 Root layout `lang`/`dir`, Arabic font, language switcher in the header and on the sign-in page.
-- [ ] T003 Convert physical direction classes to logical ones app-wide; keep diagrams `dir="ltr"` (process map, landscape, org chart, milestone rails, printed map).
+- [x] T002 Root layout `lang`/`dir`, Arabic font, language switcher in the header and on the sign-in page.
+- [x] T003 Convert physical direction classes to logical ones app-wide; keep diagrams `dir="ltr"` (process map, landscape, org chart, milestone rails, printed map).
 - [x] T004 Translate the app shell and workspace navigation.
 - [x] T005 Translate the Governance area: page, panels, register, library, drawer, treatment, heat map, activity, dashboard, section guides, templates, default aspect names.
 - [x] T006 AI prompts write in the active language.

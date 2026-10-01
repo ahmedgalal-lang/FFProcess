@@ -113,7 +113,7 @@ export function ProcessLandscapeCanvas({
   }
 
   return (
-    <div className="h-[560px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div dir="ltr" className="h-[560px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}

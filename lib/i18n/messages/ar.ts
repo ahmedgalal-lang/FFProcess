@@ -12,6 +12,14 @@ export const ar: Messages = {
     english: "English",
     arabic: "العربية",
   },
+  login: {
+    title: "تسجيل الدخول",
+    intro: "خرائط العمليات ومصفوفات RACI ومصفوفات الصلاحيات لمشاريع العملاء.",
+    email: "البريد الإلكتروني",
+    password: "كلمة المرور",
+    submit: "تسجيل الدخول",
+    submitting: "جارٍ تسجيل الدخول…",
+  },
   common: {
     save: "حفظ",
     saving: "جارٍ الحفظ…",

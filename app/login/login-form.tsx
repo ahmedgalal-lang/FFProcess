@@ -2,18 +2,20 @@
 
 import { useActionState } from "react";
 import { loginAction, type LoginState } from "./actions";
+import { useMessages } from "@/lib/i18n/client";
 
 const initialState: LoginState = { error: null };
 
 export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
+  const t = useMessages().login;
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
       {callbackUrl && <input type="hidden" name="callbackUrl" value={callbackUrl} />}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="email" className="text-sm font-medium text-slate-700">
-          Email
+          {t.email}
         </label>
         <input
           id="email"
@@ -26,7 +28,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="password" className="text-sm font-medium text-slate-700">
-          Password
+          {t.password}
         </label>
         <input
           id="password"
@@ -45,7 +47,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         disabled={pending}
         className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
       >
-        {pending ? "Signing in…" : "Sign in"}
+        {pending ? t.submitting : t.submit}
       </button>
     </form>
   );

@@ -121,7 +121,7 @@ export function PrintedProcessMap({
   const detailByStepId = new Map(steps.map((s) => [s.id, detailOf(s)]));
 
   return (
-    <div className="printed-map">
+    <div className="printed-map" dir="ltr">
       {outcome.layout === "FLOW" && outcome.fellBackFrom && (
         <p className="printed-map__fallback print-keep">
           <strong>Printed in the Flow layout.</strong> {outcome.reason}

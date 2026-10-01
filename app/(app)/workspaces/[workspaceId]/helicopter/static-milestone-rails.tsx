@@ -71,7 +71,7 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
           past the container's edge was simply gone from the page — the rails
           are laid out in fixed pixels, and a real chain is wider than A4. Same
           answer the report's process diagram already gives with fitView. */}
-      <div className="break-inside-avoid overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div dir="ltr" className="break-inside-avoid overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div style={{ width: boxWidth * scale, height: boxHeight * scale }}>
           <div
             className="relative bg-white px-6 py-5"

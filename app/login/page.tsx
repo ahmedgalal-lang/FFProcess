@@ -1,9 +1,12 @@
 import { LoginForm } from "./login-form";
+import { LanguageSwitcher } from "../language-switcher";
+import { getMessages } from "@/lib/i18n/server";
 
 export default async function LoginPage(props: PageProps<"/login">) {
   const searchParams = await props.searchParams;
   const callbackUrlRaw = searchParams["callbackUrl"];
   const callbackUrl = typeof callbackUrlRaw === "string" ? callbackUrlRaw : undefined;
+  const t = (await getMessages()).login;
 
   return (
     <div className="flex flex-1 items-center justify-center px-4 py-16">
@@ -13,11 +16,12 @@ export default async function LoginPage(props: PageProps<"/login">) {
             FF
           </div>
           <span className="text-sm font-semibold text-slate-900">FFProcess</span>
+          <div className="ms-auto">
+            <LanguageSwitcher />
+          </div>
         </div>
-        <h1 className="mb-1 text-lg font-semibold text-slate-900">Sign in</h1>
-        <p className="mb-6 text-sm text-slate-500">
-          Process mapping, RACI, and authority matrices for client engagements.
-        </p>
+        <h1 className="mb-1 text-lg font-semibold text-slate-900">{t.title}</h1>
+        <p className="mb-6 text-sm text-slate-500">{t.intro}</p>
         <LoginForm callbackUrl={callbackUrl} />
       </div>
     </div>

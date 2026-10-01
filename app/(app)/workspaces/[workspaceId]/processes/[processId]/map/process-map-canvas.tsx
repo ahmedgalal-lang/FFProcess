@@ -444,6 +444,7 @@ export function ProcessMapCanvas({
 
   return (
     <div
+      dir="ltr"
       className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white"
       style={{ height: canvasHeight }}
     >

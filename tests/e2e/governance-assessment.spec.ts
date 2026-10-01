@@ -181,7 +181,7 @@ test("a hand-added risk appears in the Risk Register with its derived level, ind
   const row = page.locator("tr", { hasText: "Single supplier for critical components" });
   await expect(row).toBeVisible();
   await expect(row).toContainText("Added manually");
-  await expect(row.getByText("HIGH", { exact: true })).toBeVisible(); // the derived level chip
+  await expect(row.locator("span").filter({ hasText: /^High$/ })).toBeVisible(); // the derived level chip
 
   // And it can be removed outright — distinct from setting its status to
   // Closed, which would keep it (and its history) on the register.

@@ -31,6 +31,23 @@ test.describe("Arabic interface", () => {
     await expect(page.getByRole("heading", { name: "Governance, Controls & Metrics" })).toBeVisible();
   });
 
+  test("the sign-in page offers the switcher before anyone signs in", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByRole("button", { name: "العربية" }).click();
+    await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+    await expect(page.getByRole("heading", { name: "تسجيل الدخول" })).toBeVisible();
+    await expect(page.getByLabel("البريد الإلكتروني")).toBeVisible();
+  });
+
+  test("diagrams keep their left-to-right layout in Arabic", async ({ page, context, baseURL }) => {
+    await context.addCookies([{ name: "ffp-locale", value: "ar", url: baseURL ?? "http://localhost:3000" }]);
+    await signIn(page);
+    await page.goto(`/workspaces/${WORKSPACE}/org/chart`);
+    await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+    await expect(page.locator(".react-flow").first()).toBeVisible();
+    await expect(page.locator(".react-flow").first().locator("xpath=ancestor::*[@dir][1]")).toHaveAttribute("dir", "ltr");
+  });
+
   test.describe("Governance in Arabic", () => {
     test.beforeEach(async ({ page, context, baseURL }) => {
       await context.addCookies([{ name: "ffp-locale", value: "ar", url: baseURL ?? "http://localhost:3000" }]);

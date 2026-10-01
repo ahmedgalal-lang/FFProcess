@@ -86,7 +86,7 @@ export function OrgChartCanvas({ people }: { people: PersonT[] }) {
   );
 
   return (
-    <div className="relative h-[520px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div dir="ltr" className="relative h-[520px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}

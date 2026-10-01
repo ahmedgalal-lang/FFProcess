@@ -70,7 +70,7 @@ test.describe("policy lifecycle", () => {
 
     // Draft -> In Review
     await dialog.getByRole("button", { name: "Submit for review" }).click();
-    await expect(dialog.getByText("In Review", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("In review", { exact: true })).toBeVisible();
 
     // In Review -> Approved
     await dialog.getByRole("button", { name: "Approve" }).click();

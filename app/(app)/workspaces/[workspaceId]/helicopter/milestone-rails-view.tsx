@@ -75,7 +75,7 @@ export function MilestoneRailsView({
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div dir="ltr" className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <div
           ref={boardRef}
           className="relative bg-white px-6 py-5"
