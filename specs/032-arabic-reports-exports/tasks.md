@@ -42,7 +42,7 @@
 
 ## Phase 7: Polish
 
-- [ ] T021 Full suites (tsc, eslint, Vitest, Playwright); check English exports are unchanged; update spec 031's stage-3 tasks to point here.
+- [x] T021 Full suites (tsc, eslint, Vitest, Playwright); check English exports are unchanged; update spec 031's stage-3 tasks to point here.
 
 ## Dependencies
 
