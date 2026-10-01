@@ -72,13 +72,13 @@ export default async function DeletedProcessesPage(
       ) : (
         <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-600">
+            <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-600">
               <tr>
                 <th className="px-4 py-2">Code</th>
                 <th className="px-4 py-2">Process</th>
                 <th className="px-4 py-2">Steps</th>
                 <th className="px-4 py-2">Deleted</th>
-                <th className="px-4 py-2 text-right">
+                <th className="px-4 py-2 text-end">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
@@ -90,7 +90,7 @@ export default async function DeletedProcessesPage(
                   <td className="px-4 py-2 font-medium text-slate-900">
                     {p.name}
                     {p.parentProcess && !p.parentProcess.archivedAt && (
-                      <span className="ml-2 text-xs font-normal text-slate-600">
+                      <span className="ms-2 text-xs font-normal text-slate-600">
                         sub-process of {p.parentProcess.code}
                       </span>
                     )}
@@ -99,7 +99,7 @@ export default async function DeletedProcessesPage(
                   <td className="px-4 py-2 text-slate-600">
                     {p.archivedAt ? formatDeletedAt(p.archivedAt) : "—"}
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2 text-end">
                     <RestoreProcessButton
                       workspaceId={workspaceId}
                       processId={p.id}

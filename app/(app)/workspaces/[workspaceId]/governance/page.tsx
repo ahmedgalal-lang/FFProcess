@@ -19,10 +19,10 @@ import { buildDashboardTiles, isDashboardEmpty } from "@/lib/domain/governance-d
 import { deriveRiskLevel } from "@/lib/domain/governance-risk";
 import { aspectPolicyState } from "@/lib/domain/governing-policy";
 import { SectionGuide } from "./section-guide";
+import { getLocale } from "@/lib/i18n/server";
+import { messagesFor } from "@/lib/i18n/messages";
+import { formatDate as formatLocaleDate } from "@/lib/i18n/locale";
 
-function formatDate(d: Date): string {
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
 
 /** ISO date-only (YYYY-MM-DD), for round-tripping through an `<input type="date">`. */
 function formatDateOnly(d: Date): string {
@@ -39,6 +39,9 @@ function formatDateOnly(d: Date): string {
  */
 export default async function GovernancePage(props: PageProps<"/workspaces/[workspaceId]/governance">) {
   const { workspaceId } = await props.params;
+  const locale = await getLocale();
+  const m = messagesFor(locale);
+  const formatDate = (d: Date) => formatLocaleDate(d, locale);
   // A dashboard risk tile links here with ?riskLevel=, which shows every open
   // risk at that level across all aspects (spec 026).
   const rawLevel = (await props.searchParams)["riskLevel"];
@@ -283,7 +286,7 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
         code: process.code,
         name: process.name,
         kpis: process.kpis as unknown as { metric: string; target: string; frequency: string }[],
-        controlPoints: deriveControlPoints(buildCombinedMatrixRows(raciRows, authorityRows), roleNameByIdForControlPoints),
+        controlPoints: deriveControlPoints(buildCombinedMatrixRows(raciRows, authorityRows), roleNameByIdForControlPoints, locale),
       };
     })
   );
@@ -291,8 +294,8 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <WorkspacePageHeader
-        title="Governance, Controls & Metrics"
-        subtitle="An AI-assisted assessment covers board structure, risk & controls, ethics, compensation, ESG, data integrity and accessibility. Key Control Points and KPIs below continue to come from each process's Authority Matrix."
+        title={m.governance.page.title}
+        subtitle={m.governance.page.subtitle}
       />
 
       <div className="mb-4">
@@ -334,14 +337,14 @@ export default async function GovernancePage(props: PageProps<"/workspaces/[work
 
       <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
         <div className="h-px flex-1 bg-slate-200" />
-        Key Control Points &amp; KPIs, from each process&apos;s Authority Matrix
+        {m.governance.page.controlsDivider}
         <SectionGuide id="controls" />
         <div className="h-px flex-1 bg-slate-200" />
       </div>
 
       {sections.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
-          No processes yet in {workspace.name}.
+          {m.governance.page.noProcesses(workspace.name)}
         </p>
       ) : (
         <div className="flex flex-col gap-4">

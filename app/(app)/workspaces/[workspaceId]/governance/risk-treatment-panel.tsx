@@ -11,17 +11,11 @@ import {
 } from "@/lib/actions/risk-treatment";
 import { deriveRiskLevel } from "@/lib/domain/governance-risk";
 import type { RiskT } from "./governance-risk-register";
+import { useMessages } from "@/lib/i18n/client";
 
 type OwnerOptionT = { id: string; name: string; archived: boolean };
 
-const STRATEGY_LABEL: Record<string, string> = {
-  MITIGATE: "Mitigate",
-  TRANSFER: "Transfer",
-  ACCEPT: "Accept",
-  AVOID: "Avoid",
-};
-
-const word = (v: string) => v.charAt(0) + v.slice(1).toLowerCase();
+const STRATEGIES = ["MITIGATE", "TRANSFER", "ACCEPT", "AVOID"] as const;
 
 /**
  * One risk's treatment plan (spec 027): the strategy and why, the level it
@@ -40,6 +34,9 @@ export function RiskTreatmentPanel({
   people: OwnerOptionT[];
 }) {
   const canEdit = useCanEdit();
+  const m = useMessages();
+  const t = m.governance.treatment;
+  const word = (v: string) => m.governance.levels[v] ?? v;
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -49,7 +46,7 @@ export function RiskTreatmentPanel({
     startTransition(async () => {
       const result = await action();
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : (result.error ?? "Could not save."));
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? m.common.couldNotSave) : m.common.couldNotSave);
         return;
       }
       after?.();
@@ -98,12 +95,12 @@ export function RiskTreatmentPanel({
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
       <div className="text-slate-700">
-        <span className="font-semibold">Current level:</span> {word(deriveRiskLevel(risk.likelihood, risk.impact))}
+        <span className="font-semibold">{t.currentLevel}</span> {word(deriveRiskLevel(risk.likelihood, risk.impact))}
         {targetLevel && (
           <>
             {" "}
-            → <span className="font-semibold">target:</span> {word(targetLevel)} ({word(risk.targetLikelihood!)} likelihood,{" "}
-            {word(risk.targetImpact!)} impact)
+            <span aria-hidden="true" className="inline-block rtl:rotate-180">→</span> <span className="font-semibold">{t.target}</span>{" "}
+            {word(targetLevel)} {t.targetDetail(word(risk.targetLikelihood!), word(risk.targetImpact!))}
           </>
         )}
       </div>
@@ -118,38 +115,38 @@ export function RiskTreatmentPanel({
         >
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 font-medium text-slate-600">
-              Strategy
+              {t.strategy}
               <select name="strategy" defaultValue={risk.treatmentStrategy ?? ""} className="rounded border border-slate-300 bg-white px-1.5 py-1">
-                <option value="">Not decided</option>
-                {Object.entries(STRATEGY_LABEL).map(([v, l]) => (
+                <option value="">{t.notDecided}</option>
+                {STRATEGIES.map((v) => (
                   <option key={v} value={v}>
-                    {l}
+                    {t.strategies[v]}
                   </option>
                 ))}
               </select>
             </label>
             <label className="flex items-center gap-1.5 font-medium text-slate-600">
-              Target likelihood
+              {t.targetLikelihood}
               <select name="targetLikelihood" defaultValue={risk.targetLikelihood ?? ""} className="rounded border border-slate-300 bg-white px-1.5 py-1">
                 <option value="">—</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
+                <option value="LOW">{word("LOW")}</option>
+                <option value="MEDIUM">{word("MEDIUM")}</option>
+                <option value="HIGH">{word("HIGH")}</option>
               </select>
             </label>
             <label className="flex items-center gap-1.5 font-medium text-slate-600">
-              Target impact
+              {t.targetImpact}
               <select name="targetImpact" defaultValue={risk.targetImpact ?? ""} className="rounded border border-slate-300 bg-white px-1.5 py-1">
                 <option value="">—</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
+                <option value="LOW">{word("LOW")}</option>
+                <option value="MEDIUM">{word("MEDIUM")}</option>
+                <option value="HIGH">{word("HIGH")}</option>
+                <option value="CRITICAL">{word("CRITICAL")}</option>
               </select>
             </label>
           </div>
           <label className="flex flex-col gap-1 font-medium text-slate-600">
-            Rationale
+            {t.rationale}
             <textarea
               name="rationale"
               rows={2}
@@ -162,21 +159,21 @@ export function RiskTreatmentPanel({
             disabled={pending}
             className="self-start rounded-lg bg-indigo-600 px-3 py-1 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
           >
-            Save treatment
+            {t.save}
           </button>
         </form>
       ) : (
         <div className="text-slate-700">
-          <span className="font-semibold">Strategy:</span>{" "}
-          {risk.treatmentStrategy ? STRATEGY_LABEL[risk.treatmentStrategy] : "Not decided"}
+          <span className="font-semibold">{t.strategyLabel}</span>{" "}
+          {risk.treatmentStrategy ? t.strategies[risk.treatmentStrategy] : t.notDecided}
           {risk.treatmentRationale && <p className="mt-1 whitespace-pre-wrap">{risk.treatmentRationale}</p>}
         </div>
       )}
 
       <div>
-        <div className="mb-1 font-bold text-slate-700">Treatment actions</div>
+        <div className="mb-1 font-bold text-slate-700">{t.actions}</div>
         {risk.treatmentActions.length === 0 ? (
-          <p className="text-slate-500">No treatment actions yet.</p>
+          <p className="text-slate-500">{t.noActions}</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {risk.treatmentActions.map((a) => (
@@ -186,7 +183,7 @@ export function RiskTreatmentPanel({
                     type="checkbox"
                     checked={a.done}
                     disabled={pending}
-                    aria-label={`Done: ${a.description}`}
+                    aria-label={t.doneOf(a.description)}
                     onChange={(e) => run(() => setRiskTreatmentActionDone({ workspaceId, actionId: a.id, done: e.target.checked }))}
                     className="mt-0.5"
                   />
@@ -194,11 +191,11 @@ export function RiskTreatmentPanel({
                 <div className="min-w-0 flex-1">
                   <div className={a.done ? "text-slate-500 line-through" : "text-slate-900"}>{a.description}</div>
                   <div className="flex flex-wrap gap-x-2 text-[10px] text-slate-600">
-                    <span>Owner: {a.ownerLabel ?? "Unassigned"}</span>
-                    {a.dueDate && <span>Due {a.dueDate}</span>}
-                    {a.done && <span>Done</span>}
+                    <span>{t.owner(a.ownerLabel ?? m.common.unassigned)}</span>
+                    {a.dueDate && <span>{t.due(a.dueDate)}</span>}
+                    {a.done && <span>{t.done}</span>}
                     {a.overdue && (
-                      <span className="rounded-full border border-red-200 bg-red-50 px-1.5 font-bold uppercase text-red-700">Overdue</span>
+                      <span className="rounded-full border border-red-200 bg-red-50 px-1.5 font-bold uppercase text-red-700">{t.overdue}</span>
                     )}
                   </div>
                 </div>
@@ -207,10 +204,10 @@ export function RiskTreatmentPanel({
                     type="button"
                     disabled={pending}
                     onClick={() => run(() => deleteRiskTreatmentAction({ workspaceId, actionId: a.id }))}
-                    aria-label={`Delete action: ${a.description}`}
+                    aria-label={t.deleteAction(a.description)}
                     className="text-[10px] font-semibold text-slate-500 hover:text-red-600"
                   >
-                    Delete
+                    {m.common.delete}
                   </button>
                 )}
               </li>
@@ -230,20 +227,20 @@ export function RiskTreatmentPanel({
           <input
             name="description"
             required
-            aria-label="New treatment action"
-            placeholder="What will be done"
+            aria-label={t.newAction}
+            placeholder={t.newActionPlaceholder}
             className="min-w-[12rem] flex-1 rounded border border-slate-300 bg-white px-2 py-1"
           />
-          <select name="owner" aria-label="Action owner" defaultValue="" className="rounded border border-slate-300 bg-white px-1.5 py-1">
-            <option value="">Unassigned</option>
-            <optgroup label="Roles">
+          <select name="owner" aria-label={t.actionOwner} defaultValue="" className="rounded border border-slate-300 bg-white px-1.5 py-1">
+            <option value="">{m.common.unassigned}</option>
+            <optgroup label={m.governance.panel.roles}>
               {roles.filter((r) => !r.archived).map((r) => (
                 <option key={r.id} value={`role:${r.id}`}>
                   {r.name}
                 </option>
               ))}
             </optgroup>
-            <optgroup label="People">
+            <optgroup label={m.governance.panel.people}>
               {people.filter((p) => !p.archived).map((p) => (
                 <option key={p.id} value={`person:${p.id}`}>
                   {p.name}
@@ -251,13 +248,13 @@ export function RiskTreatmentPanel({
               ))}
             </optgroup>
           </select>
-          <input type="date" name="dueDate" aria-label="Action due date" className="rounded border border-slate-300 bg-white px-1.5 py-1" />
+          <input type="date" name="dueDate" aria-label={t.actionDue} className="rounded border border-slate-300 bg-white px-1.5 py-1" />
           <button
             type="submit"
             disabled={pending}
             className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 font-semibold text-indigo-600 hover:bg-indigo-50"
           >
-            Add action
+            {t.addAction}
           </button>
         </form>
       )}

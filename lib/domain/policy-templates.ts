@@ -6,6 +6,8 @@
  * Draft in the Policy Library, with the client's name filled in.
  */
 
+import { POLICY_TEMPLATES_AR } from "./policy-templates.ar";
+
 export type PolicyTemplate = {
   id: string;
   title: string;
@@ -18,7 +20,7 @@ export type PolicyTemplate = {
   body: string;
 };
 
-type Sections = {
+export type TemplateSections = {
   purpose: string;
   scope: string;
   definitions: [string, string][];
@@ -29,7 +31,7 @@ type Sections = {
 };
 
 /** Every template shares one structure, so a client's policy set reads as a set. */
-function document(title: string, s: Sections): string {
+function document(title: string, s: TemplateSections): string {
   const lines = [
     title,
     "{{company}}",
@@ -63,7 +65,7 @@ function template(
   title: string,
   purpose: string,
   match: { aspectNames?: string[]; keywords: string[] },
-  sections: Sections
+  sections: TemplateSections
 ): PolicyTemplate {
   return { id, title, purpose, aspectNames: match.aspectNames ?? [], keywords: match.keywords, body: document(title, sections) };
 }
@@ -545,6 +547,48 @@ export const POLICY_TEMPLATES: readonly PolicyTemplate[] = [
   ),
 ];
 
+/** The same document structure in Arabic (spec 031), right to left. */
+function documentAr(title: string, s: TemplateSections): string {
+  const lines = [
+    title,
+    "{{company}}",
+    "",
+    "1. الغرض",
+    s.purpose,
+    "",
+    "2. النطاق",
+    s.scope,
+    "",
+    "3. التعريفات",
+    ...s.definitions.map(([term, meaning]) => `- ${term}: ${meaning}`),
+    "",
+    "4. بنود السياسة",
+    ...s.statements.map((text, i) => `4.${i + 1} ${text}`),
+    "",
+    "5. الأدوار والمسؤوليات",
+    ...s.roles.map(([who, duty]) => `- ${who}: ${duty}`),
+    "",
+    "6. المتابعة والمراجعة",
+    ...s.monitoring.map((text, i) => `6.${i + 1} ${text}`),
+    "",
+    "7. الاعتماد وضبط الإصدارات",
+    `تُعتمد هذه السياسة من ${s.approver} وتسري اعتبارًا من تاريخ سريانها. مالك السياسة هو [دور مالك السياسة]. تُراجَع مرة كل 12 شهرًا على الأقل، وقبل ذلك عند حدوث تغيير جوهري في القانون أو الأنظمة أو الأعمال. وتتطلب التغييرات الجوهرية الاعتماد ذاته.`,
+  ];
+  return lines.join("\n");
+}
+
+/** A template in the reader's language (spec 031). Its id, and what it matches, stay the same. */
+export function localizeTemplate(template: PolicyTemplate, locale: "en" | "ar"): PolicyTemplate {
+  const ar = locale === "ar" ? POLICY_TEMPLATES_AR[template.id] : undefined;
+  if (!ar) return template;
+  return { ...template, title: ar.title, purpose: ar.purpose, body: documentAr(ar.title, ar.sections) };
+}
+
+/** A template's keywords in both languages, so an aspect named in Arabic still finds its template. */
+function keywordsOf(template: PolicyTemplate): readonly string[] {
+  return [...template.keywords, ...(POLICY_TEMPLATES_AR[template.id]?.keywords ?? [])];
+}
+
 export type RankedTemplate = { template: PolicyTemplate; suggested: boolean };
 
 /**
@@ -552,15 +596,17 @@ export type RankedTemplate = { template: PolicyTemplate; suggested: boolean };
  * aspect of that name first, otherwise the first whose keyword appears in the
  * name, then the rest in catalogue order. At most one is suggested.
  */
-export function rankTemplates(aspectName: string): RankedTemplate[] {
+export function rankTemplates(aspectName: string, locale: "en" | "ar" = "en"): RankedTemplate[] {
   const name = aspectName.trim().toLowerCase();
   const byName = POLICY_TEMPLATES.find((t) => t.aspectNames.some((n) => n.toLowerCase() === name));
-  const byKeyword = byName ?? POLICY_TEMPLATES.find((t) => t.keywords.some((k) => name.includes(k)));
-  if (!byKeyword) return POLICY_TEMPLATES.map((template) => ({ template, suggested: false }));
-  return [
-    { template: byKeyword, suggested: true },
-    ...POLICY_TEMPLATES.filter((t) => t !== byKeyword).map((template) => ({ template, suggested: false })),
-  ];
+  const byKeyword = byName ?? POLICY_TEMPLATES.find((t) => keywordsOf(t).some((k) => name.includes(k)));
+  const ranked = byKeyword
+    ? [
+        { template: byKeyword, suggested: true },
+        ...POLICY_TEMPLATES.filter((t) => t !== byKeyword).map((template) => ({ template, suggested: false })),
+      ]
+    : POLICY_TEMPLATES.map((template) => ({ template, suggested: false }));
+  return ranked.map(({ template, suggested }) => ({ template: localizeTemplate(template, locale), suggested }));
 }
 
 /** A template's title and body with the client's name in place of `{{company}}`. */
@@ -568,6 +614,7 @@ export function fillTemplate(template: PolicyTemplate, companyName: string): { t
   return { title: template.title, body: template.body.replaceAll("{{company}}", companyName) };
 }
 
-export function findTemplate(id: string): PolicyTemplate | undefined {
-  return POLICY_TEMPLATES.find((t) => t.id === id);
+export function findTemplate(id: string, locale: "en" | "ar" = "en"): PolicyTemplate | undefined {
+  const template = POLICY_TEMPLATES.find((t) => t.id === id);
+  return template && localizeTemplate(template, locale);
 }

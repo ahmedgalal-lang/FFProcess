@@ -667,7 +667,7 @@ export function ArchiveProcessButton({
       onClick={close}
     >
       <div
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 text-left shadow-lg"
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 text-start shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold text-slate-900">Delete &ldquo;{label}&rdquo;?</h2>

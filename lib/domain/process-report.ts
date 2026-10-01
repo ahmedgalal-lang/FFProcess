@@ -100,7 +100,9 @@ export type ControlPoint = {
  */
 export function deriveControlPoints(
   rows: CombinedMatrixRow[],
-  roleNameById: Map<string, string>
+  roleNameById: Map<string, string>,
+  /** The language of the statements (spec 031); English unless asked. */
+  locale: "en" | "ar" = "en"
 ): ControlPoint[] {
   const points: ControlPoint[] = [];
 
@@ -113,6 +115,15 @@ export function deriveControlPoints(
     for (const extra of approvals.slice(1)) {
       const limit = extra.amount === null ? null : formatMoney(extra.amount);
       const who = extra.whoRoleId ? roleNameById.get(extra.whoRoleId) : null;
+      if (locale === "ar") {
+        const scope = limit ? `فيما يتجاوز ${limit}` : "في هذه المهمة";
+        points.push(
+          who
+            ? { rowId: row.rowId, statement: `تتطلب المهمة «${row.label}» ${scope} اعتمادًا منفصلًا من ${who} إضافةً إلى المعتمد الرئيسي.`, flagged: false }
+            : { rowId: row.rowId, statement: `تتطلب المهمة «${row.label}» اعتمادًا ثانيًا ${scope}، لكن لم يُسند إلى أحد — يجب معالجة ذلك في مصفوفة الصلاحيات.`, flagged: true }
+        );
+        continue;
+      }
       const scope = limit ? `above ${limit}` : "on this task";
 
       if (who) {

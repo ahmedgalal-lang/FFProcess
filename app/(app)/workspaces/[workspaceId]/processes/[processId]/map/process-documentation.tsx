@@ -193,7 +193,7 @@ export function ProcessDocumentation({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">In-Scope</div>
-                <ul className="list-disc pl-4 text-xs">
+                <ul className="list-disc ps-4 text-xs">
                   {inScope.map((item, i) => (
                     <li key={i}>{item}</li>
                   ))}
@@ -201,7 +201,7 @@ export function ProcessDocumentation({
               </div>
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Out-of-Scope</div>
-                <ul className="list-disc pl-4 text-xs">
+                <ul className="list-disc ps-4 text-xs">
                   {outOfScope.map((item, i) => (
                     <li key={i}>{item}</li>
                   ))}

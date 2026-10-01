@@ -20,6 +20,8 @@ import type {
   RiskImpact,
   RiskStatus,
 } from "@/app/generated/prisma/client";
+import { getActionLocale } from "@/lib/i18n/server";
+import { withAnswerLanguage } from "@/lib/i18n/locale";
 
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, " ");
 
@@ -131,7 +133,7 @@ export async function generateGovernanceAssessment(
     existingGoverningPolicyTitle: governingPolicy?.title ?? null,
   });
 
-  const outcome = await runGovernanceAssessment(promptText);
+  const outcome = await runGovernanceAssessment(withAnswerLanguage(promptText, await getActionLocale()));
   if (!outcome.ok) {
     if (outcome.reason === "NOT_CONFIGURED") return aiUnavailable(outcome.message);
     return validationError(outcome.message);

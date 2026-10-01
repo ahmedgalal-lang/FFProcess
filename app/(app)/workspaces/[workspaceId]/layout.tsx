@@ -71,7 +71,7 @@ export default async function WorkspaceLayout(
           <img
             src={workspace.logoDataUrl}
             alt=""
-            className="pointer-events-none absolute left-5 top-8 hidden h-auto w-[min(240px,calc((100%-896px)/2-28px))] object-contain xl:block"
+            className="pointer-events-none absolute start-5 top-8 hidden h-auto w-[min(240px,calc((100%-896px)/2-28px))] object-contain xl:block"
           />
         )}
         <WorkspaceAccessProvider value={{ accessLevel: access.data.accessLevel, canEdit, canManageMembers }}>

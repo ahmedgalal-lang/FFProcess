@@ -14,6 +14,7 @@ import {
   markPolicyAcknowledgement,
   unmarkPolicyAcknowledgement,
 } from "@/lib/actions/governance";
+import { useMessages } from "@/lib/i18n/client";
 
 export type PolicyVersionT = {
   versionNumber: number;
@@ -53,19 +54,11 @@ export type PolicyT = {
   governsAspectName: string | null;
 };
 
-const STATUS_LABEL: Record<string, string> = { OPEN: "Draft", EDITED: "Edited" };
 const STATUS_STYLE: Record<string, string> = {
   OPEN: "bg-amber-50 text-amber-700 border-amber-200",
   EDITED: "bg-indigo-50 text-indigo-700 border-indigo-200",
 };
 
-const LIFECYCLE_LABEL: Record<PolicyT["lifecycleStatus"], string> = {
-  DRAFT: "Draft",
-  IN_REVIEW: "In Review",
-  APPROVED: "Approved",
-  PUBLISHED: "Published",
-  RETIRED: "Retired",
-};
 const LIFECYCLE_STYLE: Record<PolicyT["lifecycleStatus"], string> = {
   DRAFT: "bg-slate-100 text-slate-600 border-slate-200",
   IN_REVIEW: "bg-amber-50 text-amber-700 border-amber-200",
@@ -97,6 +90,9 @@ export function GovernancePolicyDrawer({
   onClose: () => void;
 }) {
   const canEdit = useCanEdit();
+  const m = useMessages();
+  const g = m.governance;
+  const t = g.drawer;
   const isAdmin = useWorkspaceAccess().accessLevel === "ADMIN";
   const [title, setTitle] = useState(policy?.title ?? "");
   const [body, setBody] = useState(policy?.body ?? "");
@@ -116,7 +112,7 @@ export function GovernancePolicyDrawer({
     startTransition(async () => {
       const result = await updatePolicyDraft({ workspaceId, policyId: policy.id, title, body });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? m.common.couldNotSave) : m.common.couldNotSave);
         return;
       }
       setEditing(false);
@@ -130,7 +126,7 @@ export function GovernancePolicyDrawer({
     startTransition(async () => {
       const result = await deleteGovernancePolicy({ workspaceId, policyId: policy.id });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not delete.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotDelete) : t.couldNotDelete);
         return;
       }
       onClose();
@@ -146,7 +142,7 @@ export function GovernancePolicyDrawer({
     startTransition(async () => {
       const result = await action({ workspaceId, policyId: policy.id });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not update.") : (result.error ?? "Could not update."));
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotUpdate) : t.couldNotUpdate);
         return;
       }
       router.refresh();
@@ -163,7 +159,7 @@ export function GovernancePolicyDrawer({
         reviewDueDate: reviewDueDateDraft || null,
       });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? m.common.couldNotSave) : m.common.couldNotSave);
         return;
       }
       router.refresh();
@@ -177,7 +173,7 @@ export function GovernancePolicyDrawer({
       const action = acknowledged ? unmarkPolicyAcknowledgement : markPolicyAcknowledgement;
       const result = await action({ workspaceId, policyId: policy.id, personId });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not update.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotUpdate) : t.couldNotUpdate);
         return;
       }
       router.refresh();
@@ -198,11 +194,11 @@ export function GovernancePolicyDrawer({
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="font-mono text-[10px] font-bold uppercase tracking-wide text-indigo-600">
-              {policy.focusAreaLabel ?? "Added manually"}
+              {policy.focusAreaLabel ? (g.aspectNames[policy.focusAreaLabel] ?? policy.focusAreaLabel) : g.addedManually}
             </div>
             {editing ? (
               <input
-                aria-label="Policy title"
+                aria-label={t.policyTitle}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="mt-0.5 w-full rounded-lg border border-slate-300 px-2 py-1 text-base font-bold text-slate-900"
@@ -215,12 +211,12 @@ export function GovernancePolicyDrawer({
             <span
               className={`rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase ${LIFECYCLE_STYLE[policy.lifecycleStatus]}`}
             >
-              {LIFECYCLE_LABEL[policy.lifecycleStatus]}
+              {g.lifecycle[policy.lifecycleStatus]}
             </span>
             <span
               className={`rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase ${STATUS_STYLE[policy.status] ?? STATUS_STYLE["OPEN"]}`}
             >
-              {STATUS_LABEL[policy.status] ?? policy.status}
+              {g.library.statuses[policy.status] ?? policy.status}
             </span>
           </div>
         </div>
@@ -241,15 +237,12 @@ export function GovernancePolicyDrawer({
             {(policy.approvedByUserName || policy.effectiveDate || policy.needsReview) && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 {policy.approvedByUserName && (
-                  <span>
-                    Approved by {policy.approvedByUserName}
-                    {policy.approvedAt ? ` on ${policy.approvedAt}` : ""}
-                  </span>
+                  <span>{t.approvedBy(policy.approvedByUserName, policy.approvedAt)}</span>
                 )}
-                {policy.effectiveDate && <span>Effective {policy.effectiveDate}</span>}
+                {policy.effectiveDate && <span>{t.effective(policy.effectiveDate)}</span>}
                 {policy.needsReview && (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-red-700">
-                    Needs review
+                    {g.library.needsReview}
                   </span>
                 )}
               </div>
@@ -264,7 +257,7 @@ export function GovernancePolicyDrawer({
                     onClick={() => runLifecycleAction(submitPolicyForReview)}
                     className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
                   >
-                    Submit for review
+                    {t.submit}
                   </button>
                 )}
                 {isAdmin && policy.lifecycleStatus === "IN_REVIEW" && (
@@ -274,7 +267,7 @@ export function GovernancePolicyDrawer({
                     onClick={() => runLifecycleAction(approvePolicyDraft)}
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Approve
+                    {t.approve}
                   </button>
                 )}
                 {isAdmin && policy.lifecycleStatus === "APPROVED" && (
@@ -284,7 +277,7 @@ export function GovernancePolicyDrawer({
                     onClick={() => runLifecycleAction(publishPolicyDraft)}
                     className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    Publish
+                    {t.publish}
                   </button>
                 )}
                 {isAdmin && policy.lifecycleStatus === "PUBLISHED" && (
@@ -294,7 +287,7 @@ export function GovernancePolicyDrawer({
                     onClick={() => runLifecycleAction(retirePolicyDraft)}
                     className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                   >
-                    Retire
+                    {t.retire}
                   </button>
                 )}
               </div>
@@ -303,7 +296,7 @@ export function GovernancePolicyDrawer({
             {canEdit && (
               <div className="flex items-center gap-2 text-xs">
                 <label htmlFor="policy-review-due" className="font-semibold text-slate-600">
-                  Review due
+                  {t.reviewDue}
                 </label>
                 <input
                   id="policy-review-due"
@@ -318,7 +311,7 @@ export function GovernancePolicyDrawer({
                   onClick={saveReviewDueDate}
                   className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  Set
+                  {t.set}
                 </button>
               </div>
             )}
@@ -329,7 +322,7 @@ export function GovernancePolicyDrawer({
                 onClick={() => setShowVersions((v) => !v)}
                 className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
               >
-                {showVersions ? "Hide" : "Show"} version history ({policy.versions.length})
+                {t.versions(showVersions, policy.versions.length)}
               </button>
               {showVersions && (
                 <ul className="mt-2 flex flex-col gap-2">
@@ -347,9 +340,9 @@ export function GovernancePolicyDrawer({
 
             {(policy.lifecycleStatus === "PUBLISHED" || policy.lifecycleStatus === "RETIRED") && (
               <div>
-                <div className="mb-1 text-xs font-bold text-slate-700">Acknowledged by</div>
+                <div className="mb-1 text-xs font-bold text-slate-700">{t.acknowledgedBy}</div>
                 {people.length === 0 ? (
-                  <p className="text-xs text-slate-500">No one in this workspace&apos;s People directory yet.</p>
+                  <p className="text-xs text-slate-500">{t.noPeople}</p>
                 ) : (
                   <ul className="flex flex-col gap-1">
                     {people.map((person) => {
@@ -358,7 +351,7 @@ export function GovernancePolicyDrawer({
                         <li key={person.id} className="flex items-center justify-between gap-2 text-xs">
                           <span className="text-slate-700">
                             {person.name}
-                            {ack && <span className="text-slate-400"> — acknowledged {ack.acknowledgedAt}</span>}
+                            {ack && <span className="text-slate-400">{t.acknowledged(ack.acknowledgedAt)}</span>}
                           </span>
                           {canEdit && (
                             <button
@@ -371,7 +364,7 @@ export function GovernancePolicyDrawer({
                                   : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                               }`}
                             >
-                              {ack ? "Unmark" : "Mark acknowledged"}
+                              {ack ? t.unmark : t.markAcknowledged}
                             </button>
                           )}
                         </li>
@@ -391,7 +384,7 @@ export function GovernancePolicyDrawer({
               onClick={() => setEditing(true)}
               className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
             >
-              Edit
+              {m.common.edit}
             </button>
           )}
           {canEdit && editing && (
@@ -401,7 +394,7 @@ export function GovernancePolicyDrawer({
               disabled={pending}
               className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
             >
-              {pending ? "Saving…" : "Save"}
+              {pending ? m.common.saving : m.common.save}
             </button>
           )}
           <button
@@ -409,35 +402,35 @@ export function GovernancePolicyDrawer({
             onClick={onClose}
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
           >
-            Close
+            {m.common.close}
           </button>
           {canEdit &&
             (confirmingDelete ? (
-              <span className="ml-auto flex items-center gap-2 text-xs text-slate-600">
-                Delete this policy?
+              <span className="ms-auto flex items-center gap-2 text-xs text-slate-600">
+                {t.deleteQ}
                 <button
                   type="button"
                   onClick={remove}
                   disabled={pending}
                   className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
                 >
-                  {pending ? "Deleting…" : "Delete"}
+                  {pending ? t.deleting : m.common.delete}
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmingDelete(false)}
                   className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
-                  Keep
+                  {m.common.keep}
                 </button>
               </span>
             ) : (
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(true)}
-                className="ml-auto text-xs font-semibold text-slate-500 hover:text-red-600"
+                className="ms-auto text-xs font-semibold text-slate-500 hover:text-red-600"
               >
-                Delete
+                {m.common.delete}
               </button>
             ))}
           {error && <span className="text-xs font-medium text-red-600">{error}</span>}

@@ -64,7 +64,7 @@ export function ExportPickerForm({
       <form action={`/reports/${workspaceId}`} method="GET">
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th scope="col" className="w-10 px-4 py-2">
                 <span className="sr-only">Include</span>
@@ -75,7 +75,7 @@ export function ExportPickerForm({
               <th scope="col" className="px-4 py-2">
                 Process
               </th>
-              <th scope="col" className="w-24 px-4 py-2 text-right">
+              <th scope="col" className="w-24 px-4 py-2 text-end">
                 Order
               </th>
             </tr>
@@ -393,7 +393,7 @@ function ArrangeRow({
   return (
     <div
       className={`flex items-center gap-2.5 border-t border-slate-100 px-4 py-2 ${
-        indented ? "pl-10" : ""
+        indented ? "ps-10" : ""
       } ${on ? "" : "bg-slate-50"}`}
     >
       <input

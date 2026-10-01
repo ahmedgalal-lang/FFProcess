@@ -20,6 +20,7 @@ import { GoverningPolicyPanel } from "./governing-policy-panel";
 import { aspectPolicyState } from "@/lib/domain/governing-policy";
 import { GovernancePolicyLibrary } from "./governance-policy-library";
 import { SectionGuide } from "./section-guide";
+import { useMessages } from "@/lib/i18n/client";
 
 export type AspectT = { id: string; name: string };
 
@@ -36,7 +37,6 @@ const PILLARS = [
   "Independence",
 ] as const;
 
-const PHASE_LABEL: Record<string, string> = { IMMEDIATE: "Immediate", NEAR_TERM: "Near-term", LONG_TERM: "Long-term" };
 const PHASE_ORDER = ["IMMEDIATE", "NEAR_TERM", "LONG_TERM"] as const;
 
 export type ChecklistItemT = {
@@ -97,6 +97,10 @@ export function GovernanceAssessmentPanel({
   roles: OwnerOptionT[];
 }) {
   const canEdit = useCanEdit();
+  const m = useMessages();
+  const t = m.governance.panel;
+  // A default aspect name shows translated; one a consultant typed shows as typed.
+  const aspectLabel = (name: string) => m.governance.aspectNames[name] ?? name;
   const [aspectId, setAspectId] = useState<string>(aspects[0]?.id ?? "");
   const [openPolicyId, setOpenPolicyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +119,8 @@ export function GovernanceAssessmentPanel({
   const overdueByAspect: Record<string, number> = Object.fromEntries(
     aspects.map((a) => [a.id, (assessmentsByAspectId[a.id]?.items ?? []).filter((i) => i.overdue).length])
   );
-  const focusLabel = aspects.find((a) => a.id === aspectId)?.name ?? "";
+  const focusName = aspects.find((a) => a.id === aspectId)?.name ?? "";
+  const focusLabel = aspectLabel(focusName);
   // Spec 029: each aspect's governing policy, and the policies free to become one.
   const governingByAspect = new Map(allPolicies.filter((p) => p.governsAspectId).map((p) => [p.governsAspectId!, p]));
   const ungovernedPolicies = allPolicies.filter((p) => !p.governsAspectId);
@@ -132,7 +137,7 @@ export function GovernanceAssessmentPanel({
       if (!result.ok) {
         setError(
           result.error === "AI_UNAVAILABLE" || result.error === "VALIDATION_ERROR"
-            ? (result.message ?? "Could not generate the assessment.")
+            ? (result.message ?? t.couldNotGenerate)
             : result.error
         );
         return;
@@ -156,7 +161,7 @@ export function GovernanceAssessmentPanel({
     startTransition(async () => {
       const result = await addGovernanceAspect({ workspaceId, name });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not add.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotAdd) : result.error);
         return;
       }
       setAddingAspect(false);
@@ -173,7 +178,7 @@ export function GovernanceAssessmentPanel({
     startTransition(async () => {
       const result = await renameGovernanceAspect({ workspaceId, aspectId: id, name });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not rename.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotRename) : result.error);
         return;
       }
       setRenamingAspectId(null);
@@ -186,7 +191,7 @@ export function GovernanceAssessmentPanel({
     startTransition(async () => {
       const result = await deleteGovernanceAspect({ workspaceId, aspectId: id });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not delete.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotDelete) : result.error);
         return;
       }
       setConfirmingDeleteAspectId(null);
@@ -215,7 +220,7 @@ export function GovernanceAssessmentPanel({
         description,
       });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not add.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotAdd) : result.error);
         return;
       }
       setAddingItem(false);
@@ -244,7 +249,7 @@ export function GovernanceAssessmentPanel({
         dueDate: dueDate || null,
       });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? m.common.couldNotSave) : result.error);
         return;
       }
       setEditingItemId(null);
@@ -257,7 +262,7 @@ export function GovernanceAssessmentPanel({
     startTransition(async () => {
       const result = await deleteGovernanceChecklistItem({ workspaceId, itemId });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not delete.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.couldNotDelete) : result.error);
         return;
       }
       setConfirmingDeleteId(null);
@@ -273,7 +278,7 @@ export function GovernanceAssessmentPanel({
     startTransition(async () => {
       const result = await updateGovernanceSummary({ workspaceId, assessmentId: assessment.id, summary });
       if (!result.ok) {
-        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Could not save.") : result.error);
+        setError(result.error === "VALIDATION_ERROR" ? (result.message ?? m.common.couldNotSave) : result.error);
         return;
       }
       setEditingSummary(false);
@@ -295,16 +300,16 @@ export function GovernanceAssessmentPanel({
     <div className="flex flex-col gap-4">
       <section id="governance-assessment" className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="mb-1 flex items-center gap-1.5">
-          <h2 className="text-sm font-bold text-slate-900">Evaluated against four pillars</h2>
+          <h2 className="text-sm font-bold text-slate-900">{t.pillarsTitle}</h2>
           <SectionGuide id="assessment" />
         </div>
         <p className="mb-3 text-xs text-slate-500">
-          Every summary is framed against these, not left as an unstructured paragraph.
+          {t.pillarsIntro}
         </p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {PILLARS.map((pillar) => (
             <div key={pillar} className="rounded-lg border border-slate-200 bg-slate-50 py-2.5 text-center">
-              <div className="text-[10.5px] font-bold text-slate-900">{pillar}</div>
+              <div className="text-[10.5px] font-bold text-slate-900">{t.pillars[pillar] ?? pillar}</div>
             </div>
           ))}
         </div>
@@ -314,7 +319,7 @@ export function GovernanceAssessmentPanel({
             {/* ARIA requires a tablist's only children be role="tab" elements
                 (aria-required-children) — rename/delete/add controls live in
                 a separate toolbar below, never nested inside this div. */}
-            <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Governance focus area">
+            <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label={t.tablistLabel}>
               {aspects.map((aspect) => (
                 <button
                   key={aspect.id}
@@ -341,7 +346,7 @@ export function GovernanceAssessmentPanel({
                       : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {aspect.name}
+                  {aspectLabel(aspect.name)}
                   {/* Spec 029: a dot when the aspect lacks a Published governing
                       policy, described rather than named so the tab's name stays
                       its own. */}
@@ -349,13 +354,13 @@ export function GovernanceAssessmentPanel({
                     <>
                       <span
                         aria-hidden="true"
-                        title="No published governing policy"
-                        className={`ml-1.5 inline-block h-2 w-2 rounded-full align-middle ${
+                        title={t.noPublishedPolicy}
+                        className={`ms-1.5 inline-block h-2 w-2 rounded-full align-middle ${
                           aspectId === aspect.id ? "bg-amber-300" : "bg-amber-500"
                         }`}
                       />
                       <span id={`policy-state-${aspect.id}`} hidden>
-                        No published governing policy
+                        {t.noPublishedPolicy}
                       </span>
                     </>
                   )}
@@ -366,8 +371,8 @@ export function GovernanceAssessmentPanel({
                       {/* Without a separator the name runs into the count:
                           "ESG2 overdue". */}
                       <span className="sr-only">, </span>
-                      <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                        {overdueByAspect[aspect.id]} overdue
+                      <span className="ms-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        {t.overdue(overdueByAspect[aspect.id]!)}
                       </span>
                     </>
                   ) : null}
@@ -386,20 +391,20 @@ export function GovernanceAssessmentPanel({
                   <input
                     name="name"
                     required
-                    placeholder="Aspect name"
-                    aria-label="Aspect name"
+                    placeholder={t.aspectName}
+                    aria-label={t.aspectName}
                     autoFocus
                     className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-xs"
                   />
                   <button type="submit" disabled={pending} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
-                    Add
+                    {m.common.add}
                   </button>
                   <button
                     type="button"
                     onClick={() => setAddingAspect(false)}
                     className="text-[11px] font-semibold text-slate-500 hover:text-slate-600"
                   >
-                    Cancel
+                    {m.common.cancel}
                   </button>
                 </form>
               ) : (
@@ -408,7 +413,7 @@ export function GovernanceAssessmentPanel({
                   onClick={() => setAddingAspect(true)}
                   className="rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
                 >
-                  + Add aspect
+                  {t.addAspect}
                 </button>
               ))}
             {canEdit && aspectId ? (
@@ -423,39 +428,39 @@ export function GovernanceAssessmentPanel({
                   <input
                     name="name"
                     required
-                    defaultValue={focusLabel}
-                    aria-label="Aspect name"
+                    defaultValue={focusName}
+                    aria-label={t.aspectName}
                     autoFocus
                     className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-xs"
                   />
                   <button type="submit" disabled={pending} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
-                    Save
+                    {m.common.save}
                   </button>
                   <button
                     type="button"
                     onClick={() => setRenamingAspectId(null)}
                     className="text-[11px] font-semibold text-slate-500 hover:text-slate-600"
                   >
-                    Cancel
+                    {m.common.cancel}
                   </button>
                 </form>
               ) : confirmingDeleteAspectId === aspectId ? (
                 <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  Delete &ldquo;{focusLabel}&rdquo;?
+                  {t.deleteAspectConfirm(focusLabel)}
                   <button
                     type="button"
                     onClick={() => removeAspect(aspectId)}
                     disabled={pending}
                     className="rounded bg-red-600 px-1.5 py-0.5 font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
                   >
-                    Delete
+                    {m.common.delete}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmingDeleteAspectId(null)}
                     className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
                   >
-                    Keep
+                    {m.common.keep}
                   </button>
                 </span>
               ) : (
@@ -463,8 +468,8 @@ export function GovernanceAssessmentPanel({
                   <button
                     type="button"
                     onClick={() => setRenamingAspectId(aspectId)}
-                    aria-label={`Rename ${focusLabel}`}
-                    title="Rename"
+                    aria-label={t.renameAspect(focusLabel)}
+                    title={t.rename}
                     className="rounded p-1 text-[10px] text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                   >
                     ✎
@@ -472,8 +477,8 @@ export function GovernanceAssessmentPanel({
                   <button
                     type="button"
                     onClick={() => setConfirmingDeleteAspectId(aspectId)}
-                    aria-label={`Delete ${focusLabel}`}
-                    title="Delete"
+                    aria-label={t.deleteAspect(focusLabel)}
+                    title={m.common.delete}
                     className="rounded p-1 text-[10px] text-slate-400 hover:bg-red-50 hover:text-red-600"
                   >
                     ✕
@@ -484,23 +489,22 @@ export function GovernanceAssessmentPanel({
           </div>
           {canEdit && (
             <div className="flex items-center gap-3">
-              {assessment && <span className="text-xs text-slate-500">Last generated {assessment.updatedAtLabel}</span>}
+              {assessment && <span className="text-xs text-slate-500">{t.lastGenerated(assessment.updatedAtLabel)}</span>}
               <button
                 type="button"
                 onClick={regenerate}
                 disabled={pending || !hasProfile}
-                title={hasProfile ? undefined : "Set the governance profile above first"}
+                title={hasProfile ? undefined : t.profileFirst}
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {pending ? "Generating…" : assessment ? "Regenerate" : "Generate assessment"}
+                {pending ? t.generating : assessment ? t.regenerate : t.generate}
               </button>
             </div>
           )}
         </div>
         {!hasProfile && (
           <p className="mt-2 text-xs font-medium text-amber-700">
-            Set this workspace&apos;s company size, industry, and jurisdiction above before generating an
-            assessment.
+            {t.needsProfile}
           </p>
         )}
         {error && <p className="mt-2 text-xs font-medium text-red-600">{error}</p>}
@@ -510,7 +514,7 @@ export function GovernanceAssessmentPanel({
         <GoverningPolicyPanel
           key={aspectId}
           workspaceId={workspaceId}
-          aspect={{ id: aspectId, name: focusLabel }}
+          aspect={{ id: aspectId, name: focusName }}
           policy={governingByAspect.get(aspectId) ?? null}
           candidates={ungovernedPolicies}
           hasProfile={hasProfile}
@@ -521,7 +525,7 @@ export function GovernanceAssessmentPanel({
       {assessment && (assessment.summary.trim() !== "" || canEdit) && (
         <section className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="flex items-start justify-between gap-3">
-            <h2 className="text-sm font-bold text-slate-900">Executive summary — {focusLabel}</h2>
+            <h2 className="text-sm font-bold text-slate-900">{t.summaryTitle(focusLabel)}</h2>
             {canEdit && !editingSummary && (
               <button
                 type="button"
@@ -532,7 +536,7 @@ export function GovernanceAssessmentPanel({
                 }}
                 className="flex-none text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
               >
-                {assessment.summary.trim() ? "Edit" : "Write one by hand"}
+                {assessment.summary.trim() ? m.common.edit : t.writeByHand}
               </button>
             )}
           </div>
@@ -542,7 +546,7 @@ export function GovernanceAssessmentPanel({
                 value={summaryDraft}
                 onChange={(e) => setSummaryDraft(e.target.value)}
                 rows={6}
-                aria-label="Executive summary"
+                aria-label={t.summaryLabel}
                 className="w-full rounded-lg border border-slate-300 p-2.5 text-[13px] leading-relaxed text-slate-800"
               />
               <div className="flex items-center gap-2">
@@ -552,14 +556,14 @@ export function GovernanceAssessmentPanel({
                   disabled={pending}
                   className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
                 >
-                  {pending ? "Saving…" : "Save"}
+                  {pending ? m.common.saving : m.common.save}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditingSummary(false)}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
-                  Cancel
+                  {m.common.cancel}
                 </button>
                 {error && <span className="text-xs font-medium text-red-600">{error}</span>}
               </div>
@@ -569,7 +573,7 @@ export function GovernanceAssessmentPanel({
               {assessment.summary}
             </p>
           ) : (
-            <p className="mt-2 text-[13px] italic text-slate-400">No summary yet.</p>
+            <p className="mt-2 text-[13px] italic text-slate-400">{t.noSummary}</p>
           )}
         </section>
       )}
@@ -578,7 +582,7 @@ export function GovernanceAssessmentPanel({
         <section className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <h2 className="text-sm font-bold text-slate-900">Governance checklist</h2>
+              <h2 className="text-sm font-bold text-slate-900">{t.checklistTitle}</h2>
               <SectionGuide id="checklist" />
             </div>
             {canEdit && (
@@ -587,7 +591,7 @@ export function GovernanceAssessmentPanel({
                 onClick={() => setAddingItem((v) => !v)}
                 className="flex-none rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-100"
               >
-                + Add item
+                {t.addItem}
               </button>
             )}
           </div>
@@ -603,31 +607,31 @@ export function GovernanceAssessmentPanel({
               <input
                 name="title"
                 required
-                placeholder="Action title"
+                placeholder={t.actionTitle}
                 className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
               />
               <textarea
                 name="description"
                 required
                 rows={2}
-                placeholder="What to do, and why it matters"
+                placeholder={t.actionPlaceholder}
                 className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                  When
+                  {t.when}
                   <select name="phase" defaultValue="IMMEDIATE" className="rounded-lg border border-slate-300 px-2 py-1 text-xs">
-                    <option value="IMMEDIATE">Immediate</option>
-                    <option value="NEAR_TERM">Near-term</option>
-                    <option value="LONG_TERM">Long-term</option>
+                    <option value="IMMEDIATE">{t.phases.IMMEDIATE}</option>
+                    <option value="NEAR_TERM">{t.phases.NEAR_TERM}</option>
+                    <option value="LONG_TERM">{t.phases.LONG_TERM}</option>
                   </select>
                 </label>
                 <button
                   type="submit"
                   disabled={pending}
-                  className="ml-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+                  className="ms-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
                 >
-                  Add
+                  {m.common.add}
                 </button>
               </div>
             </form>
@@ -637,7 +641,7 @@ export function GovernanceAssessmentPanel({
             {grouped.map(({ phase, items }) => (
               <div key={phase}>
                 <h3 className="mb-2 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                  {PHASE_LABEL[phase]}
+                  {t.phases[phase]}
                   <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-500">
                     {items.length}
                   </span>
@@ -657,7 +661,7 @@ export function GovernanceAssessmentPanel({
                             name="title"
                             required
                             defaultValue={item.title}
-                            aria-label="Action title"
+                            aria-label={t.actionTitle}
                             className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold"
                           />
                           <textarea
@@ -665,19 +669,19 @@ export function GovernanceAssessmentPanel({
                             required
                             defaultValue={item.description}
                             rows={2}
-                            aria-label="Action description"
+                            aria-label={t.actionDescription}
                             className="rounded-lg border border-slate-300 px-2 py-1 text-[11px]"
                           />
                           <div className="flex items-center gap-2">
                             <select
                               name="phase"
                               defaultValue={item.phase}
-                              aria-label="When"
+                              aria-label={t.when}
                               className="rounded-lg border border-slate-300 px-2 py-1 text-[10px]"
                             >
-                              <option value="IMMEDIATE">Immediate</option>
-                              <option value="NEAR_TERM">Near-term</option>
-                              <option value="LONG_TERM">Long-term</option>
+                              <option value="IMMEDIATE">{t.phases.IMMEDIATE}</option>
+                              <option value="NEAR_TERM">{t.phases.NEAR_TERM}</option>
+                              <option value="LONG_TERM">{t.phases.LONG_TERM}</option>
                             </select>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
@@ -690,27 +694,27 @@ export function GovernanceAssessmentPanel({
                                     ? `person:${item.ownerPersonId}`
                                     : ""
                               }
-                              aria-label="Owner"
+                              aria-label={t.owner}
                               className="min-w-0 max-w-full flex-1 rounded-lg border border-slate-300 px-2 py-1 text-[10px]"
                             >
-                              <option value="">Unassigned</option>
-                              <optgroup label="Roles">
+                              <option value="">{m.common.unassigned}</option>
+                              <optgroup label={t.roles}>
                                 {roles
                                   .filter((r) => !r.archived || r.id === item.ownerRoleId)
                                   .map((r) => (
                                     <option key={r.id} value={`role:${r.id}`}>
                                       {r.name}
-                                      {r.archived ? " (archived)" : ""}
+                                      {r.archived ? ` (${m.common.archived})` : ""}
                                     </option>
                                   ))}
                               </optgroup>
-                              <optgroup label="People">
+                              <optgroup label={t.people}>
                                 {people
                                   .filter((p) => !p.archived || p.id === item.ownerPersonId)
                                   .map((p) => (
                                     <option key={p.id} value={`person:${p.id}`}>
                                       {p.name}
-                                      {p.archived ? " (archived)" : ""}
+                                      {p.archived ? ` (${m.common.archived})` : ""}
                                     </option>
                                   ))}
                               </optgroup>
@@ -719,7 +723,7 @@ export function GovernanceAssessmentPanel({
                               type="date"
                               name="dueDate"
                               defaultValue={item.dueDate ?? ""}
-                              aria-label="Due date"
+                              aria-label={t.dueDate}
                               className="rounded-lg border border-slate-300 px-2 py-1 text-[10px]"
                             />
                           </div>
@@ -727,16 +731,16 @@ export function GovernanceAssessmentPanel({
                             <button
                               type="submit"
                               disabled={pending}
-                              className="ml-auto rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+                              className="ms-auto rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
                             >
-                              Save
+                              {m.common.save}
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingItemId(null)}
                               className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
                             >
-                              Cancel
+                              {m.common.cancel}
                             </button>
                           </div>
                         </form>
@@ -751,7 +755,7 @@ export function GovernanceAssessmentPanel({
                             <button
                               type="button"
                               aria-pressed={item.status === "DONE"}
-                              aria-label="Mark done"
+                              aria-label={t.markDone}
                               onClick={() => setItemStatus(item.id, item.status === "DONE" ? "OPEN" : "DONE")}
                               className={`mt-0.5 flex h-[18px] w-[18px] flex-none items-center justify-center rounded-md border-2 ${
                                 item.status === "DONE" ? "border-emerald-600 bg-emerald-600" : "border-slate-300 bg-white"
@@ -771,11 +775,11 @@ export function GovernanceAssessmentPanel({
                             <div className="mt-0.5 text-[11px] text-slate-500">{item.description}</div>
                             {(item.ownerLabel || item.dueDate) && (
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-600">
-                                {item.ownerLabel && <span>Owner: {item.ownerLabel}</span>}
-                                {item.dueDate && <span>Due {item.dueDate}</span>}
+                                {item.ownerLabel && <span>{t.ownerLabel(item.ownerLabel)}</span>}
+                                {item.dueDate && <span>{t.due(item.dueDate)}</span>}
                                 {item.overdue && (
                                   <span className="rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 font-bold uppercase text-red-700">
-                                    Overdue
+                                    {t.overdueBadge}
                                   </span>
                                 )}
                               </div>
@@ -786,26 +790,26 @@ export function GovernanceAssessmentPanel({
                                 onClick={() => setOpenPolicyId(item.policy!.id)}
                                 className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
                               >
-                                View draft policy →
+                                {t.viewDraftPolicy}
                               </button>
                             )}
                             {canEdit && confirmingDeleteId === item.id && (
                               <div className="mt-1.5 flex items-center gap-2 text-[10px] text-slate-600">
-                                Delete this item?
+                                {t.deleteItemConfirm}
                                 <button
                                   type="button"
                                   onClick={() => removeItem(item.id)}
                                   disabled={pending}
                                   className="rounded bg-red-600 px-2 py-0.5 font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
                                 >
-                                  Delete
+                                  {m.common.delete}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setConfirmingDeleteId(null)}
                                   className="rounded border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
                                 >
-                                  Keep
+                                  {m.common.keep}
                                 </button>
                               </div>
                             )}
@@ -817,21 +821,21 @@ export function GovernanceAssessmentPanel({
                                 onClick={() => setEditingItemId(item.id)}
                                 className="text-[10px] font-semibold text-slate-500 hover:text-indigo-600"
                               >
-                                Edit
+                                {m.common.edit}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setItemStatus(item.id, "DISMISSED")}
                                 className="text-[10px] font-semibold text-slate-500 hover:text-slate-600"
                               >
-                                Dismiss
+                                {t.dismiss}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setConfirmingDeleteId(item.id)}
                                 className="text-[10px] font-semibold text-slate-500 hover:text-red-600"
                               >
-                                Delete
+                                {m.common.delete}
                               </button>
                             </div>
                           )}
@@ -841,7 +845,7 @@ export function GovernanceAssessmentPanel({
                   )}
                   {items.length === 0 && (
                     <li className="rounded-lg border border-dashed border-slate-200 px-2.5 py-4 text-center text-[11px] text-slate-500">
-                      Nothing here.
+                      {t.nothingHere}
                     </li>
                   )}
                 </ul>
@@ -852,11 +856,10 @@ export function GovernanceAssessmentPanel({
       ) : (
         <section className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
           <p className="text-sm text-slate-500">
-            No assessment generated yet for {focusLabel}.{" "}
-            {canEdit ? 'Click "Generate assessment" above, or add a checklist item by hand.' : "Ask an editor to generate one."}
+            {t.noAssessment(focusLabel)} {canEdit ? t.noAssessmentEditor : t.noAssessmentViewer}
           </p>
           {canEdit && (
-            <div className="mx-auto mt-4 max-w-md text-left">
+            <div className="mx-auto mt-4 max-w-md text-start">
               {addingItem ? (
                 <form
                   onSubmit={(e) => {
@@ -868,23 +871,23 @@ export function GovernanceAssessmentPanel({
                   <input
                     name="title"
                     required
-                    placeholder="Action title"
+                    placeholder={t.actionTitle}
                     className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
                   />
                   <textarea
                     name="description"
                     required
                     rows={2}
-                    placeholder="What to do, and why it matters"
+                    placeholder={t.actionPlaceholder}
                     className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                      When
+                      {t.when}
                       <select name="phase" defaultValue="IMMEDIATE" className="rounded-lg border border-slate-300 px-2 py-1 text-xs">
-                        <option value="IMMEDIATE">Immediate</option>
-                        <option value="NEAR_TERM">Near-term</option>
-                        <option value="LONG_TERM">Long-term</option>
+                        <option value="IMMEDIATE">{t.phases.IMMEDIATE}</option>
+                        <option value="NEAR_TERM">{t.phases.NEAR_TERM}</option>
+                        <option value="LONG_TERM">{t.phases.LONG_TERM}</option>
                       </select>
                     </label>
                     <button
@@ -892,14 +895,14 @@ export function GovernanceAssessmentPanel({
                       onClick={() => setAddingItem(false)}
                       className="text-xs font-semibold text-slate-500 hover:text-slate-600"
                     >
-                      Cancel
+                      {m.common.cancel}
                     </button>
                     <button
                       type="submit"
                       disabled={pending}
-                      className="ml-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+                      className="ms-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
                     >
-                      Add
+                      {m.common.add}
                     </button>
                   </div>
                 </form>
@@ -909,7 +912,7 @@ export function GovernanceAssessmentPanel({
                   onClick={() => setAddingItem(true)}
                   className="mx-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-100"
                 >
-                  + Add a checklist item by hand
+                  {t.addItemByHand}
                 </button>
               )}
             </div>

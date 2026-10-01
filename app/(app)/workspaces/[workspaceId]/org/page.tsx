@@ -35,10 +35,10 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
         <h2 className="mb-2 text-sm font-semibold text-slate-800">Roles</h2>
         <div className="max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2">Role</th>
-                <th className="px-4 py-2 text-right">
+                <th className="px-4 py-2 text-end">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
@@ -66,13 +66,13 @@ export default async function OrgDirectoryPage(props: PageProps<"/workspaces/[wo
         <h2 className="mb-2 text-sm font-semibold text-slate-800">People</h2>
         <div className="max-h-96 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Roles</th>
                 <th className="px-4 py-2">Reports to</th>
-                <th className="px-4 py-2 text-right">
+                <th className="px-4 py-2 text-end">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>

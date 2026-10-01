@@ -95,7 +95,7 @@ export function DecisionBranchEditor({
               type="button"
               onClick={() => removeAt(index)}
               aria-label="Remove this branch"
-              className="ml-auto rounded-md px-1.5 py-1 text-xs font-semibold text-slate-400 hover:bg-red-50 hover:text-red-600"
+              className="ms-auto rounded-md px-1.5 py-1 text-xs font-semibold text-slate-400 hover:bg-red-50 hover:text-red-600"
             >
               Remove
             </button>

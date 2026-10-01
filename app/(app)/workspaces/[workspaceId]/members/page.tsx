@@ -20,11 +20,11 @@ export default async function MembersPage(props: PageProps<"/workspaces/[workspa
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-4 py-2">Member</th>
               <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2 text-right">Access</th>
+              <th className="px-4 py-2 text-end">Access</th>
             </tr>
           </thead>
           <tbody>

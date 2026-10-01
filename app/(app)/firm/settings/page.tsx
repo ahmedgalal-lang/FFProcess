@@ -33,11 +33,11 @@ export default async function FirmSettingsPage() {
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th scope="col" className="px-4 py-2">Person</th>
               <th scope="col" className="px-4 py-2">Role</th>
-              <th scope="col" className="px-4 py-2 text-right">Actions</th>
+              <th scope="col" className="px-4 py-2 text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -58,7 +58,7 @@ export default async function FirmSettingsPage() {
                     {m.role === "OWNER" ? "★ Firm Owner" : "Firm Member"}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-right">
+                <td className="px-4 py-2 text-end">
                   <FirmMemberRowActions
                     firmMemberId={m.id}
                     role={m.role}

@@ -20,7 +20,7 @@ const PILL_STYLES: Record<StepperStatus, string> = {
   done: "bg-emerald-50 hover:bg-emerald-100",
   current: "bg-amber-700 hover:bg-amber-800 shadow-sm",
   upcoming: "hover:bg-white",
-  optional: "ml-1.5 hover:bg-white",
+  optional: "ms-1.5 hover:bg-white",
 };
 
 const NUM_STYLES: Record<StepperStatus, string> = {
@@ -72,7 +72,7 @@ export function ProcessStepper({
           <span className={`text-[12.5px] font-semibold ${LABEL_STYLES[item.status]}`}>
             {item.label}
             {item.status === "current" && (
-              <span className="ml-1.5 rounded-full bg-white px-1.5 py-px text-[9px] font-bold tracking-wide text-amber-700">
+              <span className="ms-1.5 rounded-full bg-white px-1.5 py-px text-[9px] font-bold tracking-wide text-amber-700">
                 NEXT
               </span>
             )}

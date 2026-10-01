@@ -85,7 +85,7 @@ export function MilestoneRailsView({
             <div
               key={drop.id}
               aria-hidden="true"
-              className="pointer-events-none absolute w-0 border-l-[1.5px] border-dashed border-amber-400"
+              className="pointer-events-none absolute w-0 border-s-[1.5px] border-dashed border-amber-400"
               style={{ left: drop.x, top: drop.fromY + TRACK_Y, height: drop.toY - drop.fromY }}
             />
           ))}
@@ -121,7 +121,7 @@ function RailRow({ rail, workspaceId }: { rail: Rail; workspaceId: string }) {
       </div>
 
       <div
-        className={`absolute left-0 right-0 border-t-2 ${
+        className={`absolute start-0 end-0 border-t-2 ${
           rail.branchFrom ? "border-dashed border-amber-300" : "border-slate-200"
         }`}
         style={{ top: TRACK_Y }}

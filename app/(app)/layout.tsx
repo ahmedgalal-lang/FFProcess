@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth, signOut } from "@/lib/auth/config";
 import { prisma } from "@/lib/db/client";
+import { getMessages } from "@/lib/i18n/server";
+import { LanguageSwitcher } from "../language-switcher";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const session = await auth();
@@ -9,6 +11,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const firmMember = await prisma.firmMember.findUnique({ where: { userId: session.user.id! } });
   const isFirmOwner = firmMember?.role === "OWNER";
+  const m = await getMessages();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -20,9 +23,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <span className="text-sm font-semibold text-slate-900">FFProcess</span>
         </Link>
         <div className="flex-1" />
+        <LanguageSwitcher />
         {isFirmOwner && (
           <Link href="/firm/settings" className="text-xs font-medium text-slate-500 hover:text-slate-900">
-            Firm Settings
+            {m.shell.firmSettings}
           </Link>
         )}
         <Link href="/account" className="text-xs text-slate-500 hover:text-slate-900">
@@ -35,7 +39,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           }}
         >
           <button type="submit" className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
-            Sign out
+            {m.shell.signOut}
           </button>
         </form>
       </header>

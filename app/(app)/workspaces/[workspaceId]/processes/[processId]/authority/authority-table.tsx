@@ -166,9 +166,9 @@ export function AuthorityTable({
             Each task carries a list of rules. A rule turns on either an amount of money or an elapsed time, and says
             what happens then — the task needs approval, or it escalates. Column titles stay visible while you scroll.
           </caption>
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th scope="col" className="sticky left-0 top-0 z-30 bg-slate-50 px-4 py-2">
+              <th scope="col" className="sticky start-0 top-0 z-30 bg-slate-50 px-4 py-2">
                 Task
               </th>
               <th scope="col" className="sticky top-0 z-20 bg-slate-50 px-3 py-2">
@@ -207,7 +207,7 @@ export function AuthorityTable({
 
             {skippedRows.map((row) => (
               <tr key={row.id} className="border-t border-slate-100 bg-slate-50">
-                <th scope="row" className="sticky left-0 z-10 bg-white px-4 py-2 text-left font-medium text-slate-500">
+                <th scope="row" className="sticky start-0 z-10 bg-white px-4 py-2 text-start font-medium text-slate-500">
                   <span className="line-through">{row.label}</span>
                 </th>
                 <td className="px-3 py-2 text-xs text-slate-500" colSpan={4}>
@@ -270,8 +270,8 @@ function TaskRules({
       <tr className="border-t border-slate-200 bg-slate-50/60">
         <th
           scope="row"
-          className={`sticky left-0 z-10 bg-slate-50/60 px-4 py-2 text-left font-medium text-slate-900 ${
-            flagged ? "border-l-2 border-l-amber-400" : ""
+          className={`sticky start-0 z-10 bg-slate-50/60 px-4 py-2 text-start font-medium text-slate-900 ${
+            flagged ? "border-s-2 border-s-amber-400" : ""
           }`}
         >
           <span className="flex items-center gap-2">
@@ -378,7 +378,7 @@ function RuleRow({
   if (canEdit && !editing) {
     return (
       <tr className={`border-t border-slate-100 ${dimmed ? "bg-slate-50" : ""}`}>
-        <td className="sticky left-0 z-10 bg-white px-4 py-2" />
+        <td className="sticky start-0 z-10 bg-white px-4 py-2" />
         <td colSpan={columns - 1} className="px-3 py-2">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -412,7 +412,7 @@ function RuleRow({
   return (
     <>
       <tr className={`border-t border-slate-100 ${dimmed ? "bg-slate-50" : ""}`}>
-        <td className="sticky left-0 z-10 bg-white px-4 py-2" />
+        <td className="sticky start-0 z-10 bg-white px-4 py-2" />
 
         {/* 1 — what the rule turns on */}
         <td className="px-3 py-2">
@@ -575,7 +575,7 @@ function RuleRow({
       </tr>
 
       <tr className="bg-slate-50/40">
-        <td className="sticky left-0 z-10 bg-slate-50/40" />
+        <td className="sticky start-0 z-10 bg-slate-50/40" />
         <td colSpan={columns - 1} className="px-3 pb-2 text-xs text-slate-600">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-500">

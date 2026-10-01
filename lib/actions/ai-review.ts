@@ -24,6 +24,8 @@ import { runProcessReview } from "@/lib/ai/process-review";
 import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
 import type { ReviewFindingCategory, ReviewFindingArea, ReviewFindingSeverity } from "@/app/generated/prisma/client";
 import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
+import { getActionLocale } from "@/lib/i18n/server";
+import { withAnswerLanguage } from "@/lib/i18n/locale";
 
 export type { PersistedReviewFinding } from "@/lib/domain/review-findings";
 
@@ -157,7 +159,7 @@ export async function reviewProcessWithAI(
     structuralGaps,
   });
 
-  const outcome = await runProcessReview(promptText);
+  const outcome = await runProcessReview(withAnswerLanguage(promptText, await getActionLocale()));
   if (!outcome.ok) {
     if (outcome.reason === "NOT_CONFIGURED") return aiUnavailable(outcome.message);
     return validationError(outcome.message);

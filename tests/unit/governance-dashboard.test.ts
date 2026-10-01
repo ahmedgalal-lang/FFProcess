@@ -39,7 +39,7 @@ describe("buildDashboardTiles", () => {
   it("always shows policy review and checklist progress, and overdue checklist items only when there are some", () => {
     const input = { ...empty, policies: [{ needsReview: true }, { needsReview: false }], checklist: { done: 3, total: 10, overdue: 0 } };
     expect(tile(input, "policies-review")).toMatchObject({ count: 1, tone: "warn", href: "#policy-library" });
-    expect(tile(input, "checklist-done")).toMatchObject({ count: 3, detail: "of 10" });
+    expect(tile(input, "checklist-done")).toMatchObject({ count: 3, total: 10 });
     expect(tile(input, "checklist-overdue")).toBeUndefined();
     expect(tile({ ...input, checklist: { done: 3, total: 10, overdue: 2 } }, "checklist-overdue")).toMatchObject({ count: 2, tone: "alert" });
   });
@@ -56,7 +56,7 @@ describe("buildDashboardTiles", () => {
   it("counts aspects without a published governing policy, only when aspects are given", () => {
     expect(tile(empty, "aspects-without-policy")).toBeUndefined();
     const input = { ...empty, aspects: [{ hasPublishedPolicy: true }, { hasPublishedPolicy: false }, { hasPublishedPolicy: false }] };
-    expect(tile(input, "aspects-without-policy")).toMatchObject({ count: 2, detail: "of 3", tone: "warn", href: "#governance-assessment" });
+    expect(tile(input, "aspects-without-policy")).toMatchObject({ count: 2, total: 3, tone: "warn", href: "#governance-assessment" });
     expect(tile({ ...empty, aspects: [{ hasPublishedPolicy: true }] }, "aspects-without-policy")).toMatchObject({ count: 0, tone: "neutral" });
   });
 });

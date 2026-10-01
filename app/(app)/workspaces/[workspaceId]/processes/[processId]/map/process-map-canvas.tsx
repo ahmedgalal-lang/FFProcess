@@ -448,7 +448,7 @@ export function ProcessMapCanvas({
       style={{ height: canvasHeight }}
     >
       {saving && (
-        <span className="absolute right-3 top-3 z-10 rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-white">
+        <span className="absolute end-3 top-3 z-10 rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-white">
           Saving…
         </span>
       )}

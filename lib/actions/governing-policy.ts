@@ -7,6 +7,8 @@ import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { logGovernanceActivity } from "@/lib/data/governance-activity";
 import { runGoverningPolicyDraft } from "@/lib/ai/governance-generator";
 import { findTemplate, fillTemplate } from "@/lib/domain/policy-templates";
+import { getActionLocale } from "@/lib/i18n/server";
+import { withAnswerLanguage } from "@/lib/i18n/locale";
 import { ok, notFound, validationError, aiUnavailable, type ActionResult } from "@/lib/actions/errors";
 
 /**
@@ -169,7 +171,8 @@ export async function createGoverningPolicy(input: z.infer<typeof createSchema>)
   let content: { title: string; body: string };
   let source: string;
   if ("templateId" in parsed.data) {
-    const found = findTemplate(parsed.data.templateId);
+    // The copy is in the language the consultant is working in (spec 031).
+    const found = findTemplate(parsed.data.templateId, await getActionLocale());
     if (!found) return validationError("That template doesn't exist.");
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true } });
     content = fillTemplate(found, workspace.name);
@@ -214,15 +217,14 @@ export async function draftGoverningPolicyWithAi(input: z.infer<typeof draftSche
     return validationError("Set this workspace's company size, industry, and jurisdiction before drafting a policy with AI.");
   }
 
-  const outcome = await runGoverningPolicyDraft(
-    [
-      `Company: ${workspace.name}`,
-      `Company size: ${workspace.governanceCompanySize}`,
-      `Industry/sector: ${workspace.industry}`,
-      `Jurisdiction: ${workspace.governanceJurisdiction}`,
-      `Governance area to draft the governing policy for: ${aspect.name}`,
-    ].join("\n")
-  );
+  const promptText = [
+    `Company: ${workspace.name}`,
+    `Company size: ${workspace.governanceCompanySize}`,
+    `Industry/sector: ${workspace.industry}`,
+    `Jurisdiction: ${workspace.governanceJurisdiction}`,
+    `Governance area to draft the governing policy for: ${aspect.name}`,
+  ].join("\n");
+  const outcome = await runGoverningPolicyDraft(withAnswerLanguage(promptText, await getActionLocale()));
   if (!outcome.ok) {
     if (outcome.reason === "NOT_CONFIGURED") return aiUnavailable(outcome.message);
     return validationError(outcome.message);

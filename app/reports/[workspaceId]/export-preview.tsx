@@ -439,7 +439,7 @@ export function ExportPreview({
                 type="button"
                 onClick={() => setDensity(option.id)}
                 aria-pressed={density === option.id}
-                className={`border-slate-300 px-[10px] py-[7px] text-[12px] font-semibold not-first:border-l ${
+                className={`border-slate-300 px-[10px] py-[7px] text-[12px] font-semibold not-first:border-s ${
                   density === option.id
                     ? "bg-slate-900 text-white"
                     : "bg-white text-slate-600 hover:bg-slate-50"
@@ -461,7 +461,7 @@ export function ExportPreview({
                   onClick={() => chooseMapLayout(option.id)}
                   aria-pressed={mapLayout === option.id}
                   title={option.hint}
-                  className={`border-slate-300 px-[10px] py-[7px] text-[12px] font-semibold not-first:border-l ${
+                  className={`border-slate-300 px-[10px] py-[7px] text-[12px] font-semibold not-first:border-s ${
                     mapLayout === option.id
                       ? "bg-slate-900 text-white"
                       : "bg-white text-slate-600 hover:bg-slate-50"
@@ -510,7 +510,7 @@ export function ExportPreview({
                 sat directly above the very section it claimed was missing. */}
             ⚠ Some sections have nothing recorded yet and print as empty
           </div>
-          <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-amber-900">
+          <ul className="mt-1.5 list-disc space-y-0.5 ps-5 text-xs text-amber-900">
             {allGaps.map(({ process, gap }, i) => (
               <li key={i}>
                 <strong>{process}:</strong> {gap}
@@ -530,7 +530,7 @@ export function ExportPreview({
           <div
             key={`break-${i}`}
             aria-hidden="true"
-            className="print-break-marker no-print absolute -left-[14mm] -right-[14mm] border-t border-dashed border-slate-400 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+            className="print-break-marker no-print absolute -start-[14mm] -end-[14mm] border-t border-dashed border-slate-400 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500"
             style={{ top: offset }}
           >
             Page break
@@ -913,7 +913,7 @@ function RaciAuthorityTable({
       </p>
       <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-3 py-2">Process Step</th>
               {process.matrixRoles.map((r) => (
@@ -950,9 +950,9 @@ function RaciAuthorityTable({
                          from the next rule starting, so two rules read as
                          one paragraph. The marker sits outside the text
                          column so wrapped lines align under the sentence. */
-                      <ul className="ml-3.5 list-outside list-disc space-y-1 marker:text-slate-500">
+                      <ul className="ms-3.5 list-outside list-disc space-y-1 marker:text-slate-500">
                         {row.ruleSentences.map((sentence, i) => (
-                          <li key={i} className="print-keep pl-0.5 leading-snug">
+                          <li key={i} className="print-keep ps-0.5 leading-snug">
                             {sentence}
                           </li>
                         ))}
@@ -1019,7 +1019,7 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
               <tr>
                 <th className="px-3 py-2">Risk</th>
                 <th className="px-3 py-2">Likelihood</th>
@@ -1055,7 +1055,7 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
       <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Governing Policies</h3>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-3 py-2">Aspect</th>
               <th className="px-3 py-2">Governing policy</th>
@@ -1092,7 +1092,7 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
               <tr>
                 <th className="px-3 py-2">Policy</th>
                 <th className="px-3 py-2">Status</th>
@@ -1179,7 +1179,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
   ext: ({ process }) => (
     <>
       <SubHeading>External Entities</SubHeading>
-      <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+      <ul className="list-disc space-y-1 ps-5 text-sm text-slate-700">
         {process.externalEntities.map((entity, i) => (
           <li key={i} className="print-keep">
             <strong className="text-slate-900">{entity.name}</strong> &mdash; {entity.description}
@@ -1232,7 +1232,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
                     Detailed Action
                   </div>
-                  <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-sm text-slate-700">
+                  <ol className="mt-1 list-decimal space-y-0.5 ps-4 text-sm text-slate-700">
                     {step.detailedAction.map((action, i) => (
                       <li key={i}>{action}</li>
                     ))}
@@ -1293,7 +1293,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
           to fragment; the tr rule keeps that from cutting a row. */}
       <div className="print-keep overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-3 py-2">Metric</th>
               <th className="px-3 py-2">Target</th>
@@ -1515,7 +1515,7 @@ function RoleCard({ name, duties }: { name: string; duties: { key: string; label
     <div className="overflow-hidden rounded-xl border border-slate-200 print-keep">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3.5 py-2">
         <span className="text-sm font-bold text-slate-900">{name}</span>
-        <span className="ml-auto flex flex-wrap gap-1.5">
+        <span className="ms-auto flex flex-wrap gap-1.5">
           {duties.map((duty) => (
             <span
               key={duty.key}
@@ -1556,7 +1556,7 @@ function BulletBox({ label, items }: { label: string; items: string[] }) {
   return (
     <div className="print-keep rounded-lg border border-slate-200 px-3 py-2.5">
       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-slate-700">
+      <ul className="mt-1 list-disc space-y-0.5 ps-4 text-sm text-slate-700">
         {items.map((item, i) => (
           <li key={i} className="print-keep">
             {item}

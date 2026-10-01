@@ -6,20 +6,13 @@ import { useCanEdit } from "../workspace-access";
 import { addGovernancePolicy } from "@/lib/actions/governance";
 import type { PolicyT } from "./governance-policy-drawer";
 import { SectionGuide } from "./section-guide";
+import { useMessages } from "@/lib/i18n/client";
 
-const STATUS_LABEL: Record<string, string> = { OPEN: "Draft", EDITED: "Edited" };
 const STATUS_STYLE: Record<string, string> = {
   OPEN: "bg-amber-50 text-amber-700 border-amber-200",
   EDITED: "bg-indigo-50 text-indigo-700 border-indigo-200",
 };
 
-const LIFECYCLE_LABEL: Record<string, string> = {
-  DRAFT: "Draft",
-  IN_REVIEW: "In Review",
-  APPROVED: "Approved",
-  PUBLISHED: "Published",
-  RETIRED: "Retired",
-};
 const LIFECYCLE_STYLE: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600 border-slate-200",
   IN_REVIEW: "bg-amber-50 text-amber-700 border-amber-200",
@@ -47,6 +40,9 @@ export function GovernancePolicyLibrary({
   onOpen: (policyId: string) => void;
 }) {
   const canEdit = useCanEdit();
+  const m = useMessages();
+  const g = m.governance;
+  const t = g.library;
   const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -70,13 +66,10 @@ export function GovernancePolicyLibrary({
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-1.5">
-            <h2 className="text-sm font-bold text-slate-900">Policy library</h2>
+            <h2 className="text-sm font-bold text-slate-900">{t.title}</h2>
             <SectionGuide id="policy" />
           </div>
-          <p className="text-xs text-slate-500">
-            Every policy across every focus area, in one place. Drafted by an assessment, or written
-            here by hand.
-          </p>
+          <p className="text-xs text-slate-500">{t.intro}</p>
         </div>
         {canEdit && (
           <button
@@ -84,7 +77,7 @@ export function GovernancePolicyLibrary({
             onClick={() => setAdding((v) => !v)}
             className="flex-none rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-100"
           >
-            + Add policy
+            {t.add}
           </button>
         )}
       </div>
@@ -100,23 +93,23 @@ export function GovernancePolicyLibrary({
           <input
             name="title"
             required
-            placeholder="Policy title"
+            placeholder={t.titlePlaceholder}
             className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
           />
           <textarea
             name="body"
             required
             rows={6}
-            placeholder="The policy itself — sections, defined terms, whatever the client needs to review."
+            placeholder={t.bodyPlaceholder}
             className="rounded-lg border border-slate-300 px-2.5 py-1.5 font-mono text-xs leading-relaxed"
           />
           <div className="flex items-center gap-2">
             <button
               type="submit"
               disabled={pending}
-              className="ml-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+              className="ms-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
             >
-              {pending ? "Adding…" : "Add"}
+              {pending ? t.adding : m.common.add}
             </button>
           </div>
         </form>
@@ -124,7 +117,7 @@ export function GovernancePolicyLibrary({
 
       {policies.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-xs text-slate-500">
-          No policies yet. Generate an assessment that recommends one, or add one by hand.
+          {t.none}
         </p>
       ) : (
         <div className="flex flex-col divide-y divide-slate-100">
@@ -133,7 +126,7 @@ export function GovernancePolicyLibrary({
               key={policy.id}
               type="button"
               onClick={() => onOpen(policy.id)}
-              className="flex items-center gap-3 py-2.5 text-left hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500"
+              className="flex items-center gap-3 py-2.5 text-start hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500"
             >
               <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
@@ -145,27 +138,29 @@ export function GovernancePolicyLibrary({
                 <span className="block text-sm font-semibold text-slate-900">{policy.title}</span>
                 <span className="block text-[11px] text-slate-500">
                   {policy.governsAspectName ? (
-                    <span className="font-semibold text-indigo-700">Governs {policy.governsAspectName}</span>
+                    <span className="font-semibold text-indigo-700">
+                      {t.governs(g.aspectNames[policy.governsAspectName] ?? policy.governsAspectName)}
+                    </span>
                   ) : (
-                    (policy.focusAreaLabel ?? "Added manually")
+                    (policy.focusAreaLabel ? (g.aspectNames[policy.focusAreaLabel] ?? policy.focusAreaLabel) : g.addedManually)
                   )}{" "}
-                  · updated {policy.updatedAt}
+                  · {t.updated(policy.updatedAt)}
                 </span>
               </span>
               {policy.needsReview && (
                 <span className="flex-none rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-red-700">
-                  Needs review
+                  {t.needsReview}
                 </span>
               )}
               <span
                 className={`flex-none rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase ${LIFECYCLE_STYLE[policy.lifecycleStatus]}`}
               >
-                {LIFECYCLE_LABEL[policy.lifecycleStatus]}
+                {g.lifecycle[policy.lifecycleStatus]}
               </span>
               <span
                 className={`flex-none rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase ${STATUS_STYLE[policy.status] ?? STATUS_STYLE["OPEN"]}`}
               >
-                {STATUS_LABEL[policy.status] ?? policy.status}
+                {t.statuses[policy.status] ?? policy.status}
               </span>
             </button>
           ))}

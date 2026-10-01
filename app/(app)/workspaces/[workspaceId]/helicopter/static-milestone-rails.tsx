@@ -86,7 +86,7 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
               <div
                 key={drop.id}
                 aria-hidden="true"
-                className="pointer-events-none absolute w-0 border-l-[1.5px] border-dashed border-amber-400"
+                className="pointer-events-none absolute w-0 border-s-[1.5px] border-dashed border-amber-400"
                 style={{ left: drop.x, top: drop.fromY + TRACK_Y, height: drop.toY - drop.fromY }}
               />
             ))}

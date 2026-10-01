@@ -159,7 +159,7 @@ export function ImportPanel({ workspaceId }: { workspaceId: string }) {
               setDone(null);
               setError(null);
             }}
-            className="mt-1 block w-full max-w-md text-xs text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-50"
+            className="mt-1 block w-full max-w-md text-xs text-slate-700 file:me-3 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-50"
           />
 
           <div className="mt-3 flex items-center gap-2">
@@ -230,7 +230,7 @@ function Summary({ summary, importable }: { summary: ImportSummary; importable: 
             has been created
           </h3>
           <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-rose-200">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-start text-xs">
               <caption className="sr-only">
                 Problems found in the uploaded file, with the sheet and row each is on
               </caption>

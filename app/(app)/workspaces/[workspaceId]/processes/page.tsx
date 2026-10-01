@@ -116,20 +116,20 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
             Deleted processes
             {deletedCount > 0 ? ` (${deletedCount})` : ""}
           </Link>
-          <span className="ml-2 text-slate-600">Deleting hides a process — it can be brought back.</span>
+          <span className="ms-2 text-slate-600">Deleting hides a process — it can be brought back.</span>
         </p>
       )}
 
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-4 py-2">Code</th>
               <th className="px-4 py-2">Process</th>
               <th className="px-4 py-2">Category</th>
               <th className="px-4 py-2">Steps</th>
               <th className="px-4 py-2">RACI</th>
-              <th className="px-4 py-2 text-right">
+              <th className="px-4 py-2 text-end">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -142,7 +142,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                       a sub-process reads as one rather than as a sibling of
                       its own parent. */}
                   {depth > 0 ? (
-                    <span className="mr-1 text-slate-300" style={{ paddingLeft: (depth - 1) * 12 }}>
+                    <span className="me-1 text-slate-300" style={{ paddingLeft: (depth - 1) * 12 }}>
                       ↳
                     </span>
                   ) : null}
@@ -151,7 +151,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                 <td className="px-4 py-2 font-medium text-slate-900">
                   {p.name}
                   {p.parentProcessId && (
-                    <span className="ml-2 text-xs font-normal text-slate-500">
+                    <span className="ms-2 text-xs font-normal text-slate-500">
                       sub-process of {p.parentProcess?.code}
                       {/* The parent is loaded regardless of its own deletion, so
                           without this the row named a code that is nowhere on
@@ -191,7 +191,7 @@ export default async function ProcessesPage(props: PageProps<"/workspaces/[works
                     <span className="text-xs text-slate-400">—</span>
                   )}
                 </td>
-                <td className="px-4 py-2 text-right">
+                <td className="px-4 py-2 text-end">
                   <div className="flex items-center justify-end gap-3">
                     <EditProcessButton
                       workspaceId={workspaceId}

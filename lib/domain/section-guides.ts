@@ -4,6 +4,8 @@
  * copy, the same for every workspace, approved as a mockup before building.
  */
 
+import { SECTION_GUIDES_AR } from "./section-guides.ar";
+
 export type SectionGuideContent = {
   title: string;
   /** One line under the title: what the section is. */
@@ -233,3 +235,8 @@ export const SECTION_GUIDES = {
 } satisfies Record<string, SectionGuideContent>;
 
 export type SectionGuideId = keyof typeof SECTION_GUIDES;
+
+/** The guide in the reader's language (spec 031). */
+export function sectionGuideFor(id: SectionGuideId, locale: "en" | "ar"): SectionGuideContent {
+  return locale === "ar" ? SECTION_GUIDES_AR[id] : SECTION_GUIDES[id];
+}

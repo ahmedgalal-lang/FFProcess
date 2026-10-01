@@ -9,6 +9,7 @@ import { heatMapCells } from "@/lib/domain/risk-treatment";
 import { RiskHeatMap, type HeatMapSelection } from "./risk-heat-map";
 import { RiskTreatmentPanel } from "./risk-treatment-panel";
 import { SectionGuide } from "./section-guide";
+import { useMessages } from "@/lib/i18n/client";
 
 export type RiskT = {
   id: string;
@@ -75,6 +76,10 @@ export function GovernanceRiskRegister({
   people: OwnerOptionT[];
 }) {
   const canEdit = useCanEdit();
+  const m = useMessages();
+  const g = m.governance;
+  const t = g.risk;
+  const lv = (v: string) => g.levels[v] ?? v;
   const [adding, setAdding] = useState(false);
   const [selectedCell, setSelectedCell] = useState<HeatMapSelection>(null);
   const [treatmentOpenId, setTreatmentOpenId] = useState<string | null>(null);
@@ -146,13 +151,10 @@ export function GovernanceRiskRegister({
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-1.5">
-            <h2 className="text-sm font-bold text-slate-900">Risk register</h2>
+            <h2 className="text-sm font-bold text-slate-900">{t.title}</h2>
             <SectionGuide id="risk" />
           </div>
-          <p className="text-xs text-slate-500">
-            Identified risks, tracked on their own — scored, owned, and carried forward independent of any one checklist
-            run. Populated by an assessment or added by hand.
-          </p>
+          <p className="text-xs text-slate-500">{t.intro}</p>
         </div>
         {canEdit && (
           <button
@@ -160,7 +162,7 @@ export function GovernanceRiskRegister({
             onClick={() => setAdding((v) => !v)}
             className="flex-none rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-100"
           >
-            + Add risk
+            {t.add}
           </button>
         )}
       </div>
@@ -176,48 +178,48 @@ export function GovernanceRiskRegister({
           <input
             name="title"
             required
-            placeholder="Risk title"
+            placeholder={t.titlePlaceholder}
             className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
           />
           <textarea
             name="description"
             required
             rows={2}
-            placeholder="What could go wrong, and why it matters"
+            placeholder={t.descriptionPlaceholder}
             className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
           />
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-              Likelihood
+              {t.likelihood}
               <select
                 name="likelihood"
                 defaultValue="MEDIUM"
                 className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
               >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
+                <option value="LOW">{lv("LOW")}</option>
+                <option value="MEDIUM">{lv("MEDIUM")}</option>
+                <option value="HIGH">{lv("HIGH")}</option>
               </select>
             </label>
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-              Impact
+              {t.impact}
               <select
                 name="impact"
                 defaultValue="MEDIUM"
                 className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
               >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
+                <option value="LOW">{lv("LOW")}</option>
+                <option value="MEDIUM">{lv("MEDIUM")}</option>
+                <option value="HIGH">{lv("HIGH")}</option>
+                <option value="CRITICAL">{lv("CRITICAL")}</option>
               </select>
             </label>
             <button
               type="submit"
               disabled={pending}
-              className="ml-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+              className="ms-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
             >
-              Add
+              {m.common.add}
             </button>
           </div>
         </form>
@@ -225,13 +227,13 @@ export function GovernanceRiskRegister({
 
       {riskLevel && allRisks && (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-700" role="status">
-          Showing every open {capitalize(riskLevel)} risk across all aspects ({risks.length}).
+          {t.showingLevel(lv(riskLevel), risks.length)}
           <button
             type="button"
             onClick={() => router.replace(`${pathname}#risk-register`, { scroll: false })}
             className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
           >
-            Show this aspect&apos;s risks
+            {t.showAspect}
           </button>
         </div>
       )}
@@ -242,37 +244,36 @@ export function GovernanceRiskRegister({
 
       {activeCell && (
         <div className="mb-2 flex items-center gap-2 text-xs text-slate-600" role="status">
-          Showing {activeCell.count} risk{activeCell.count === 1 ? "" : "s"} at {capitalize(activeCell.likelihood)}{" "}
-          likelihood, {capitalize(activeCell.impact)} impact.
+          {t.showingCell(activeCell.count, lv(activeCell.likelihood), lv(activeCell.impact))}
           <button
             type="button"
             onClick={() => setSelectedCell(null)}
             className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
           >
-            Show all risks
+            {t.showAll}
           </button>
         </div>
       )}
 
       {risks.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-xs text-slate-500">
-          No risks tracked yet.
+          {t.none}
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <caption className="sr-only">Risks</caption>
+          <table className="w-full text-start text-xs">
+            <caption className="sr-only">{t.caption}</caption>
             <thead>
               <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                <th className="w-2/5 pb-2 pr-2">Risk</th>
-                <th className="pb-2 pr-2">Likelihood</th>
-                <th className="pb-2 pr-2">Impact</th>
-                <th className="pb-2 pr-2">Level</th>
-                <th className="pb-2 pr-2">Owner</th>
-                <th className="pb-2">Status</th>
+                <th className="w-2/5 pb-2 pe-2">{t.risk}</th>
+                <th className="pb-2 pe-2">{t.likelihood}</th>
+                <th className="pb-2 pe-2">{t.impact}</th>
+                <th className="pb-2 pe-2">{t.level}</th>
+                <th className="pb-2 pe-2">{t.owner}</th>
+                <th className="pb-2">{t.status}</th>
                 {canEdit && (
-                  <th className="pb-2 pl-2">
-                    <span className="sr-only">Remove</span>
+                  <th className="pb-2 ps-2">
+                    <span className="sr-only">{m.common.remove}</span>
                   </th>
                 )}
               </tr>
@@ -285,9 +286,9 @@ export function GovernanceRiskRegister({
                 return (
                   <Fragment key={risk.id}>
                     <tr className="border-b border-slate-100 align-top last:border-0">
-                      <td className="py-2.5 pr-2">
+                      <td className="py-2.5 pe-2">
                         <div className="font-semibold text-slate-900">{risk.title}</div>
-                        <div className="text-slate-500">{risk.sourceLabel ?? "Added manually"}</div>
+                        <div className="text-slate-500">{risk.sourceLabel ? (g.aspectNames[risk.sourceLabel] ?? risk.sourceLabel) : g.addedManually}</div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
@@ -295,109 +296,110 @@ export function GovernanceRiskRegister({
                             onClick={() => setTreatmentOpenId(treatmentOpen ? null : risk.id)}
                             className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800"
                           >
-                            {treatmentOpen ? "Hide treatment" : "Treatment"}
+                            {treatmentOpen ? t.hideTreatment : t.treatment}
                             <span className="sr-only">: {risk.title}</span>
                           </button>
                           {overdueTreatment && (
                             <span className="rounded-full border border-red-200 bg-red-50 px-1.5 text-[10px] font-bold text-red-700">
-                              Overdue treatment
+                              {t.overdueTreatment}
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="py-2.5 pr-2 text-slate-600">
+                      <td className="py-2.5 pe-2 text-slate-600">
                         {canEdit ? (
                           <select
                             value={risk.likelihood}
-                            aria-label={`Likelihood: ${risk.title}`}
+                            aria-label={t.likelihoodOf(risk.title)}
                             onChange={(e) => updateField(risk.id, "likelihood", e.target.value)}
                             className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px]"
                           >
-                            <option value="LOW">Low</option>
-                            <option value="MEDIUM">Medium</option>
-                            <option value="HIGH">High</option>
+                            <option value="LOW">{lv("LOW")}</option>
+                            <option value="MEDIUM">{lv("MEDIUM")}</option>
+                            <option value="HIGH">{lv("HIGH")}</option>
                           </select>
                         ) : (
-                          capitalize(risk.likelihood)
+                          lv(risk.likelihood)
                         )}
                       </td>
-                      <td className="py-2.5 pr-2 text-slate-600">
+                      <td className="py-2.5 pe-2 text-slate-600">
                         {canEdit ? (
                           <select
                             value={risk.impact}
-                            aria-label={`Impact: ${risk.title}`}
+                            aria-label={t.impactOf(risk.title)}
                             onChange={(e) => updateField(risk.id, "impact", e.target.value)}
                             className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px]"
                           >
-                            <option value="LOW">Low</option>
-                            <option value="MEDIUM">Medium</option>
-                            <option value="HIGH">High</option>
-                            <option value="CRITICAL">Critical</option>
+                            <option value="LOW">{lv("LOW")}</option>
+                            <option value="MEDIUM">{lv("MEDIUM")}</option>
+                            <option value="HIGH">{lv("HIGH")}</option>
+                            <option value="CRITICAL">{lv("CRITICAL")}</option>
                           </select>
                         ) : (
-                          capitalize(risk.impact)
+                          lv(risk.impact)
                         )}
                       </td>
-                      <td className="py-2.5 pr-2">
+                      <td className="py-2.5 pe-2">
                         <span
                           className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase ${LEVEL_STYLE[level]}`}
                         >
-                          {level}
+                          {lv(level)}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-2 font-semibold text-slate-700">
-                        {risk.ownerLabel ?? <span className="font-normal text-slate-500">— unassigned</span>}
+                      <td className="py-2.5 pe-2 font-semibold text-slate-700">
+                        {risk.ownerLabel ?? <span className="font-normal text-slate-500">{t.unassigned}</span>}
                       </td>
                       <td className="py-2.5">
                         {canEdit ? (
                           <select
                             value={risk.status}
-                            aria-label={`Status: ${risk.title}`}
+                            aria-label={t.statusOf(risk.title)}
                             onChange={(e) => updateField(risk.id, "status", e.target.value)}
                             className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[risk.status]}`}
                           >
-                            <option value="OPEN">Open</option>
-                            <option value="MITIGATING">Mitigating</option>
-                            <option value="ACCEPTED">Accepted</option>
-                            <option value="CLOSED">Closed</option>
+                            {(["OPEN", "MITIGATING", "ACCEPTED", "CLOSED"] as const).map((s) => (
+                              <option key={s} value={s}>
+                                {t.statuses[s]}
+                              </option>
+                            ))}
                           </select>
                         ) : (
                           <span
                             className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[risk.status]}`}
                           >
-                            {capitalize(risk.status)}
+                            {t.statuses[risk.status]}
                           </span>
                         )}
                       </td>
                       {canEdit && (
-                        <td className="py-2.5 pl-2 text-right">
+                        <td className="py-2.5 ps-2 text-end">
                           {confirmingDeleteId === risk.id ? (
                             <span className="flex items-center justify-end gap-1.5 whitespace-nowrap text-[10px] text-slate-600">
-                              Delete?
+                              {t.deleteQ}
                               <button
                                 type="button"
                                 onClick={() => removeRisk(risk.id)}
                                 disabled={pending}
                                 className="rounded bg-red-600 px-1.5 py-0.5 font-bold text-white hover:bg-red-700 disabled:bg-slate-300"
                               >
-                                Delete
+                                {m.common.delete}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setConfirmingDeleteId(null)}
                                 className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-semibold text-slate-600 hover:bg-slate-50"
                               >
-                                Keep
+                                {m.common.keep}
                               </button>
                             </span>
                           ) : (
                             <button
                               type="button"
                               onClick={() => setConfirmingDeleteId(risk.id)}
-                              aria-label={`Delete risk: ${risk.title}`}
+                              aria-label={t.deleteRisk(risk.title)}
                               className="text-[10px] font-semibold text-slate-500 hover:text-red-600"
                             >
-                              Delete
+                              {m.common.delete}
                             </button>
                           )}
                         </td>
@@ -419,8 +421,4 @@ export function GovernanceRiskRegister({
       )}
     </section>
   );
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0) + s.slice(1).toLowerCase();
 }

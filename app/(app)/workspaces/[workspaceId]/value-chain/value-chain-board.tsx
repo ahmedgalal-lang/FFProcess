@@ -141,7 +141,7 @@ export function ValueChainBoard({
           </select>
         </label>
         <div
-          className="ml-auto inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5"
+          className="ms-auto inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5"
           role="group"
           aria-label="Group activities by"
         >
@@ -533,7 +533,7 @@ function Column({
                 type="button"
                 onClick={() => setConfirmingDelete(true)}
                 aria-label={`Delete ${column.title}`}
-                className="ml-auto rounded px-1.5 text-[10px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
+                className="ms-auto rounded px-1.5 text-[10px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
               >
                 Delete
               </button>
@@ -546,7 +546,7 @@ function Column({
       {/* The column scrolls inside itself rather than stretching the page: one
           phase holding everything unplaced would otherwise leave every other
           column stranded at the top of a very long scroll. */}
-      <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-0.5">{children}</div>
+      <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pe-0.5">{children}</div>
     </section>
   );
 }
@@ -604,7 +604,7 @@ function Card({
           {card.processCode}
         </Link>
         <div className="flex flex-none items-center gap-0.5">
-          {card.isMilestone && <span className="mr-0.5 text-[10px] text-amber-500">★</span>}
+          {card.isMilestone && <span className="me-0.5 text-[10px] text-amber-500">★</span>}
           {canMove && (
             <>
               <button
@@ -854,7 +854,7 @@ function EditActivityForm({
             type="button"
             onClick={() => setConfirmingDelete(true)}
             aria-label={`Delete ${card.label}`}
-            className="ml-auto rounded px-1.5 py-1 text-[11px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
+            className="ms-auto rounded px-1.5 py-1 text-[11px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
           >
             Delete
           </button>

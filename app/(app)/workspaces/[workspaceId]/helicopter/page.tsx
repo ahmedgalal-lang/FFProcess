@@ -136,11 +136,11 @@ export default async function HelicopterViewPage(props: PageProps<"/workspaces/[
             {landscape.edges.map((edge) => (
               <li
                 key={edge.id}
-                className={`rounded-lg border-l-[3px] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm ${
-                  edge.kind === "branch" ? "border-l-amber-500" : "border-l-indigo-600"
+                className={`rounded-lg border-s-[3px] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm ${
+                  edge.kind === "branch" ? "border-s-amber-500" : "border-s-indigo-600"
                 }`}
               >
-                <span className="mr-2 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                <span className="me-2 text-[10px] font-bold uppercase tracking-wide text-slate-600">
                   {edge.kind === "branch" ? "Branch" : "Step link"}
                 </span>
                 {edge.description}

@@ -5,6 +5,7 @@ import { useCanEdit } from "../workspace-access";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProcessKpis } from "@/lib/actions/process";
+import { useMessages } from "@/lib/i18n/client";
 
 type Kpi = { metric: string; target: string; frequency: string };
 type ControlPoint = { rowId: string; statement: string; flagged: boolean };
@@ -25,6 +26,8 @@ export function ProcessKpisControls({
   controlPoints: ControlPoint[];
 }) {
   const canEdit = useCanEdit();
+  const m = useMessages();
+  const t = m.governance.kpis;
   const [editing, setEditing] = useState(false);
   const [kpisInput, setKpisInput] = useState<Kpi[]>(kpis);
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +56,7 @@ export function ProcessKpisControls({
       const filledCount = [metric, target, frequency].filter(Boolean).length;
       if (filledCount === 0) continue;
       if (filledCount < 3) {
-        const missing = !metric ? "a metric" : !target ? "a target" : "a frequency";
-        setError(`Row ${i + 1} is missing ${missing} — fill it in, or remove the row, then save again.`);
+        setError(t.missing(i + 1, !metric ? "metric" : !target ? "target" : "frequency"));
         setInvalidRow(i);
         return;
       }
@@ -65,7 +67,7 @@ export function ProcessKpisControls({
       try {
         const result = await updateProcessKpis({ workspaceId, processId, kpis: complete });
         if (!result.ok) {
-          setError(result.error === "VALIDATION_ERROR" ? (result.message ?? "Invalid input") : result.error);
+          setError(result.error === "VALIDATION_ERROR" ? (result.message ?? t.invalid) : m.common.couldNotSave);
           return;
         }
         setEditing(false);
@@ -75,7 +77,7 @@ export function ProcessKpisControls({
         // is the usual cause — used to leave the form sitting there with no
         // error and nothing saved, which reads exactly like "it just doesn't
         // save". Say so, and keep what was typed on screen to retry.
-        setError("Couldn't reach the server — reload the page and try saving again.");
+        setError(t.unreachable);
       }
     });
   }
@@ -97,9 +99,9 @@ export function ProcessKpisControls({
         <h2 className="text-sm font-semibold text-slate-900">{processName}</h2>
       </div>
 
-      <div className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Key Control Points</div>
+      <div className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">{t.keyControls}</div>
       {controlPoints.length === 0 ? (
-        <p className="mt-1 text-sm text-slate-500">No co-approval controls in this process&rsquo;s Authority Matrix yet.</p>
+        <p className="mt-1 text-sm text-slate-500">{t.noControls}</p>
       ) : (
         <ul className="mt-1 space-y-1.5 text-sm">
           {controlPoints.map((cp) => (
@@ -115,7 +117,7 @@ export function ProcessKpisControls({
       )}
 
       <div className="mt-4 flex items-center justify-between">
-        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Operational KPIs &amp; SLAs</div>
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">{t.title}</div>
         {canEdit && !editing && (
           <button
             type="button"
@@ -124,10 +126,10 @@ export function ProcessKpisControls({
               setError(null);
               setEditing(true);
             }}
-            aria-label={`Edit KPIs for ${processName}`}
+            aria-label={t.editFor(processName)}
             className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Edit
+            {m.common.edit}
           </button>
         )}
       </div>
@@ -136,13 +138,13 @@ export function ProcessKpisControls({
         <div className="mt-2">
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+              <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
                 <tr>
-                  <th className="px-3 py-2">Metric</th>
-                  <th className="px-3 py-2">Target</th>
-                  <th className="px-3 py-2">Frequency</th>
+                  <th className="px-3 py-2">{t.metric}</th>
+                  <th className="px-3 py-2">{t.target}</th>
+                  <th className="px-3 py-2">{t.frequency}</th>
                   <th className="px-3 py-2">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{t.actions}</span>
                   </th>
                 </tr>
               </thead>
@@ -157,7 +159,7 @@ export function ProcessKpisControls({
                       <td className="px-2 py-1.5">
                         <input
                           value={item.metric}
-                          aria-label={`Metric ${i + 1} for ${processName}`}
+                          aria-label={t.metricN(i + 1, processName)}
                           aria-invalid={rowInvalid}
                           onChange={(e) => update(i, { metric: e.target.value })}
                           className={inputClass}
@@ -166,7 +168,7 @@ export function ProcessKpisControls({
                       <td className="px-2 py-1.5">
                         <input
                           value={item.target}
-                          aria-label={`Target ${i + 1} for ${processName}`}
+                          aria-label={t.targetN(i + 1, processName)}
                           aria-invalid={rowInvalid}
                           onChange={(e) => update(i, { target: e.target.value })}
                           className={inputClass}
@@ -175,13 +177,13 @@ export function ProcessKpisControls({
                       <td className="px-2 py-1.5">
                         <input
                           value={item.frequency}
-                          aria-label={`Frequency ${i + 1} for ${processName}`}
+                          aria-label={t.frequencyN(i + 1, processName)}
                           aria-invalid={rowInvalid}
                           onChange={(e) => update(i, { frequency: e.target.value })}
                           className={inputClass}
                         />
                       </td>
-                      <td className="px-2 py-1.5 text-right">
+                      <td className="px-2 py-1.5 text-end">
                         <button
                           type="button"
                           onClick={() => {
@@ -209,7 +211,7 @@ export function ProcessKpisControls({
                 }}
                 className="text-xs font-semibold text-slate-500 hover:text-slate-900"
               >
-                + Add metric
+                {t.addMetric}
               </button>
             </div>
           </div>
@@ -220,7 +222,7 @@ export function ProcessKpisControls({
               disabled={pending}
               className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {pending ? "Saving…" : "Save"}
+              {pending ? m.common.saving : m.common.save}
             </button>
             <button
               type="button"
@@ -228,21 +230,21 @@ export function ProcessKpisControls({
               disabled={pending}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Cancel
+              {m.common.cancel}
             </button>
             {error && <span className="text-xs text-red-600">{error}</span>}
           </div>
         </div>
       ) : kpis.length === 0 ? (
-        <p className="mt-1 text-sm text-slate-500">No metrics yet.</p>
+        <p className="mt-1 text-sm text-slate-500">{t.noMetrics}</p>
       ) : (
         <div className="mt-1 overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+            <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
               <tr>
-                <th className="px-3 py-2">Metric</th>
-                <th className="px-3 py-2">Target</th>
-                <th className="px-3 py-2">Frequency</th>
+                <th className="px-3 py-2">{t.metric}</th>
+                <th className="px-3 py-2">{t.target}</th>
+                <th className="px-3 py-2">{t.frequency}</th>
               </tr>
             </thead>
             <tbody>

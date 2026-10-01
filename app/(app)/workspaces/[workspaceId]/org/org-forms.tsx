@@ -129,7 +129,7 @@ export function RoleRow({ workspaceId, role }: { workspaceId: string; role: Role
       <td className="px-4 py-2 font-medium text-slate-900">{role.name}</td>
       {/* The row itself is what a Viewer came to read, so it stays — only the
           controls in this cell go, leaving the role and its name visible. */}
-      <td className="px-4 py-2 text-right">
+      <td className="px-4 py-2 text-end">
         {!canEdit ? null : confirmingDelete ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-xs text-slate-500">Delete?</span>
@@ -458,7 +458,7 @@ export function PersonRow({
         {allRoles
           .filter((r) => person.roleIds.includes(r.id))
           .map((r) => (
-            <span key={r.id} className="mr-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+            <span key={r.id} className="me-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
               {r.name}
             </span>
           ))}
@@ -473,7 +473,7 @@ export function PersonRow({
         />
       </td>
       {/* Same as RoleRow: the person and their details stay, the controls go. */}
-      <td className="px-4 py-2 text-right">
+      <td className="px-4 py-2 text-end">
         {!canEdit ? null : confirmingDelete ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-xs text-slate-500">Delete?</span>

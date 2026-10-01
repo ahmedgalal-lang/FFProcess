@@ -7,14 +7,8 @@ import { createGoverningPolicy, draftGoverningPolicyWithAi, setGoverningPolicy }
 import { rankTemplates } from "@/lib/domain/policy-templates";
 import type { PolicyT } from "./governance-policy-drawer";
 import { SectionGuide } from "./section-guide";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
-const LIFECYCLE_LABEL: Record<PolicyT["lifecycleStatus"], string> = {
-  DRAFT: "Draft",
-  IN_REVIEW: "In review",
-  APPROVED: "Approved",
-  PUBLISHED: "Published",
-  RETIRED: "Retired",
-};
 const LIFECYCLE_STYLE: Record<PolicyT["lifecycleStatus"], string> = {
   DRAFT: "border-slate-300 bg-slate-50 text-slate-700",
   IN_REVIEW: "border-amber-300 bg-amber-50 text-amber-900",
@@ -53,12 +47,15 @@ export function GoverningPolicyPanel({
   onOpen: (policyId: string) => void;
 }) {
   const canEdit = useCanEdit();
+  const m = useMessages();
+  const t = m.governance.governing;
+  const aspectName = m.governance.aspectNames[aspect.name] ?? aspect.name;
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const ranked = rankTemplates(aspect.name);
+  const ranked = rankTemplates(aspect.name, useLocale());
 
   function run(action: () => Promise<{ ok: true } | { ok: false; error: string; message?: string }>, after?: () => void) {
     setError(null);
@@ -67,8 +64,8 @@ export function GoverningPolicyPanel({
       if (!result.ok) {
         setError(
           result.error === "VALIDATION_ERROR" || result.error === "AI_UNAVAILABLE"
-            ? (result.message ?? "Could not save.")
-            : "Could not save."
+            ? (result.message ?? m.common.couldNotSave)
+            : m.common.couldNotSave
         );
         return;
       }
@@ -85,61 +82,61 @@ export function GoverningPolicyPanel({
     <section id="governing-policy" aria-labelledby={`${idBase}-heading`} className="rounded-xl border border-slate-200 bg-white p-5 text-xs">
       <div className="flex items-center gap-1.5">
         <h2 id={`${idBase}-heading`} className="text-sm font-bold text-slate-900">
-          Governing policy — {aspect.name}
+          {t.title(aspectName)}
         </h2>
         <SectionGuide id="governing" />
       </div>
-      <p className="mb-3 text-slate-500">The one policy that sets the rules for this aspect as a whole.</p>
+      <p className="mb-3 text-slate-500">{t.intro}</p>
 
       {policy ? (
         <div className="flex flex-wrap items-center gap-2" data-governing-policy={policy.title}>
           <button
             type="button"
             onClick={() => onOpen(policy.id)}
-            className="text-left text-sm font-semibold text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:decoration-indigo-600"
+            className="text-start text-sm font-semibold text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:decoration-indigo-600"
           >
             {policy.title}
           </button>
           <span className={`rounded-full border px-2 text-[10px] font-bold ${LIFECYCLE_STYLE[policy.lifecycleStatus]}`}>
-            {LIFECYCLE_LABEL[policy.lifecycleStatus]}
+            {m.governance.lifecycle[policy.lifecycleStatus]}
           </span>
-          {policy.effectiveDate && <span className="text-slate-600">Effective {policy.effectiveDate}</span>}
+          {policy.effectiveDate && <span className="text-slate-600">{t.effective(policy.effectiveDate)}</span>}
           {policy.lifecycleStatus !== "PUBLISHED" && (
             <span className="text-slate-600">
               {policy.lifecycleStatus === "RETIRED"
-                ? "Retired: publish a replacement to govern this aspect again."
-                : "Not yet published: open it to submit, approve and publish."}
+                ? t.retiredHint
+                : t.notPublishedHint}
             </span>
           )}
           {canEdit && (
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="ms-auto flex flex-wrap items-center gap-2">
               {candidates.length > 0 && (
                 <button type="button" onClick={() => setMode(mode === "choose" ? null : "choose")} aria-expanded={mode === "choose"} className={secondaryButton}>
-                  Change
+                  {t.change}
                 </button>
               )}
               {confirmingRemove ? (
                 <>
-                  <span className="text-slate-600">Stop using it as the governing policy? It stays in the library.</span>
+                  <span className="text-slate-600">{t.removeConfirm}</span>
                   <button
                     type="button"
                     disabled={pending}
                     onClick={() => run(() => setGoverningPolicy({ workspaceId, aspectId: aspect.id, policyId: null }))}
                     className="rounded bg-red-600 px-2 py-0.5 font-bold text-white hover:bg-red-700"
                   >
-                    Remove
+                    {m.common.remove}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmingRemove(false)}
                     className="rounded border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-600"
                   >
-                    Keep
+                    {m.common.keep}
                   </button>
                 </>
               ) : (
                 <button type="button" onClick={() => setConfirmingRemove(true)} className="text-[11px] font-semibold text-slate-500 hover:text-red-600">
-                  Remove as governing policy…
+                  {t.removeLink}
                 </button>
               )}
             </div>
@@ -148,12 +145,12 @@ export function GoverningPolicyPanel({
       ) : (
         <div className="flex flex-col gap-2">
           <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 font-medium text-amber-900">
-            {aspect.name} has no governing policy yet.
+            {t.none(aspectName)}
           </p>
           {canEdit && (
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setMode(mode === "template" ? null : "template")} aria-expanded={mode === "template"} className={secondaryButton}>
-                Start from template
+                {t.fromTemplate}
               </button>
               <button
                 type="button"
@@ -161,17 +158,17 @@ export function GoverningPolicyPanel({
                 onClick={() => run(() => draftGoverningPolicyWithAi({ workspaceId, aspectId: aspect.id }))}
                 className={secondaryButton}
               >
-                {pending ? "Working…" : "Draft with AI"}
+                {pending ? m.common.working : t.draftWithAi}
               </button>
               <button type="button" onClick={() => setMode(mode === "write" ? null : "write")} aria-expanded={mode === "write"} className={secondaryButton}>
-                Write one
+                {t.writeOne}
               </button>
               {candidates.length > 0 && (
                 <button type="button" onClick={() => setMode(mode === "choose" ? null : "choose")} aria-expanded={mode === "choose"} className={secondaryButton}>
-                  Choose from library
+                  {t.chooseFromLibrary}
                 </button>
               )}
-              {!hasProfile && <span className="text-slate-600">Drafting with AI needs the governance profile above.</span>}
+              {!hasProfile && <span className="text-slate-600">{t.aiNeedsProfile}</span>}
             </div>
           )}
         </div>
@@ -187,8 +184,8 @@ export function GoverningPolicyPanel({
           className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
         >
           <fieldset className="flex flex-col gap-1">
-            <legend className="mb-1 font-semibold text-slate-700">Choose a template</legend>
-            <div className="grid max-h-72 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
+            <legend className="mb-1 font-semibold text-slate-700">{t.chooseTemplate}</legend>
+            <div className="grid max-h-72 gap-1 overflow-y-auto pe-1 sm:grid-cols-2">
               {ranked.map(({ template, suggested }, i) => (
                 <label
                   key={template.id}
@@ -198,7 +195,7 @@ export function GoverningPolicyPanel({
                   <span className="min-w-0">
                     <span className="font-semibold text-slate-900">{template.title}</span>{" "}
                     {suggested && (
-                      <span className="ml-1.5 rounded-full bg-indigo-600 px-1.5 text-[9px] font-bold text-white">Suggested</span>
+                      <span className="ms-1.5 rounded-full bg-indigo-600 px-1.5 text-[9px] font-bold text-white">{t.suggested}</span>
                     )}
                     <span className="sr-only">. </span>
                     <span className="block text-slate-600">{template.purpose}</span>
@@ -207,9 +204,9 @@ export function GoverningPolicyPanel({
               ))}
             </div>
           </fieldset>
-          <p className="text-slate-600">A template is a starting point to adapt to the client, not legal advice.</p>
+          <p className="text-slate-600">{t.templateNote}</p>
           <button type="submit" disabled={pending} className={`${primaryButton} self-start`}>
-            Use template
+            {t.useTemplate}
           </button>
         </form>
       )}
@@ -231,15 +228,15 @@ export function GoverningPolicyPanel({
           className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
         >
           <label className="flex flex-col gap-1 font-medium text-slate-600">
-            Policy title
-            <input name="title" required defaultValue={`${aspect.name} Policy`} className={`${field} font-normal`} />
+            {t.policyTitle}
+            <input name="title" required defaultValue={t.defaultTitle(aspectName)} className={`${field} font-normal`} />
           </label>
           <label className="flex flex-col gap-1 font-medium text-slate-600">
-            Policy text
+            {t.policyText}
             <textarea name="body" required rows={6} className={`${field} font-normal`} />
           </label>
           <button type="submit" disabled={pending} className={`${primaryButton} self-start`}>
-            Create governing policy
+            {t.create}
           </button>
         </form>
       )}
@@ -254,20 +251,20 @@ export function GoverningPolicyPanel({
           className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
         >
           <label className="flex items-center gap-1.5 font-medium text-slate-600">
-            Policy from the library
+            {t.libraryPolicy}
             <select name="policyId" required defaultValue="" className={`${field} max-w-[22rem] font-normal`}>
               <option value="" disabled>
-                Choose a policy…
+                {t.choosePolicy}
               </option>
               {candidates.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.title} ({LIFECYCLE_LABEL[p.lifecycleStatus]})
+                  {p.title} ({m.governance.lifecycle[p.lifecycleStatus]})
                 </option>
               ))}
             </select>
           </label>
           <button type="submit" disabled={pending} className={primaryButton}>
-            Set as governing policy
+            {t.setAsGoverning}
           </button>
         </form>
       )}

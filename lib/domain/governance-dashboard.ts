@@ -10,8 +10,8 @@ export type DashboardTile = {
   id: string;
   label: string;
   count: number;
-  /** Extra context under the number, e.g. "of 42" or "2 Critical, 1 High". */
-  detail?: string;
+  /** The whole the count is part of, shown as "of 42". */
+  total?: number;
   tone: DashboardTone;
   href: string;
 };
@@ -60,7 +60,7 @@ export function buildDashboardTiles(input: DashboardInput): DashboardTile[] {
       id: "aspects-without-policy",
       label: "Aspects without a published governing policy",
       count: ungoverned,
-      detail: `of ${input.aspects.length}`,
+      total: input.aspects.length,
       tone: tone(ungoverned, "warn"),
       href: "#governance-assessment",
     });
@@ -70,7 +70,7 @@ export function buildDashboardTiles(input: DashboardInput): DashboardTile[] {
     id: "checklist-done",
     label: "Checklist items done",
     count: input.checklist.done,
-    detail: `of ${input.checklist.total}`,
+    total: input.checklist.total,
     tone: "neutral",
     href: "#governance-assessment",
   });

@@ -298,7 +298,7 @@ export function RaciTable({
           {status}
         </span>
 
-        <div className="ml-auto">
+        <div className="ms-auto">
           {!canEdit ? null : addingTitle ? (
             <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2">
               {hiddenRoles.length > 0 && (
@@ -392,9 +392,9 @@ export function RaciTable({
               ? "Each cell cycles Responsible, Accountable, Consulted, Informed, then clear. Use the arrow keys to move between cells. Every Process Map step is already a row — use Skip for a step that doesn't need RACI. Column titles stay visible while you scroll."
               : "Each cell shows the role's involvement in that task: Responsible, Accountable, Consulted or Informed. Column titles stay visible while you scroll."}
           </caption>
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th scope="col" className="sticky left-0 top-0 z-30 bg-slate-50 px-4 py-2">
+              <th scope="col" className="sticky start-0 top-0 z-30 bg-slate-50 px-4 py-2">
                 Task
               </th>
               {roles.map((r) => (
@@ -416,7 +416,7 @@ export function RaciTable({
                 <tr key={row.id} className="border-t border-slate-100">
                   <th
                     scope="row"
-                    className={`sticky left-0 z-10 bg-white px-4 py-2 text-left font-medium text-slate-900 ${flagged ? "shadow-[inset_3px_0_0_0_theme(colors.red.400)]" : ""}`}
+                    className={`sticky start-0 z-10 bg-white px-4 py-2 text-start font-medium text-slate-900 ${flagged ? "shadow-[inset_3px_0_0_0_theme(colors.red.400)]" : ""}`}
                   >
                     {editingRowId === row.id ? (
                       <div className="flex items-center gap-1.5">
@@ -545,7 +545,7 @@ export function RaciTable({
               .filter((r) => r.skipped)
               .map((row) => (
                 <tr key={row.id} className="border-t border-slate-100 opacity-50">
-                  <th scope="row" className="sticky left-0 z-10 bg-white px-4 py-2 text-left font-medium text-slate-500 line-through">
+                  <th scope="row" className="sticky start-0 z-10 bg-white px-4 py-2 text-start font-medium text-slate-500 line-through">
                     <div className="flex items-center gap-2">
                       {row.stepType && (
                         <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-600">

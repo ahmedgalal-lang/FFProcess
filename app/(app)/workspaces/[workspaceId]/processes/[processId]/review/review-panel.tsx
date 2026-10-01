@@ -231,7 +231,7 @@ function FindingCard({
           {AREA_LABEL[finding.area] ?? finding.area}
         </span>
         <span className="text-[10px] font-semibold tracking-wide uppercase opacity-70">{finding.severity} severity</span>
-        <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLES[finding.status]}`}>
+        <span className={`ms-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLES[finding.status]}`}>
           {STATUS_LABEL[finding.status]}
         </span>
       </div>
@@ -335,7 +335,7 @@ function FindingCard({
                   type="button"
                   disabled={pending || !selectedStepId}
                   onClick={() => onIntegrate(selectedStepId, "MERGED")}
-                  className="flex-1 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-left text-xs hover:border-indigo-400 disabled:opacity-40"
+                  className="flex-1 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-start text-xs hover:border-indigo-400 disabled:opacity-40"
                 >
                   <div className="font-bold text-indigo-700">Merge into step</div>
                   <div className="mt-0.5 text-slate-500">Keeps the step as-is and appends this as a note. Nothing is deleted.</div>
@@ -344,7 +344,7 @@ function FindingCard({
                   type="button"
                   disabled={pending || !selectedStepId}
                   onClick={() => onIntegrate(selectedStepId, "REPLACED")}
-                  className="flex-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-left text-xs hover:border-red-400 disabled:opacity-40"
+                  className="flex-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-start text-xs hover:border-red-400 disabled:opacity-40"
                 >
                   <div className="font-bold text-red-700">Replace step</div>
                   <div className="mt-0.5 text-slate-500">Overwrites the step&apos;s label with this fix. The old label is deleted, not kept.</div>

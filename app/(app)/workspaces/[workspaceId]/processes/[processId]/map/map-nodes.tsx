@@ -216,7 +216,7 @@ export function BranchEntryNode({ data }: NodeProps & { data: BranchEntryData })
 /** Tinted column the branch entry sits in, marking it as not part of this process. */
 export function BranchGutterNode({ data }: NodeProps & { data: { label: string } }) {
   return (
-    <div className="h-full w-full border-r-[1.5px] border-dashed border-amber-300 bg-amber-50/45 pl-3 pt-2">
+    <div className="h-full w-full border-e-[1.5px] border-dashed border-amber-300 bg-amber-50/45 ps-3 pt-2">
       <span className="text-[9px] font-bold uppercase tracking-wide text-amber-700/80">{data.label}</span>
     </div>
   );
@@ -232,7 +232,7 @@ export function LaneNode({ data }: NodeProps & { data: LaneNodeData }) {
   // own white background while letting edges show through everywhere.
   return (
     <div
-      className={`relative flex h-full items-start border-b border-dashed border-slate-200 pl-4 pt-2.5 ${
+      className={`relative flex h-full items-start border-b border-dashed border-slate-200 ps-4 pt-2.5 ${
         data.tinted ? "bg-slate-50/70" : "bg-white/70"
       }`}
     >
@@ -241,7 +241,7 @@ export function LaneNode({ data }: NodeProps & { data: LaneNodeData }) {
         // used to collide with the row's first step — on a real export a
         // decision diamond sat squarely on top of a role name.
         <span
-          className="absolute right-full flex items-center justify-end pr-3 text-right text-[10px] font-bold uppercase leading-tight tracking-wide text-slate-600"
+          className="absolute end-full flex items-center justify-end pe-3 text-end text-[10px] font-bold uppercase leading-tight tracking-wide text-slate-600"
           style={{ width: (data.gutter ?? 0) - 80, top: 0, bottom: 0 }}
         >
           {data.label}
