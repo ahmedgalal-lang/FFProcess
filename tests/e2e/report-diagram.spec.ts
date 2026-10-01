@@ -121,7 +121,6 @@ test("Export Report's map shows a wide process whole, clipping nothing", async (
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
   await page.getByRole("checkbox", { name: /WIDE100/ }).check();
-  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await page.waitForSelector(".printed-map");
@@ -166,7 +165,6 @@ test("Export Report's map keeps a step that has no owner, and says so on the car
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
   await page.getByRole("checkbox", { name: /NOLANE1/ }).check();
-  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await page.waitForSelector(".printed-map");
@@ -191,7 +189,6 @@ test("Export Report's map carries the same documented content the card always ha
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
   await page.getByRole("checkbox", { name: /PUR101/ }).check();
-  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
   await page.waitForSelector(".printed-map");
@@ -289,7 +286,6 @@ test("Export Report's Helicopter View scales a wide chain to fit instead of scro
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
   await page.getByRole("checkbox", { name: /RAIL100/ }).check();
   await page.getByRole("checkbox", { name: /RAIL101/ }).check();
-  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
@@ -343,7 +339,6 @@ test("Export Report's Helicopter View fills the page width rather than sitting s
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
   await page.getByRole("checkbox", { name: /RAIL101/ }).check();
-  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
@@ -416,7 +411,6 @@ test("Export Report's Helicopter View wraps a long rail instead of shrinking it"
   const count = await checkboxes.count();
   for (let i = 0; i < count; i++) await checkboxes.nth(i).uncheck();
   await page.getByRole("checkbox", { name: /RAIL100/ }).check();
-  await page.getByRole("checkbox", { name: "Select all processes" }).check();
   await page.getByRole("button", { name: /Preview report/i }).click();
   await page.waitForURL("**/reports/**");
 
