@@ -120,5 +120,6 @@ The AI will sometimes choose the wrong term, for example a client's own name for
 - The AI used is the product's existing AI integration. Translation is a professional, formal Modern Standard Arabic rendering. Consultants are expected to review it, which is why corrections are supported.
 - The first Arabic export of a large workspace may take noticeably longer while entries are translated. Later exports reuse the saved translations.
 - Correcting translations needs the same editor access as editing the workspace's content. Reading them needs only viewer access.
+- Asking the AI for missing translations also needs editor access, because it writes to the workspace and costs money. A viewer's Arabic export uses the saved translations and shows the untranslated notice for the rest.
 - Activity-log history and languages other than Arabic are out of scope.
 - The built-in wording already translated for the Arabic interface (spec 031), such as aspect names, lifecycle states and policy templates, is reused rather than sent to the AI.

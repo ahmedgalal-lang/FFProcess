@@ -7,6 +7,7 @@ import { buildRaciWorkbook } from "@/lib/export/xlsx";
 import { validateRaciMatrix } from "@/lib/domain/raci-validation";
 import { buildRaciTableRows, computeVisibleRoleIds } from "@/lib/domain/raci-table";
 import { auth } from "@/lib/auth/config";
+import { exportLanguage } from "@/lib/export/export-language";
 
 export async function GET(
   request: NextRequest,
@@ -92,7 +93,12 @@ export async function GET(
       assignments: Object.entries(r.assignments).map(([roleId, code]) => ({ roleId, code })),
     }))
   ).length;
-  const generatedFor = session?.user?.email ?? "Unknown";
+  // The file's language and its entries' saved translations (spec 032).
+  const lang = await exportLanguage(request, process.workspaceId);
+  const tr = await lang.translator([process.name, ...activitiesForExport.map((a) => a.name), ...visibleRoles.map((r) => r.name)]);
+  const translatedActivities = activitiesForExport.map((a) => ({ ...a, name: tr(a.name) }));
+  const translatedRoles = visibleRoles.map((r) => ({ ...r, name: tr(r.name) }));
+  const generatedFor = session?.user?.email ?? lang.t.files.unknown;
 
   const filenameBase = `${process.code}-raci-matrix`;
 
@@ -100,10 +106,11 @@ export async function GET(
     const buffer = await buildRaciWorkbook({
       workspaceName: workspace?.name ?? "",
       processCode: process.code,
-      processName: process.name,
-      roles: visibleRoles,
-      activities: activitiesForExport,
+      processName: tr(process.name),
+      roles: translatedRoles,
+      activities: translatedActivities,
       status,
+      locale: lang.locale,
     });
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
@@ -117,12 +124,15 @@ export async function GET(
     RaciPdfDocument({
       workspaceName: workspace?.name ?? "",
       processCode: process.code,
-      processName: process.name,
-      roles: visibleRoles,
-      activities: activitiesForExport,
+      processName: tr(process.name),
+      roles: translatedRoles,
+      activities: translatedActivities,
       status,
       issueCount,
       generatedFor,
+      locale: lang.locale,
+      t: lang.t,
+      today: lang.today,
     })
   );
   return new NextResponse(new Uint8Array(buffer), {

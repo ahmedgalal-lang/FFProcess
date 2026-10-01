@@ -1,4 +1,8 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { pdfDirection } from "./fonts";
+import type { Locale } from "@/lib/i18n/locale";
+import { messagesFor } from "@/lib/i18n/messages";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 9, fontFamily: "Helvetica" },
@@ -48,6 +52,11 @@ export type ProcessMapPdfProps = {
     links: { code: string; name: string }[];
   }[];
   generatedFor: string;
+  /** The file's language (spec 032); English when not given. */
+  locale?: Locale;
+  t?: ReportMessages;
+  /** Today, as printed in the header. */
+  today?: string;
 };
 
 export function ProcessMapPdfDocument({
@@ -56,32 +65,37 @@ export function ProcessMapPdfDocument({
   processName,
   steps,
   generatedFor,
+  locale = "en",
+  t = messagesFor(locale).report,
+  today = new Date().toLocaleDateString(),
 }: ProcessMapPdfProps) {
+  const dir = pdfDirection(locale);
+  const f = t.files;
   return (
-    <Document title={`${processCode} Process Map`}>
-      <Page size="A4" style={styles.page}>
+    <Document title={`${processCode} ${f.processMap}`}>
+      <Page size="A4" style={[styles.page, dir.page]}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>{workspaceName} · {processCode}</Text>
-          <Text style={styles.title}>{processName} — Process Map</Text>
-          <Text style={styles.meta}>
-            Generated for {generatedFor} on {new Date().toLocaleDateString()} · {steps.length} step(s)
+          <Text style={[styles.eyebrow, dir.text]}>{workspaceName} · {processCode}</Text>
+          <Text style={[styles.title, dir.text]}>{processName} — {f.processMap}</Text>
+          <Text style={[styles.meta, dir.text]}>
+            {f.generatedFor(generatedFor, today)} · {f.steps(steps.length)}
           </Text>
         </View>
 
         {steps.map((s, i) => (
-          <View key={s.id} style={styles.step} wrap={false}>
+          <View key={s.id} style={[styles.step, dir.row]} wrap={false}>
             <Text style={styles.index}>{i + 1}</Text>
             <View style={styles.stepBody}>
-              <View style={styles.stepHead}>
-                <Text style={styles.typeBadge}>{s.type}</Text>
-                <Text style={styles.stepName}>{s.label}</Text>
-                {s.roleName && <Text style={styles.role}>· {s.roleName}</Text>}
+              <View style={[styles.stepHead, dir.row]}>
+                <Text style={styles.typeBadge}>{f.stepTypes[s.type] ?? s.type}</Text>
+                <Text style={[styles.stepName, dir.text]}>{s.label}</Text>
+                {s.roleName && <Text style={[styles.role, dir.text]}>· {s.roleName}</Text>}
               </View>
-              <Text style={styles.stepMeta}>
-                {s.predecessorLabel ? `Connects from: ${s.predecessorLabel}` : "Entry point"}
+              <Text style={[styles.stepMeta, dir.text]}>
+                {s.predecessorLabel ? f.connectsFrom(s.predecessorLabel) : f.entryPoint}
               </Text>
               {s.links.length > 0 && (
-                <Text style={styles.links}>
+                <Text style={[styles.links, dir.text]}>
                   🔗 {s.links.map((l) => `${l.code} — ${l.name}`).join("  ·  ")}
                 </Text>
               )}
@@ -89,8 +103,8 @@ export function ProcessMapPdfDocument({
           </View>
         ))}
 
-        <Text style={styles.footer} fixed>
-          FFProcess · {workspaceName} · {processCode} · Diagram export available as PNG from the app
+        <Text style={[styles.footer, dir.centred]} fixed>
+          FFProcess · {workspaceName} · {processCode} · {f.pngNote}
         </Text>
       </Page>
     </Document>

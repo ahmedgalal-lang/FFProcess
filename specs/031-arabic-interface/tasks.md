@@ -13,7 +13,7 @@
 - [ ] T008 Workspaces, dashboard, processes list and forms, process map, steps, RACI, authority, review, org, org chart, value chain, helicopter, members, firm settings, account, login, invitations, export picker.
 
 ## Stage 3
-- [ ] T009 Printed report and PPTX in the active language and direction.
-- [ ] T010 Spreadsheet exports.
+- [x] T009 Printed report and PPTX in the active language and direction — delivered by spec 032, with the entries translated too.
+- [x] T010 Spreadsheet exports — delivered by spec 032 (and the per-process PDFs).
 - [ ] T011 Server action messages localized.
 - [ ] T012 Full suites in both languages; blast-radius check.

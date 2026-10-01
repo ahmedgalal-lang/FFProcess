@@ -18,13 +18,10 @@ import {
   isSectionEmpty,
   type ResolvedArrangement,
 } from "@/lib/domain/report-arrangement";
-import {
-  formatReportDate,
-  POLICY_LIFECYCLE_LABEL,
-  RISK_STATUS_LABEL,
-  titleCase,
-  type GovernanceReport,
-} from "@/lib/domain/governance-report";
+import { formatReportDate, type GovernanceReport } from "@/lib/domain/governance-report";
+import { LocaleProvider, useLocale, useMessages } from "@/lib/i18n/client";
+import { dirFor, type Locale } from "@/lib/i18n/locale";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 
 type PersonT = { id: string; name: string; managerId: string | null; roleNames: string[] };
 
@@ -37,10 +34,10 @@ type PersonT = { id: string; name: string; managerId: string | null; roleNames: 
  * cover's page-height frame) is in px or mm and stays where it is.
  */
 const DENSITY_OPTIONS = [
-  { id: "tight", label: "Tight", scale: 0.85 },
-  { id: "compact", label: "Compact", scale: 0.92 },
-  { id: "default", label: "Default", scale: 1 },
-  { id: "roomy", label: "Roomy", scale: 1.08 },
+  { id: "tight", scale: 0.85 },
+  { id: "compact", scale: 0.92 },
+  { id: "default", scale: 1 },
+  { id: "roomy", scale: 1.08 },
 ] as const;
 
 type DensityId = (typeof DENSITY_OPTIONS)[number]["id"];
@@ -50,10 +47,7 @@ type DensityId = (typeof DENSITY_OPTIONS)[number]["id"];
  * legible at any number of roles, where Roles degrades as roles are added — so
  * it is the safer thing to give a client nobody has chosen for.
  */
-const MAP_LAYOUT_OPTIONS = [
-  { id: "FLOW", label: "Flow", hint: "The process runs down the page, one step per row" },
-  { id: "ROLES", label: "Roles", hint: "A column per role, so hand-offs read as sideways moves" },
-] as const;
+const MAP_LAYOUT_OPTIONS = ["FLOW", "ROLES"] as const;
 
 // The cover's one deliberate serif moment — self-hosted via next/font so the
 // PDF/print render never depends on a live network fetch for it.
@@ -158,7 +152,25 @@ export type ValueChainColumn = {
   }[];
 };
 
-export function ExportPreview({
+type ExportPreviewProps = Parameters<typeof ExportPreviewBody>[0] & {
+  /** The report's language (spec 032), independent of the interface's. */
+  locale: Locale;
+};
+
+/**
+ * The report in its own language: a consultant working in English can still
+ * produce an Arabic report, so the report's wording follows `locale`, not the
+ * interface cookie.
+ */
+export function ExportPreview({ locale, ...props }: ExportPreviewProps) {
+  return (
+    <LocaleProvider locale={locale}>
+      <ExportPreviewBody {...props} />
+    </LocaleProvider>
+  );
+}
+
+function ExportPreviewBody({
   workspaceId,
   companyName,
   firmName,
@@ -177,6 +189,8 @@ export function ExportPreview({
   arrangement,
   mapLayout: initialMapLayout,
   canEdit,
+  untranslated = 0,
+  translationFailure = null,
 }: {
   workspaceId: string;
   companyName: string;
@@ -198,9 +212,14 @@ export function ExportPreview({
   mapLayout: "FLOW" | "ROLES";
   /** Whether this viewer may change the client's settings — the layout control is theirs alone. */
   canEdit: boolean;
+  /** Entries left as typed in a translated report, and why (spec 032). */
+  untranslated?: number;
+  translationFailure?: "NOT_CONFIGURED" | "REQUEST_FAILED" | null;
 }) {
+  const locale = useLocale();
+  const t = useMessages().report;
   const allGaps = processes.flatMap((p) => p.gaps.map((gap) => ({ process: p.name, gap })));
-  const pptxHref = `/api/export/report/${workspaceId}?${processes.map((p) => `ids=${p.id}`).join("&")}`;
+  const pptxHref = `/api/export/report/${workspaceId}?${processes.map((p) => `ids=${p.id}`).join("&")}&lang=${locale}`;
 
   const [density, setDensity] = useState<DensityId>("default");
 
@@ -297,6 +316,8 @@ export function ExportPreview({
   return (
     <div
       className="report-root min-h-screen"
+      dir={dirFor(locale)}
+      lang={locale}
       style={
         {
           "--accent": accentPrimary,
@@ -427,11 +448,11 @@ export function ExportPreview({
           href={`/workspaces/${workspaceId}/export`}
           className="text-[12px] font-semibold text-slate-500 hover:text-slate-900"
         >
-          ← Back to picker
+          {t.toolbar.back}
         </Link>
         <div className="flex-1" />
         <div className="flex items-center gap-[8px]">
-          <span className="text-[12px] font-semibold text-slate-500">Spacing</span>
+          <span className="text-[12px] font-semibold text-slate-500">{t.toolbar.spacing}</span>
           <div className="flex overflow-hidden rounded-[8px] border border-slate-300">
             {DENSITY_OPTIONS.map((option) => (
               <button
@@ -445,29 +466,29 @@ export function ExportPreview({
                     : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                {option.label}
+                {t.toolbar.densities[option.id]}
               </button>
             ))}
           </div>
         </div>
         {canEdit && (
           <div className="flex items-center gap-[8px]">
-            <span className="text-[12px] font-semibold text-slate-500">Map layout</span>
+            <span className="text-[12px] font-semibold text-slate-500">{t.toolbar.mapLayout}</span>
             <div className="flex overflow-hidden rounded-[8px] border border-slate-300">
               {MAP_LAYOUT_OPTIONS.map((option) => (
                 <button
-                  key={option.id}
+                  key={option}
                   type="button"
-                  onClick={() => chooseMapLayout(option.id)}
-                  aria-pressed={mapLayout === option.id}
-                  title={option.hint}
+                  onClick={() => chooseMapLayout(option)}
+                  aria-pressed={mapLayout === option}
+                  title={t.toolbar.layouts[option]!.hint}
                   className={`border-slate-300 px-[10px] py-[7px] text-[12px] font-semibold not-first:border-s ${
-                    mapLayout === option.id
+                    mapLayout === option
                       ? "bg-slate-900 text-white"
                       : "bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {option.label}
+                  {t.toolbar.layouts[option]!.label}
                 </button>
               ))}
             </div>
@@ -477,27 +498,31 @@ export function ExportPreview({
           href={pptxHref}
           className="rounded-[8px] border border-slate-300 bg-white px-[16px] py-[8px] text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
         >
-          Download PPTX
+          {t.toolbar.pptx}
         </a>
         <button
           type="button"
           onClick={() => window.print()}
           className="rounded-[8px] bg-slate-900 px-[16px] py-[8px] text-[13px] font-semibold text-white hover:bg-slate-800"
         >
-          Print / Save as PDF
+          {t.toolbar.print}
         </button>
       </div>
 
+      {untranslated > 0 && (
+        <div role="status" className="no-print report-notice rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="text-sm font-semibold text-amber-900">{t.notices.untranslated(untranslated)}</div>
+          <p className="mt-1 text-xs text-amber-800">
+            {translationFailure && <>{t.failures[translationFailure]} </>}
+            {t.notices.untranslatedHint}
+          </p>
+        </div>
+      )}
+
       {unphasedActivityCount > 0 && (
         <div className="no-print report-notice rounded-xl border border-slate-300 bg-slate-50 px-4 py-3">
-          <div className="text-sm font-semibold text-slate-800">
-            {unphasedActivityCount} {unphasedActivityCount === 1 ? "activity is" : "activities are"} not in a phase
-            yet
-          </div>
-          <p className="mt-1 text-xs text-slate-600">
-            They are documented in the process sections as usual, but are left off the Value Chain page — put them
-            in a phase on the Value Chain board to include them.
-          </p>
+          <div className="text-sm font-semibold text-slate-800">{t.notices.unphased(unphasedActivityCount)}</div>
+          <p className="mt-1 text-xs text-slate-600">{t.notices.unphasedBody}</p>
         </div>
       )}
 
@@ -508,7 +533,7 @@ export function ExportPreview({
                 which stopped being true when an included section started
                 printing marked instead of vanishing — the banner would have
                 sat directly above the very section it claimed was missing. */}
-            ⚠ Some sections have nothing recorded yet and print as empty
+            {t.notices.gapsTitle}
           </div>
           <ul className="mt-1.5 list-disc space-y-0.5 ps-5 text-xs text-amber-900">
             {allGaps.map(({ process, gap }, i) => (
@@ -517,10 +542,7 @@ export function ExportPreview({
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-xs text-amber-800">
-            Fill these in on each process&rsquo;s Process Map page, or untick them on the Export Report
-            page to leave them out of this pack.
-          </p>
+          <p className="mt-1.5 text-xs text-amber-800">{t.notices.gapsBody}</p>
         </div>
       )}
 
@@ -533,7 +555,7 @@ export function ExportPreview({
             className="print-break-marker no-print absolute -start-[14mm] -end-[14mm] border-t border-dashed border-slate-400 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500"
             style={{ top: offset }}
           >
-            Page break
+            {t.notices.pageBreak}
           </div>
         ))}
         {/* The pack's front and back matter, in the order this client arranged
@@ -558,8 +580,8 @@ export function ExportPreview({
             case "org":
               return (
                 <section key={section.id} className="print-page">
-                  <h2 className="text-xl font-semibold text-slate-900">Org Structure</h2>
-                  <p className="mt-1 mb-4 text-sm text-slate-500">Reporting lines across {companyName}.</p>
+                  <h2 className="text-xl font-semibold text-slate-900">{t.sections.org}</h2>
+                  <p className="mt-1 mb-4 text-sm text-slate-500">{t.org.intro(companyName)}</p>
                   {people.length > 0 ? <StaticOrgChart people={people} /> : <NothingRecorded />}
                 </section>
               );
@@ -567,13 +589,13 @@ export function ExportPreview({
               return railProcesses.length > 0 ? (
                 <HelicopterViewPage key={section.id} processes={railProcesses} companyName={companyName} />
               ) : (
-                <EmptyPackSection key={section.id} title="Helicopter View" />
+                <EmptyPackSection key={section.id} title={t.sections.heli!} />
               );
             case "chain":
               return valueChain.length > 0 ? (
                 <ValueChainPage key={section.id} columns={valueChain} companyName={companyName} />
               ) : (
-                <EmptyPackSection key={section.id} title={`${companyName} Value Chain`} />
+                <EmptyPackSection key={section.id} title={t.chain.title(companyName)} />
               );
             case "governance":
               return <GovernancePackSection key={section.id} governance={governance} companyName={companyName} />;
@@ -583,7 +605,7 @@ export function ExportPreview({
                   {processes.length > 0 ? (
                     <ProcessIndexPage processes={processes} />
                   ) : (
-                    <EmptyPackSection title="Processes in This Report" />
+                    <EmptyPackSection title={t.sections.index!} />
                   )}
                   {processes.map((process) => (
                     <ProcessReportSection
@@ -630,6 +652,9 @@ function CoverPage({
   logoDataUrl: string | null;
   processes: ExportProcessData[];
 }) {
+  const t = useMessages().report;
+  // The cover serif has no Arabic letters; an Arabic cover uses the Arabic face.
+  const serif = useLocale() === "ar" ? "" : coverSerif.className;
   const docId = deriveDocId(companyName);
   const effectiveDate = new Date().toISOString().slice(0, 10);
   const previewCount = 6;
@@ -654,13 +679,13 @@ function CoverPage({
 
         <div className="mt-auto max-w-[78%]">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-secondary)]">
-            Business Process Documentation &amp; Procedure Standard
+            {t.cover.standard}
           </div>
-          <h1 className={`${coverSerif.className} mt-3 text-5xl leading-[1.05] font-semibold text-slate-900`}>
+          <h1 className={`${serif} mt-3 text-5xl leading-[1.05] font-semibold text-slate-900`}>
             {companyName}
           </h1>
           {(description || industry) && (
-            <p className={`${coverSerif.className} mt-3 max-w-2xl text-[15px] leading-relaxed whitespace-pre-line text-slate-600 italic`}>
+            <p className={`${serif} mt-3 max-w-2xl text-[15px] leading-relaxed whitespace-pre-line text-slate-600 italic`}>
               {description ?? industry}
             </p>
           )}
@@ -668,22 +693,22 @@ function CoverPage({
 
         <div className="mt-[6%] grid grid-cols-2 gap-[6%] border-t border-slate-900/15 pt-[4%]">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1 text-[11.5px]">
-            <dt className="text-slate-500">Document ID</dt>
+            <dt className="text-slate-500">{t.cover.documentId}</dt>
             <dd className="font-semibold text-slate-900">{docId}</dd>
-            <dt className="text-slate-500">Version</dt>
+            <dt className="text-slate-500">{t.cover.version}</dt>
             <dd className="font-semibold text-slate-900">1.0</dd>
-            <dt className="text-slate-500">Effective Date</dt>
+            <dt className="text-slate-500">{t.cover.effectiveDate}</dt>
             <dd className="font-semibold text-slate-900">{effectiveDate}</dd>
-            <dt className="text-slate-500">Classification</dt>
-            <dd className="font-semibold text-slate-900">Internal — Confidential</dd>
-            <dt className="text-slate-500">Prepared By</dt>
+            <dt className="text-slate-500">{t.cover.classification}</dt>
+            <dd className="font-semibold text-slate-900">{t.cover.classificationValue}</dd>
+            <dt className="text-slate-500">{t.cover.preparedBy}</dt>
             <dd className="font-semibold text-slate-900">{firmName}</dd>
           </dl>
 
           {previewed.length > 0 && (
             <div>
               <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Contents — {processes.length} process{processes.length === 1 ? "" : "es"}
+                {t.cover.contents(processes.length)}
               </div>
               {previewed.map((p) => (
                 <div
@@ -693,13 +718,13 @@ function CoverPage({
                   <span className="font-mono text-[10px] font-semibold text-[var(--accent-secondary)]">{p.code}</span>
                   <span className="flex-1 truncate">{p.name}</span>
                   <span className="flex-none text-[10.5px] text-slate-500">
-                    {p.parentName ? `under ${p.parentCode}` : "top-level"}
+                    {p.parentName && p.parentCode ? t.cover.under(p.parentCode) : t.cover.topLevel}
                   </span>
                 </div>
               ))}
               {processes.length > previewCount && (
                 <div className="mt-1 text-[10.5px] text-slate-500">
-                  +{processes.length - previewCount} more — see the full index
+                  {t.cover.more(processes.length - previewCount)}
                 </div>
               )}
             </div>
@@ -736,16 +761,15 @@ function BrandBanner({ eyebrow, children }: { eyebrow?: React.ReactNode; childre
  * Centred and text-only — it carries no data, so nothing here can go stale.
  */
 function ClosingPage() {
+  const t = useMessages().report;
   return (
     <section className="print-page print-keep mt-6">
       <div
         className="rounded-xl px-6 py-10 text-center text-[var(--accent-ink)]"
         style={{ backgroundImage: "linear-gradient(120deg, var(--accent), var(--accent-banner-to))" }}
       >
-        <p className="text-xl font-bold">Thank you</p>
-        <p className="mx-auto mt-2 max-w-xl text-sm opacity-90">
-          Please refer back to the process team for any inputs or comments needed.
-        </p>
+        <p className="text-xl font-bold">{t.closing.thanks}</p>
+        <p className="mx-auto mt-2 max-w-xl text-sm opacity-90">{t.closing.body}</p>
       </div>
     </section>
   );
@@ -775,6 +799,7 @@ function ProcessReportSection({
   arrangement: ResolvedArrangement;
   mapLayout: "FLOW" | "ROLES";
 }) {
+  const t = useMessages().report;
   const matrixRoleNameById = new Map(process.matrixRoles.map((r) => [r.id, r.name]));
 
   // RACI's Accountable and the Authority matrix's approver both live on the
@@ -817,11 +842,7 @@ function ProcessReportSection({
           eyebrow={
             <>
               <span className="rounded bg-black/15 px-1.5 py-0.5 font-mono text-[10px] font-bold">{process.code}</span>
-              {process.parentName && (
-                <span>
-                  under {process.parentCode} · {process.parentName}
-                </span>
-              )}
+              {process.parentName && process.parentCode && <span>{t.process.under(process.parentCode, process.parentName)}</span>}
             </>
           }
         >
@@ -829,12 +850,12 @@ function ProcessReportSection({
           {process.description && <p className="mt-1 text-sm opacity-85">{process.description}</p>}
         </BrandBanner>
         <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-1.5 border-b-2 border-slate-100 pb-3 text-xs sm:grid-cols-3">
-          <MetaField label="Document ID" value={`${process.code}-${new Date().getFullYear()}`} />
-          <MetaField label="Version" value="1.0" />
-          <MetaField label="Effective Date" value={new Date().toISOString().slice(0, 10)} />
-          <MetaField label="Review Cycle" value="Annual" />
-          <MetaField label="Process Owner" value={process.processOwnerName ?? "—"} />
-          <MetaField label="Process Code" value={process.code} mono />
+          <MetaField label={t.cover.documentId} value={`${process.code}-${new Date().getFullYear()}`} />
+          <MetaField label={t.cover.version} value="1.0" />
+          <MetaField label={t.cover.effectiveDate} value={new Date().toISOString().slice(0, 10)} />
+          <MetaField label={t.process.reviewCycle} value={t.process.annual} />
+          <MetaField label={t.process.owner} value={process.processOwnerName ?? "—"} />
+          <MetaField label={t.process.code} value={process.code} mono />
         </dl>
       </div>
 
@@ -851,7 +872,7 @@ function ProcessReportSection({
         const empty = isSectionEmpty(section, process);
         return (
           <Fragment key={section.id}>
-            <SectionHeading num={section.number ?? ""} title={section.title} />
+            <SectionHeading num={section.number ?? ""} title={t.sections[section.id] ?? section.title} />
             {empty ? (
               <NothingRecorded />
             ) : (
@@ -861,12 +882,13 @@ function ProcessReportSection({
                 // a full section printed its heading over nothing.
                 isBlockEmpty(block.id, process) ? (
                   <Fragment key={block.id}>
-                    <SubHeading>{block.title}</SubHeading>
+                    <SubHeading>{t.blocks[block.id] ?? block.title}</SubHeading>
                     <NothingRecorded />
                   </Fragment>
                 ) : (
                 <Fragment key={block.id}>
                   {renderProcessBlock(block.id, {
+                    t,
                     process,
                     workspaceId,
                     documentedSteps,
@@ -905,23 +927,21 @@ function RaciAuthorityTable({
   process: ExportProcessData;
   withRules?: boolean;
 }) {
+  const t = useMessages().report;
   return (
     <>
-      <p className="text-sm text-slate-500">
-        Each task&rsquo;s responsibility assignment{withRules === false ? "" : " and its approval limits"}, combined
-        into one table.
-      </p>
+      <p className="text-sm text-slate-500">{t.process.raciIntro(withRules !== false)}</p>
       <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th className="px-3 py-2">Process Step</th>
+              <th className="px-3 py-2">{t.process.processStep}</th>
               {process.matrixRoles.map((r) => (
                 <th key={r.id} className="px-3 py-2 text-center">
                   {r.name}
                 </th>
               ))}
-              {withRules !== false && <th className="px-3 py-2">Authority rules</th>}
+              {withRules !== false && <th className="px-3 py-2">{t.process.authorityRules}</th>}
             </tr>
           </thead>
           <tbody>
@@ -943,7 +963,7 @@ function RaciAuthorityTable({
                 {withRules !== false && (
                   <td className="px-3 py-2 text-xs text-slate-600">
                     {row.ruleSentences.length === 0 ? (
-                      <span className="text-slate-500">No authority rules.</span>
+                      <span className="text-slate-500">{t.process.noRules}</span>
                     ) : (
                       /* Bulleted with a hanging indent, not just stacked:
                          a rule long enough to wrap was indistinguishable
@@ -992,18 +1012,18 @@ const RISK_LEVEL_TONE: Record<string, string> = {
 };
 
 function GovernancePackSection({ governance, companyName }: { governance: GovernanceReport; companyName: string }) {
+  const t = useMessages().report;
+  const g = t.governance;
+  const locale = useLocale();
   return (
     <section className="print-page">
       <TwoToneRule />
-      <h2 className="text-xl font-semibold text-slate-900">Governance &amp; Risk</h2>
-      <p className="mt-1 mb-2 text-sm text-slate-500">
-        The governance programme across {companyName} — the assessment, the Risk Register and the Policy Library,
-        which apply to the whole organisation rather than to any one process.
-      </p>
+      <h2 className="text-xl font-semibold text-slate-900">{t.sections.governance}</h2>
+      <p className="mt-1 mb-2 text-sm text-slate-500">{g.intro(companyName)}</p>
 
-      <h3 className="mt-4 text-base font-semibold text-slate-900">Governance Assessment</h3>
+      <h3 className="mt-4 text-base font-semibold text-slate-900">{g.assessment}</h3>
       {governance.summaries.length === 0 ? (
-        <GovernanceEmpty>No governance assessment has been written yet.</GovernanceEmpty>
+        <GovernanceEmpty>{g.noAssessment}</GovernanceEmpty>
       ) : (
         governance.summaries.map((s) => (
           <div key={s.aspectName} className="print-keep">
@@ -1013,20 +1033,20 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
         ))
       )}
 
-      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Risk Register</h3>
+      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">{g.riskRegister}</h3>
       {governance.risks.length === 0 ? (
-        <GovernanceEmpty>No risks have been recorded on the Risk Register yet.</GovernanceEmpty>
+        <GovernanceEmpty>{g.noRisks}</GovernanceEmpty>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
               <tr>
-                <th className="px-3 py-2">Risk</th>
-                <th className="px-3 py-2">Likelihood</th>
-                <th className="px-3 py-2">Impact</th>
-                <th className="px-3 py-2">Level</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Owner</th>
+                <th className="px-3 py-2">{g.risk}</th>
+                <th className="px-3 py-2">{g.likelihood}</th>
+                <th className="px-3 py-2">{g.impact}</th>
+                <th className="px-3 py-2">{g.level}</th>
+                <th className="px-3 py-2">{g.status}</th>
+                <th className="px-3 py-2">{g.owner}</th>
               </tr>
             </thead>
             <tbody>
@@ -1036,15 +1056,15 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
                     <div className="font-semibold text-slate-900">{risk.title}</div>
                     <div className="text-xs text-slate-600">{risk.description}</div>
                   </td>
-                  <td className="px-3 py-2 text-slate-800">{titleCase(risk.likelihood)}</td>
-                  <td className="px-3 py-2 text-slate-800">{titleCase(risk.impact)}</td>
+                  <td className="px-3 py-2 text-slate-800">{t.levels[risk.likelihood]}</td>
+                  <td className="px-3 py-2 text-slate-800">{t.levels[risk.impact]}</td>
                   <td className="px-3 py-2">
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${RISK_LEVEL_TONE[risk.level]}`}>
-                      {titleCase(risk.level)}
+                      {t.levels[risk.level]}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-slate-800">{RISK_STATUS_LABEL[risk.status]}</td>
-                  <td className="px-3 py-2 text-slate-800">{risk.owner ?? "Unassigned"}</td>
+                  <td className="px-3 py-2 text-slate-800">{t.riskStatuses[risk.status]}</td>
+                  <td className="px-3 py-2 text-slate-800">{risk.owner ?? g.unassigned}</td>
                 </tr>
               ))}
             </tbody>
@@ -1052,15 +1072,15 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
         </div>
       )}
 
-      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Governing Policies</h3>
+      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">{g.governingPolicies}</h3>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th className="px-3 py-2">Aspect</th>
-              <th className="px-3 py-2">Governing policy</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Effective</th>
+              <th className="px-3 py-2">{g.aspect}</th>
+              <th className="px-3 py-2">{g.governingPolicy}</th>
+              <th className="px-3 py-2">{g.status}</th>
+              <th className="px-3 py-2">{g.effective}</th>
             </tr>
           </thead>
           <tbody>
@@ -1070,14 +1090,14 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
                 {row.policy ? (
                   <>
                     <td className="px-3 py-2 text-slate-800">{row.policy.title}</td>
-                    <td className="px-3 py-2 text-slate-800">{POLICY_LIFECYCLE_LABEL[row.policy.lifecycleStatus]}</td>
+                    <td className="px-3 py-2 text-slate-800">{t.lifecycle[row.policy.lifecycleStatus]}</td>
                     <td className="px-3 py-2 text-slate-800">
-                      {row.policy.effectiveDate ? formatReportDate(row.policy.effectiveDate) : "—"}
+                      {row.policy.effectiveDate ? formatReportDate(row.policy.effectiveDate, locale) : "—"}
                     </td>
                   </>
                 ) : (
                   <td colSpan={3} className="px-3 py-2 text-slate-600">
-                    No governing policy
+                    {g.noGoverning}
                   </td>
                 )}
               </tr>
@@ -1086,26 +1106,26 @@ function GovernancePackSection({ governance, companyName }: { governance: Govern
         </table>
       </div>
 
-      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">Policy Library</h3>
+      <h3 className="mt-5 mb-1.5 text-base font-semibold text-slate-900">{g.policyLibrary}</h3>
       {governance.policies.length === 0 ? (
-        <GovernanceEmpty>No policies have been written yet.</GovernanceEmpty>
+        <GovernanceEmpty>{g.noPolicies}</GovernanceEmpty>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
               <tr>
-                <th className="px-3 py-2">Policy</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Effective</th>
+                <th className="px-3 py-2">{g.policy}</th>
+                <th className="px-3 py-2">{g.status}</th>
+                <th className="px-3 py-2">{g.effective}</th>
               </tr>
             </thead>
             <tbody>
               {governance.policies.map((policy, i) => (
                 <tr key={i} className="border-t border-slate-100">
                   <td className="px-3 py-2 font-semibold text-slate-900">{policy.title}</td>
-                  <td className="px-3 py-2 text-slate-800">{POLICY_LIFECYCLE_LABEL[policy.lifecycleStatus]}</td>
+                  <td className="px-3 py-2 text-slate-800">{t.lifecycle[policy.lifecycleStatus]}</td>
                   <td className="px-3 py-2 text-slate-800">
-                    {policy.effectiveDate ? formatReportDate(policy.effectiveDate) : "—"}
+                    {policy.effectiveDate ? formatReportDate(policy.effectiveDate, locale) : "—"}
                   </td>
                 </tr>
               ))}
@@ -1123,14 +1143,12 @@ function GovernanceEmpty({ children }: { children: React.ReactNode }) {
 
 /** What an included section or block prints when there is nothing to show. */
 function NothingRecorded() {
-  return (
-    <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-      No data yet &mdash; nothing has been recorded for this section.
-    </p>
-  );
+  const t = useMessages().report;
+  return <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{t.nothingRecorded}</p>;
 }
 
 type BlockContext = {
+  t: ReportMessages;
   process: ExportProcessData;
   workspaceId: string;
   documentedSteps: ExportProcessData["steps"];
@@ -1151,23 +1169,23 @@ type BlockContext = {
  * asked about separately from whether it is wanted.
  */
 const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
-  purpose: ({ process }) => (
+  purpose: ({ t, process }) => (
     <>
-      <SubHeading>Process Purpose</SubHeading>
+      <SubHeading>{t.blocks.purpose}</SubHeading>
       <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{process.processPurpose}</p>
     </>
   ),
 
-  trigger: ({ process }) => (
+  trigger: ({ t, process }) => (
     <div className="mt-3 grid grid-cols-2 gap-4">
-      {process.triggerLabel && <ScopeBox label="Process Trigger" value={process.triggerLabel} />}
-      {process.outputLabel && <ScopeBox label="Process Output" value={process.outputLabel} />}
+      {process.triggerLabel && <ScopeBox label={t.process.trigger} value={process.triggerLabel} />}
+      {process.outputLabel && <ScopeBox label={t.process.output} value={process.outputLabel} />}
     </div>
   ),
 
-  roles: ({ process }) => (
+  roles: ({ t, process }) => (
     <>
-      <SubHeading>Internal Roles</SubHeading>
+      <SubHeading>{t.blocks.roles}</SubHeading>
       <div className="print-stack flex flex-col gap-2.5">
         {process.involvedRoles.map((role) => (
           <RoleCard key={role.id} name={role.name} duties={role.duties} />
@@ -1176,9 +1194,9 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
     </>
   ),
 
-  ext: ({ process }) => (
+  ext: ({ t, process }) => (
     <>
-      <SubHeading>External Entities</SubHeading>
+      <SubHeading>{t.blocks.ext}</SubHeading>
       <ul className="list-disc space-y-1 ps-5 text-sm text-slate-700">
         {process.externalEntities.map((entity, i) => (
           <li key={i} className="print-keep">
@@ -1189,19 +1207,19 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
     </>
   ),
 
-  scope: ({ process }) => (
+  scope: ({ t, process }) => (
     <>
-      <SubHeading>Scope</SubHeading>
+      <SubHeading>{t.blocks.scope}</SubHeading>
       <div className="grid grid-cols-2 gap-4">
-        {process.inScope.length > 0 && <BulletBox label="In-Scope" items={process.inScope} />}
-        {process.outOfScope.length > 0 && <BulletBox label="Out-of-Scope" items={process.outOfScope} />}
+        {process.inScope.length > 0 && <BulletBox label={t.process.inScope} items={process.inScope} />}
+        {process.outOfScope.length > 0 && <BulletBox label={t.process.outOfScope} items={process.outOfScope} />}
       </div>
     </>
   ),
 
-  diagram: ({ process, labelWorkflow, mapLayout }) => (
+  diagram: ({ t, process, labelWorkflow, mapLayout }) => (
     <>
-      {labelWorkflow && <SubHeading>Workflow</SubHeading>}
+      {labelWorkflow && <SubHeading>{t.process.workflow}</SubHeading>}
       <PrintedProcessMap
         steps={process.steps}
         connections={process.connections}
@@ -1210,7 +1228,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
     </>
   ),
 
-  narr: ({ process, documentedSteps, stepOwnerLabel }) => (
+  narr: ({ t, process, documentedSteps, stepOwnerLabel }) => (
     <>
       {documentedSteps.map((step) => {
         const row = process.combinedRows.find((r) => r.rowId === step.id);
@@ -1223,14 +1241,14 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
             <div className="flex items-baseline justify-between gap-3">
               <span className="font-semibold text-slate-900">{step.label}</span>
               <span className="text-xs text-slate-500">
-                Step Owner: {stepOwnerLabel(row, step)}
+                {t.process.stepOwner(stepOwnerLabel(row, step))}
               </span>
             </div>
             <div className="mt-1 grid grid-cols-2 gap-4">
               {step.detailedAction.length > 0 && (
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                    Detailed Action
+                    {t.process.detailedAction}
                   </div>
                   <ol className="mt-1 list-decimal space-y-0.5 ps-4 text-sm text-slate-700">
                     {step.detailedAction.map((action, i) => (
@@ -1242,7 +1260,7 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
               {step.exceptionHandling && (
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                    Risk if Mishandled
+                    {t.process.riskIfMishandled}
                   </div>
                   <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{step.exceptionHandling}</p>
                 </div>
@@ -1261,9 +1279,9 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
   raciGrid: (ctx) => <RaciAuthorityTable {...ctx} />,
   rules: () => null,
 
-  controls: ({ process }) => (
+  controls: ({ t, process }) => (
     <>
-      <SubHeading>Key Control Points</SubHeading>
+      <SubHeading>{t.blocks.controls}</SubHeading>
       <ul className="space-y-1.5 text-sm">
         {process.controlPoints.map((cp) => (
           <li
@@ -1282,9 +1300,9 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
     </>
   ),
 
-  kpis: ({ process }) => (
+  kpis: ({ t, process }) => (
     <>
-      <SubHeading>Operational KPIs &amp; SLAs</SubHeading>
+      <SubHeading>{t.blocks.kpis}</SubHeading>
       {/* A KPI table is a handful of rows, so it moves to the next
           page whole rather than splitting — the split left one
           metric stranded under a repeated header on an otherwise
@@ -1295,9 +1313,9 @@ const PROCESS_BLOCKS: Record<string, (ctx: BlockContext) => React.ReactNode> = {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th className="px-3 py-2">Metric</th>
-              <th className="px-3 py-2">Target</th>
-              <th className="px-3 py-2">Frequency</th>
+              <th className="px-3 py-2">{t.process.metric}</th>
+              <th className="px-3 py-2">{t.process.target}</th>
+              <th className="px-3 py-2">{t.process.frequency}</th>
             </tr>
           </thead>
           <tbody>
@@ -1328,13 +1346,12 @@ function renderProcessBlock(id: string, ctx: BlockContext): React.ReactNode {
  * points at a process the reader can't turn to.
  */
 function HelicopterViewPage({ processes, companyName }: { processes: RailProcess[]; companyName: string }) {
+  const t = useMessages().report;
   return (
     <section className="print-page">
       <TwoToneRule />
-      <h2 className="text-xl font-semibold text-slate-900">Helicopter View</h2>
-      <p className="mt-1 mb-4 text-sm text-slate-500">
-        How {companyName}&rsquo;s processes in this report connect, at a glance.
-      </p>
+      <h2 className="text-xl font-semibold text-slate-900">{t.sections.heli}</h2>
+      <p className="mt-1 mb-4 text-sm text-slate-500">{t.heli.intro(companyName)}</p>
       <StaticMilestoneRails processes={processes} />
     </section>
   );
@@ -1347,6 +1364,8 @@ function HelicopterViewPage({ processes, companyName }: { processes: RailProcess
  * the pack say everything twice.
  */
 function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[]; companyName: string }) {
+  const t = useMessages().report;
+  const comma = useLocale() === "ar" ? "، " : ", ";
   const printed = columns.flatMap((column) => column.activities);
   const activityCount = printed.length;
   // Counted from what this page actually prints, so the three numbers in the
@@ -1358,17 +1377,13 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
   return (
     <section className="print-page">
       <BrandBanner
-        eyebrow={<span>Business Process Documentation &amp; Procedure Standard</span>}
+        eyebrow={<span>{t.cover.standard}</span>}
       >
-        <h2 className="text-2xl font-bold">{companyName} Value Chain</h2>
-        <p className="mt-1 text-sm opacity-85">
-          {activityCount} {activityCount === 1 ? "activity" : "activities"} · {columns.length}{" "}
-          {columns.length === 1 ? "phase" : "phases"} · {departmentCount}{" "}
-          {departmentCount === 1 ? "department" : "departments"}
-        </p>
+        <h2 className="text-2xl font-bold">{t.chain.title(companyName)}</h2>
+        <p className="mt-1 text-sm opacity-85">{t.chain.counts(activityCount, columns.length, departmentCount)}</p>
       </BrandBanner>
 
-      <SectionHeading num="0.1" title="The chain, end to end" />
+      <SectionHeading num="0.1" title={t.chain.endToEnd} />
 
       {/* Newspaper columns rather than a grid of fixed rows. A grid sizes every
           row to its tallest phase, so a five-activity phase beside a
@@ -1398,8 +1413,8 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
                 <li key={activity.stepId} className="print-keep text-xs leading-tight">
                   <span className="font-semibold text-slate-900">{activity.label}</span>
                   <span className="mt-0.5 block text-[11px] text-slate-500">
-                    {activity.ownerName ?? "No owner yet"}
-                    {activity.supportNames.length > 0 && ` · support ${activity.supportNames.join(", ")}`}
+                    {activity.ownerName ?? t.chain.noOwner}
+                    {activity.supportNames.length > 0 && ` · ${t.chain.support(activity.supportNames.join(comma))}`}
                     {activity.linksTo.length > 0 && ` → ${activity.linksTo.join(", ")}`}
                   </span>
                 </li>
@@ -1409,9 +1424,7 @@ function ValueChainPage({ columns, companyName }: { columns: ValueChainColumn[];
         ))}
       </div>
 
-      <p className="mt-6 text-xs text-slate-500">
-        Each activity is documented in full in the process sections that follow.
-      </p>
+      <p className="mt-6 text-xs text-slate-500">{t.chain.footer}</p>
     </section>
   );
 }
@@ -1449,13 +1462,12 @@ function TwoToneRule() {
  * Value Chain page ended and this one began.
  */
 function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
+  const t = useMessages().report;
   return (
     <section className="print-page">
       <TwoToneRule />
-      <h2 className="text-xl font-semibold text-slate-900">Processes in This Report</h2>
-      <p className="mt-1 mb-4 text-sm text-slate-500">
-        {processes.length} process{processes.length === 1 ? "" : "es"}, in the order they follow.
-      </p>
+      <h2 className="text-xl font-semibold text-slate-900">{t.sections.index}</h2>
+      <p className="mt-1 mb-4 text-sm text-slate-500">{t.index.count(processes.length)}</p>
       <ol className="flex flex-col">
         {processes.map((process, i) => (
           <li
@@ -1474,7 +1486,7 @@ function ProcessIndexPage({ processes }: { processes: ExportProcessData[] }) {
             <span className="font-semibold text-slate-900">{process.name}</span>
             <span className="flex-1 border-b border-dotted border-slate-300" />
             <span className="flex-none text-xs text-slate-500">
-              {process.parentName ? `under ${process.parentCode}` : "top-level"}
+              {process.parentName && process.parentCode ? t.cover.under(process.parentCode) : t.cover.topLevel}
             </span>
           </li>
         ))}

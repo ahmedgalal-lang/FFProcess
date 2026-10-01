@@ -5,8 +5,9 @@ import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { layoutOrgChart, type ChartPerson } from "@/lib/domain/org-chart";
 import { OrgChartPdfDocument } from "@/lib/export/pdf/org-chart-pdf";
 import { auth } from "@/lib/auth/config";
+import { exportLanguage } from "@/lib/export/export-language";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
 
   const access = await requireWorkspaceAccess(workspaceId, "VIEWER");
@@ -50,6 +51,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ wor
   for (const r of roots) visit(r.id);
   for (const p of people) visit(p.id); // any left over (stale cycle) still included
 
+  // The file's language; people's names stay as written, their roles are translated (spec 032).
+  const lang = await exportLanguage(request, workspaceId);
+  const tr = await lang.translator(people.flatMap((p) => p.personRoles.map((pr) => pr.role.name)));
+
   const buffer = await renderToBuffer(
     OrgChartPdfDocument({
       workspaceName: workspace?.name ?? "",
@@ -59,11 +64,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ wor
           id: p.id,
           name: p.name,
           depth: depthById.get(id) ?? 0,
-          roleNames: p.personRoles.map((pr) => pr.role.name),
+          roleNames: p.personRoles.map((pr) => tr(pr.role.name)),
           managerName: p.managerId ? (byId.get(p.managerId)?.name ?? null) : null,
         };
       }),
-      generatedFor: session?.user?.email ?? "Unknown",
+      generatedFor: session?.user?.email ?? lang.t.files.unknown,
+      locale: lang.locale,
+      t: lang.t,
+      today: lang.today,
     })
   );
 

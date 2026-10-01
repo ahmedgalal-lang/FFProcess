@@ -12,6 +12,7 @@ import {
   DIRECTION_LABELS,
 } from "@/lib/domain/authority-table";
 import { auth } from "@/lib/auth/config";
+import { exportLanguage } from "@/lib/export/export-language";
 import { AUTHORITY_ASSIGNMENT_INCLUDE, toAuthorityAssignmentData } from "@/lib/data/authority-assignments";
 
 export async function GET(
@@ -54,7 +55,11 @@ export async function GET(
   ).filter((r) => !r.skipped);
 
   const issueCount = validateAuthorityTable(rows).length;
-  const generatedFor = session?.user?.email ?? "Unknown";
+  // The file's language (spec 032): its fixed wording from the dictionary,
+  // its entries (task names, role names, rule sentences) from the saved translations.
+  const lang = await exportLanguage(request, process.workspaceId);
+  const f = lang.t.files;
+  const generatedFor = session?.user?.email ?? f.unknown;
 
   function whoNameFor(rule: { whoRoleId: string | null; whoPersonId: string | null }): string | null {
     if (rule.whoRoleId) return roleNameById.get(rule.whoRoleId) ?? null;
@@ -76,7 +81,7 @@ export async function GET(
             directionLabel: "—",
             thenLabel: "—",
             whoLabel: "—",
-            sentence: "No authority rules.",
+            sentence: f.noRules,
           },
         ]
       : r.rules.map((rule, i) => ({
@@ -84,7 +89,7 @@ export async function GET(
           // The task is named once and left blank on its later rules, so the
           // list reads as one task with several rules rather than repeats.
           label: i === 0 ? r.label : "",
-          turnsOn: rule.measure === "MONEY" ? "Money" : rule.measure === "TIME" ? "Time" : "None",
+          turnsOn: f.measures[rule.measure] ?? rule.measure,
           value:
             rule.measure === "MONEY"
               ? rule.amount === null
@@ -93,16 +98,21 @@ export async function GET(
               : rule.measure === "TIME"
                 ? rule.days === null
                   ? "—"
-                  : `${rule.days} day${rule.days === 1 ? "" : "s"}`
+                  : f.days(rule.days)
                 : "—",
           directionLabel:
-            rule.direction === "EQUAL_NO_APPROVAL" ? "No rule at all" : DIRECTION_LABELS[rule.direction].label,
+            rule.direction === "EQUAL_NO_APPROVAL"
+              ? f.noRuleAtAll
+              : (lang.t.directions[DIRECTION_LABELS[rule.direction].label] ?? DIRECTION_LABELS[rule.direction].label),
           thenLabel:
-            rule.measure === "NONE" ? "—" : rule.consequence === "APPROVAL" ? "Needs approval" : "Escalates",
+            rule.measure === "NONE" ? "—" : rule.consequence === "APPROVAL" ? f.needsApproval : f.escalates,
           whoLabel: whoNameFor(rule) ?? "—",
           sentence: describeAuthorityRule(rule, whoNameFor(rule)),
         }))
   );
+
+  const tr = await lang.translator([process.name, ...rowsForExport.flatMap((r) => [r.label, r.whoLabel, r.sentence])]);
+  const translatedRows = rowsForExport.map((r) => ({ ...r, label: tr(r.label), whoLabel: tr(r.whoLabel), sentence: tr(r.sentence) }));
 
   const filenameBase = `${process.code}-authority-matrix`;
 
@@ -110,8 +120,9 @@ export async function GET(
     const buffer = await buildAuthorityWorkbook({
       workspaceName: workspace?.name ?? "",
       processCode: process.code,
-      processName: process.name,
-      rows: rowsForExport,
+      processName: tr(process.name),
+      rows: translatedRows,
+      locale: lang.locale,
     });
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
@@ -125,10 +136,13 @@ export async function GET(
     AuthorityPdfDocument({
       workspaceName: workspace?.name ?? "",
       processCode: process.code,
-      processName: process.name,
-      rows: rowsForExport,
+      processName: tr(process.name),
+      rows: translatedRows,
       issueCount,
       generatedFor,
+      locale: lang.locale,
+      t: lang.t,
+      today: lang.today,
     })
   );
   return new NextResponse(new Uint8Array(buffer), {

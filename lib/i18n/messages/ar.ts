@@ -1,5 +1,6 @@
 import type { Messages } from "./en";
 import { governanceAr } from "./governance.ar";
+import { reportAr } from "./report.ar";
 
 /**
  * Arabic interface strings (spec 031), Modern Standard Arabic for business
@@ -62,4 +63,5 @@ export const ar: Messages = {
     },
   },
   governance: governanceAr,
+  report: reportAr,
 };

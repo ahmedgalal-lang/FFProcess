@@ -1,4 +1,8 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { pdfDirection } from "./fonts";
+import type { Locale } from "@/lib/i18n/locale";
+import { messagesFor } from "@/lib/i18n/messages";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 9, fontFamily: "Helvetica" },
@@ -51,6 +55,11 @@ export type AuthorityPdfProps = {
   rows: AuthorityPdfRow[];
   issueCount: number;
   generatedFor: string;
+  /** The file's language (spec 032); English when not given. */
+  locale?: Locale;
+  t?: ReportMessages;
+  /** Today, as printed in the header. */
+  today?: string;
 };
 
 export function AuthorityPdfDocument({
@@ -60,50 +69,51 @@ export function AuthorityPdfDocument({
   rows,
   issueCount,
   generatedFor,
+  locale = "en",
+  t = messagesFor(locale).report,
+  today = new Date().toLocaleDateString(),
 }: AuthorityPdfProps) {
+  const dir = pdfDirection(locale);
+  const f = t.files;
   return (
-    <Document title={`${processCode} Authority Matrix`}>
-      <Page size="A4" orientation="landscape" style={styles.page}>
+    <Document title={`${processCode} ${f.authorityTitle}`}>
+      <Page size="A4" orientation="landscape" style={[styles.page, dir.page]}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>
+          <Text style={[styles.eyebrow, dir.text]}>
             {workspaceName} · {processCode}
           </Text>
-          <Text style={styles.title}>{processName} — Authority Matrix</Text>
-          <Text style={styles.meta}>
-            Generated for {generatedFor} on {new Date().toLocaleDateString()}
-          </Text>
+          <Text style={[styles.title, dir.text]}>{processName} — {f.authorityTitle}</Text>
+          <Text style={[styles.meta, dir.text]}>{f.generatedFor(generatedFor, today)}</Text>
         </View>
 
         {issueCount > 0 && (
           <View style={styles.banner}>
-            <Text style={styles.bannerText}>
-              ⚠ {issueCount} rule(s) still need finishing — a figure, and somebody to carry it
-            </Text>
+            <Text style={[styles.bannerText, dir.text]}>{f.authorityIssues(issueCount)}</Text>
           </View>
         )}
 
         <View style={styles.table}>
-          <View style={[styles.row, styles.headerRow]}>
-            <Text style={styles.taskCell}>Task</Text>
-            <Text style={styles.headerCell}>Turns on</Text>
-            <Text style={styles.headerCell}>Value</Text>
-            <Text style={styles.headerCell}>Direction</Text>
-            <Text style={styles.headerCell}>Then</Text>
-            <Text style={styles.headerCell}>Who</Text>
+          <View style={[styles.row, styles.headerRow, dir.row]}>
+            <Text style={[styles.taskCell, dir.text]}>{f.task}</Text>
+            <Text style={[styles.headerCell, dir.centred]}>{f.turnsOn}</Text>
+            <Text style={[styles.headerCell, dir.centred]}>{f.value}</Text>
+            <Text style={[styles.headerCell, dir.centred]}>{f.direction}</Text>
+            <Text style={[styles.headerCell, dir.centred]}>{f.then}</Text>
+            <Text style={[styles.headerCell, dir.centred]}>{f.who}</Text>
           </View>
           {rows.map((r) => (
-            <View key={r.id} style={styles.row}>
-              <Text style={styles.taskCell}>{r.label}</Text>
-              <Text style={styles.cell}>{r.turnsOn}</Text>
-              <Text style={styles.cell}>{r.value}</Text>
-              <Text style={styles.cell}>{r.directionLabel}</Text>
-              <Text style={styles.cell}>{r.thenLabel}</Text>
-              <Text style={styles.cell}>{r.whoLabel}</Text>
+            <View key={r.id} style={[styles.row, dir.row]}>
+              <Text style={[styles.taskCell, dir.text]}>{r.label}</Text>
+              <Text style={[styles.cell, dir.centred]}>{r.turnsOn}</Text>
+              <Text style={[styles.cell, dir.centred]}>{r.value}</Text>
+              <Text style={[styles.cell, dir.centred]}>{r.directionLabel}</Text>
+              <Text style={[styles.cell, dir.centred]}>{r.thenLabel}</Text>
+              <Text style={[styles.cell, dir.centred]}>{r.whoLabel}</Text>
             </View>
           ))}
         </View>
 
-        <Text style={styles.footer} fixed>
+        <Text style={[styles.footer, dir.centred]} fixed>
           FFProcess · {workspaceName} · {processCode}
         </Text>
       </Page>

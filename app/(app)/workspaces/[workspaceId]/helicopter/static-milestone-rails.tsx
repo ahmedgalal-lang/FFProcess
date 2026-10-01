@@ -1,3 +1,4 @@
+import { useMessages } from "@/lib/i18n/client";
 import {
   buildMilestoneRails,
   MIN_BEAD_GAP,
@@ -38,6 +39,7 @@ const LABEL_BLOCK_HEIGHT = 62;
  * a preview/print page.
  */
 export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }) {
+  const t = useMessages().report;
   // The width the rails have to fit, less the px-6 they are drawn inside. A
   // rail longer than this now folds onto another line rather than being
   // shrunk: at 22 milestones the shrink reached about 0.43, which put the
@@ -62,9 +64,7 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
   return (
     <div>
       <p className="mb-2 text-xs text-slate-500">
-        {layout.milestoneCount > 0
-          ? `${layout.milestoneCount} milestone${layout.milestoneCount === 1 ? "" : "s"} marked · steps another process depends on are always shown`
-          : "No milestones marked yet."}
+        {layout.milestoneCount > 0 ? t.heli.milestones(layout.milestoneCount) : t.heli.noMilestones}
       </p>
       {/* Scaled to fit the page rather than scrolled. This is a printed sheet:
           a horizontal scrollbar is dead furniture in a PDF, and everything
@@ -102,6 +102,7 @@ export function StaticMilestoneRails({ processes }: { processes: RailProcess[] }
 }
 
 function StaticRailRow({ rail }: { rail: Rail }) {
+  const t = useMessages().report;
   // Where each line of a wrapped rail starts and ends, so the track is drawn
   // only under the beads it actually carries — a full-width line under a row
   // holding two beads reads as a rail that lost the rest of them.
@@ -199,7 +200,7 @@ function StaticRailRow({ rail }: { rail: Rail }) {
 
       {rail.isEmpty ? (
         <span className="absolute text-[10px] italic text-slate-500" style={{ left: 4, top: TRACK_Y + 7 }}>
-          {rail.stepCount === 0 ? "No steps mapped" : "No milestones marked"}
+          {rail.stepCount === 0 ? t.heli.noStepsMapped : t.heli.noMilestonesMarked}
         </span>
       ) : (
         rail.beads.map((bead) => <StaticBead key={bead.stepId} bead={bead} />)

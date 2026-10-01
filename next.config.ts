@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /**
+   * The Arabic font the per-process PDF exports embed (spec 032). It is read
+   * from disk at request time, which file tracing can't see on its own.
+   */
+  outputFileTracingIncludes: {
+    "/api/export/**": ["./lib/export/fonts/**/*"],
+  },
   experimental: {
     serverActions: {
       /**

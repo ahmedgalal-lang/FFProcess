@@ -13,6 +13,7 @@ import type {
   RiskStatus,
 } from "@/app/generated/prisma/client";
 import { deriveRiskLevel, type RiskLevel } from "@/lib/domain/governance-risk";
+import { intlLocale, type Locale } from "@/lib/i18n/locale";
 
 export type GovernanceReportInput = {
   /** In the order the Governance page shows its tabs. */
@@ -134,8 +135,8 @@ export const POLICY_LIFECYCLE_LABEL: Record<GovernancePolicyLifecycleStatus, str
  * "1 Jun 2026". Fixed locale and zone: the printed report renders on the
  * server and again in the browser, and the two must agree.
  */
-export function formatReportDate(d: Date): string {
-  return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+export function formatReportDate(d: Date, locale: Locale = "en"): string {
+  return new Date(d).toLocaleDateString(intlLocale(locale), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 /** "Low" from "LOW" — the scales the Risk Register already uses, read aloud. */

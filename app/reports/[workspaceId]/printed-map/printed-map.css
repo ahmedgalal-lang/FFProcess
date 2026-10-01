@@ -333,3 +333,10 @@
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* An Arabic report (spec 032): the map keeps its left-to-right geometry, but
+   each piece of text inside it takes the direction of its own words. */
+[lang="ar"] .printed-map p,
+[lang="ar"] .printed-map span {
+  unicode-bidi: plaintext;
+}

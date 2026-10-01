@@ -1,4 +1,6 @@
-import { gateLine, type AuthorityDirection } from "@/lib/domain/authority-table";
+import { DIRECTION_LABELS, formatMoney, type AuthorityDirection } from "@/lib/domain/authority-table";
+import { useMessages } from "@/lib/i18n/client";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 import {
   buildPrintMapLayout,
   type PrintConnectionInput,
@@ -31,10 +33,12 @@ export type PrintedMapStep = {
  */
 export type PrintedMapStepDetail = { sla: string | null; gate: string | null };
 
-export function detailOf(step: PrintedMapStep): PrintedMapStepDetail {
+export function detailOf(step: PrintedMapStep, t: ReportMessages): PrintedMapStepDetail {
+  // The same sentence gateLine writes, with the direction in the report's language.
+  const direction = DIRECTION_LABELS[step.direction ?? "GREATER_THAN"].label;
   return {
-    sla: step.slaDays != null ? `SLA ${step.slaDays}d` : "no SLA set",
-    gate: gateLine(step.threshold, step.direction),
+    sla: step.slaDays != null ? t.map.sla(step.slaDays) : t.map.noSla,
+    gate: step.threshold == null ? null : `${t.directions[direction] ?? direction} ${formatMoney(step.threshold)}`,
   };
 }
 
@@ -76,10 +80,11 @@ export function PrintedProcessMap({
   connections: PrintedMapConnection[];
   layout: "FLOW" | "ROLES";
 }) {
+  const t = useMessages().report;
   if (steps.length === 0) {
     return (
       <p className="print-keep rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-600">
-        No steps on this process yet.
+        {t.map.noSteps}
       </p>
     );
   }
@@ -118,13 +123,16 @@ export function PrintedProcessMap({
   });
 
   const linksByStepId = new Map(steps.map((s) => [s.id, s.links]));
-  const detailByStepId = new Map(steps.map((s) => [s.id, detailOf(s)]));
+  const detailByStepId = new Map(steps.map((s) => [s.id, detailOf(s, t)]));
 
   return (
     <div className="printed-map" dir="ltr">
       {outcome.layout === "FLOW" && outcome.fellBackFrom && (
         <p className="printed-map__fallback print-keep">
-          <strong>Printed in the Flow layout.</strong> {outcome.reason}
+          <strong>{t.map.flowFallback}</strong>{" "}
+          {outcome.roleCount !== undefined && outcome.maxRoleColumns !== undefined
+            ? t.map.fallbackReason(outcome.roleCount, outcome.maxRoleColumns)
+            : outcome.reason}
         </p>
       )}
       {outcome.layout === "FLOW" ? (

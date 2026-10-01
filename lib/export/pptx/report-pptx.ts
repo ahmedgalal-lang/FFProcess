@@ -2,7 +2,7 @@ import PptxGenJS from "pptxgenjs";
 import { assignSwimlanes, DECISION_TEXT_INSET, LANE_HEIGHT, LANE_TOP_OFFSET, NODE_HALF_SIZE, type LaneStep } from "@/lib/domain/process-layout";
 import { layoutOrgChart, CHART_NODE_SPACING, CHART_LEVEL_HEIGHT, type ChartPerson } from "@/lib/domain/org-chart";
 import { readableInkOn } from "@/lib/domain/color-contrast";
-import { gateLine } from "@/lib/domain/authority-table";
+import { DIRECTION_LABELS, formatMoney } from "@/lib/domain/authority-table";
 import { isSectionEmpty, type ResolvedArrangement } from "@/lib/domain/report-arrangement";
 import {
   wrapProcessMap,
@@ -13,14 +13,10 @@ import {
 import type { RaciCode } from "@/lib/domain/raci-table";
 import type { RailProcess } from "@/lib/domain/milestone-rails";
 import type { ReportData } from "@/lib/reports/load-report-data";
-import {
-  formatReportDate,
-  isGovernanceReportEmpty,
-  POLICY_LIFECYCLE_LABEL,
-  RISK_STATUS_LABEL,
-  titleCase,
-  type GovernanceReport,
-} from "@/lib/domain/governance-report";
+import { formatReportDate, isGovernanceReportEmpty, type GovernanceReport } from "@/lib/domain/governance-report";
+import { formatDate, type Locale } from "@/lib/i18n/locale";
+import { messagesFor } from "@/lib/i18n/messages";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 import type { ExportProcessData, ValueChainColumn } from "@/app/reports/[workspaceId]/export-preview";
 
 // A 16:9 widescreen canvas, the closest built-in match to the A4-landscape
@@ -45,6 +41,50 @@ const CODE_LETTER: Record<RaciCode, string> = {
   INFORMED: "I",
 };
 
+/**
+ * The deck's wording and language (spec 032). Set once per build by
+ * buildReportPptx and read by every slide function. Safe as module state
+ * because the slides are built by a synchronous function (buildSlides): no
+ * other build can run until it returns, and it cannot await.
+ */
+let T: ReportMessages = messagesFor("en").report;
+let LOCALE: Locale = "en";
+
+/** A list separator in the deck's language. */
+const comma = () => (LOCALE === "ar" ? "، " : ", ");
+
+/**
+ * An Arabic deck reads right to left: every text box and table is given
+ * PowerPoint's right-to-left paragraph setting and right alignment (centred
+ * text stays centred), and table columns run from the right. Done once, here,
+ * on the slides as they are made, rather than in every slide function.
+ */
+function makeRightToLeft(pptx: PptxGenJS) {
+  const rtl = <O extends { align?: PptxGenJS.HAlign; rtlMode?: boolean; lang?: string }>(o: O | undefined): O =>
+    ({ ...(o ?? {}), rtlMode: true, lang: "ar-SA", align: o?.align === "center" ? "center" : "right" }) as O;
+  const addSlide = pptx.addSlide.bind(pptx);
+  pptx.addSlide = ((options?: PptxGenJS.AddSlideProps) => {
+    const slide = addSlide(options);
+    const addText = slide.addText.bind(slide);
+    slide.addText = ((text: string | PptxGenJS.TextProps[], options?: PptxGenJS.TextPropsOptions) =>
+      addText(Array.isArray(text) ? text.map((run) => ({ ...run, options: rtl(run.options) })) : text, rtl(options))) as typeof slide.addText;
+    const addTable = slide.addTable.bind(slide);
+    slide.addTable = ((rows: PptxGenJS.TableRow[], options?: PptxGenJS.TableProps) =>
+      addTable(
+        rows.map((row) => [...row].reverse().map((cell) => ({ ...cell, options: rtl(cell.options) }))),
+        { ...options, colW: Array.isArray(options?.colW) ? [...options.colW].reverse() : options?.colW }
+      )) as typeof slide.addTable;
+    return slide;
+  }) as typeof pptx.addSlide;
+}
+
+/** A step's approval gate, as gateLine words it, in the deck's language. */
+function gateText(threshold: number | null | undefined, direction: keyof typeof DIRECTION_LABELS | undefined): string | null {
+  if (threshold == null) return null;
+  const label = DIRECTION_LABELS[direction ?? "GREATER_THAN"].label;
+  return `${T.directions[label] ?? label} ${formatMoney(threshold)}`;
+}
+
 function hexOf(color: string | null | undefined, fallback: string): string {
   const v = (color ?? fallback).trim();
   return v.startsWith("#") ? v.slice(1) : v;
@@ -53,12 +93,32 @@ function hexOf(color: string | null | undefined, fallback: string): string {
 /** Builds the whole Export Report as a slide deck — one PPTX mirroring the same pack the PDF prints. */
 export async function buildReportPptx(
   data: ReportData,
-  arrangement: ResolvedArrangement
+  arrangement: ResolvedArrangement,
+  locale: Locale = "en"
 ): Promise<Buffer> {
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "REPORT_WIDE", width: SLIDE_W, height: SLIDE_H });
   pptx.layout = "REPORT_WIDE";
+  if (locale === "ar") {
+    pptx.rtlMode = true;
+    makeRightToLeft(pptx);
+  }
 
+  T = messagesFor(locale).report;
+  LOCALE = locale;
+  try {
+    buildSlides(pptx, data, arrangement);
+  } finally {
+    T = messagesFor("en").report;
+    LOCALE = "en";
+  }
+
+  const out = await pptx.write({ outputType: "nodebuffer" });
+  return out as Buffer;
+}
+
+/** Every slide, in the pack's order. Synchronous on purpose: see T above. */
+function buildSlides(pptx: PptxGenJS, data: ReportData, arrangement: ResolvedArrangement): void {
   const accent = hexOf(data.accentColor, DEFAULT_ACCENT);
   const ink = hexOf(readableInkOn(`#${accent}`), "ffffff");
 
@@ -97,9 +157,6 @@ export async function buildReportPptx(
         break;
     }
   }
-
-  const out = await pptx.write({ outputType: "nodebuffer" });
-  return out as Buffer;
 }
 
 function addBanner(
@@ -144,7 +201,7 @@ function addCoverSlide(pptx: PptxGenJS, data: ReportData, accent: string, ink: s
   if (data.industry) {
     slide.addText(data.industry, { x: MARGIN, y: 3.25, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 16, color: ink });
   }
-  slide.addText("BUSINESS PROCESS DOCUMENTATION & PROCEDURE STANDARD", {
+  slide.addText(T.cover.standard.toUpperCase(), {
     x: MARGIN,
     y: 3.8,
     w: CONTENT_W,
@@ -168,7 +225,7 @@ function addCoverSlide(pptx: PptxGenJS, data: ReportData, accent: string, ink: s
     });
   }
   slide.addText(
-    `Generated on ${new Date().toLocaleDateString()} · Covers ${data.processes.length} process${data.processes.length === 1 ? "" : "es"}`,
+    T.cover.generated(LOCALE === "en" ? new Date().toLocaleDateString() : formatDate(new Date(), LOCALE), data.processes.length),
     { x: MARGIN, y: SLIDE_H - 0.7, w: CONTENT_W, h: 0.3, fontFace: FONT, fontSize: 10, color: ink }
   );
 }
@@ -176,7 +233,7 @@ function addCoverSlide(pptx: PptxGenJS, data: ReportData, accent: string, ink: s
 function addClosingSlide(pptx: PptxGenJS, accent: string, ink: string) {
   const slide = pptx.addSlide();
   slide.background = { color: accent };
-  slide.addText("Thank you", {
+  slide.addText(T.closing.thanks, {
     x: MARGIN,
     y: SLIDE_H / 2 - 0.8,
     w: CONTENT_W,
@@ -187,7 +244,7 @@ function addClosingSlide(pptx: PptxGenJS, accent: string, ink: string) {
     bold: true,
     color: ink,
   });
-  slide.addText("Please refer back to the process team for any inputs or comments needed.", {
+  slide.addText(T.closing.body, {
     x: MARGIN + CONTENT_W * 0.15,
     y: SLIDE_H / 2 + 0.1,
     w: CONTENT_W * 0.7,
@@ -227,8 +284,8 @@ function fitMapper(xs: number[], ys: number[], boxX: number, boxY: number, boxW:
 
 function addOrgChartSlide(pptx: PptxGenJS, people: ReportData["people"], companyName: string) {
   const slide = pptx.addSlide();
-  slide.addText("Org Structure", { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 20, bold: true, color: INK_DARK });
-  slide.addText(`Reporting lines across ${companyName}.`, {
+  slide.addText(T.sections.org!, { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 20, bold: true, color: INK_DARK });
+  slide.addText(T.org.intro(companyName), {
     x: MARGIN,
     y: 0.72,
     w: CONTENT_W,
@@ -291,7 +348,7 @@ function addOrgChartSlide(pptx: PptxGenJS, people: ReportData["people"], company
       line: { color: BORDER, width: 1 },
       rectRadius: 0.05,
     });
-    const label = person.roleNames.length > 0 ? `${person.name}\n${person.roleNames.join(", ")}` : person.name;
+    const label = person.roleNames.length > 0 ? `${person.name}\n${person.roleNames.join(comma())}` : person.name;
     slide.addText(label, {
       x: cx - nodeHalfW + 0.05,
       y: cy - nodeH / 2,
@@ -315,8 +372,8 @@ function addOrgChartSlide(pptx: PptxGenJS, people: ReportData["people"], company
  */
 function addHelicopterSlide(pptx: PptxGenJS, processes: RailProcess[], companyName: string) {
   const slide = pptx.addSlide();
-  slide.addText("Helicopter View", { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 20, bold: true, color: INK_DARK });
-  slide.addText(`How ${companyName}'s processes in this report connect, at a glance.`, {
+  slide.addText(T.sections.heli!, { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 20, bold: true, color: INK_DARK });
+  slide.addText(T.heli.intro(companyName), {
     x: MARGIN,
     y: 0.72,
     w: CONTENT_W,
@@ -381,8 +438,8 @@ function addValueChainSlides(pptx: PptxGenJS, columns: ValueChainColumn[], compa
     const group = columns.slice(i, i + PER_SLIDE);
     const slide = pptx.addSlide();
     addBanner(slide, {
-      title: `${companyName} Value Chain`,
-      subtitle: i === 0 ? "The chain, end to end" : `Continued (${i / PER_SLIDE + 1})`,
+      title: T.chain.title(companyName),
+      subtitle: i === 0 ? T.chain.endToEnd : T.chain.continued(i / PER_SLIDE + 1),
       accent,
       ink,
     });
@@ -402,15 +459,15 @@ function addValueChainSlides(pptx: PptxGenJS, columns: ValueChainColumn[], compa
         color: column.color ?? INK_MUTED,
       });
       const lines = column.activities.flatMap((a) => {
-        const bits = [a.ownerName ?? "No owner yet"];
-        if (a.supportNames.length > 0) bits.push(`support ${a.supportNames.join(", ")}`);
+        const bits = [a.ownerName ?? T.chain.noOwner];
+        if (a.supportNames.length > 0) bits.push(T.chain.support(a.supportNames.join(comma())));
         if (a.linksTo.length > 0) bits.push(`→ ${a.linksTo.join(", ")}`);
         return [
           { text: `${a.label}\n`, options: { bold: true, fontSize: 9, color: INK_DARK, breakLine: true } },
           { text: `${bits.join(" · ")}\n`, options: { fontSize: 7.5, color: INK_MUTED, breakLine: true } },
         ];
       });
-      slide.addText(lines.length > 0 ? lines : [{ text: "No activities yet." }], {
+      slide.addText(lines.length > 0 ? lines : [{ text: T.chain.noActivities }], {
         x,
         y: 1.95,
         w: colW - 0.2,
@@ -437,10 +494,11 @@ function addGovernancePackSlides(pptx: PptxGenJS, governance: GovernanceReport, 
   };
   const headerFill = { color: "f1f5f9" };
   const th = (text: string): PptxGenJS.TableCell => ({ text, options: { bold: true, fontSize: 9, fill: headerFill } });
+  const g = T.governance;
 
   if (governance.summaries.length > 0) {
     const slide = pptx.addSlide();
-    title(slide, "Governance Assessment", `The governance programme across ${companyName}.`);
+    title(slide, g.assessment, g.shortIntro(companyName));
     const lines = governance.summaries.flatMap((s) => [
       { text: s.aspectName, options: { fontSize: 11, bold: true, color: INK_DARK, breakLine: true } },
       { text: s.summary, options: { fontSize: 10, color: INK_DARK, breakLine: true, paraSpaceAfter: 8 } },
@@ -450,16 +508,16 @@ function addGovernancePackSlides(pptx: PptxGenJS, governance: GovernanceReport, 
 
   if (governance.risks.length > 0) {
     const slide = pptx.addSlide();
-    title(slide, "Risk Register", `${governance.risks.length} risk${governance.risks.length === 1 ? "" : "s"}, open before closed, most severe first.`);
+    title(slide, g.riskRegister, g.riskCount(governance.risks.length));
     const rows: PptxGenJS.TableRow[] = governance.risks.map((r) => [
       { text: `${r.title}\n${r.description}`, options: { fontSize: 9 } },
-      { text: titleCase(r.likelihood), options: { fontSize: 9 } },
-      { text: titleCase(r.impact), options: { fontSize: 9 } },
-      { text: titleCase(r.level), options: { fontSize: 9, bold: true } },
-      { text: RISK_STATUS_LABEL[r.status], options: { fontSize: 9 } },
-      { text: r.owner ?? "Unassigned", options: { fontSize: 9 } },
+      { text: T.levels[r.likelihood]!, options: { fontSize: 9 } },
+      { text: T.levels[r.impact]!, options: { fontSize: 9 } },
+      { text: T.levels[r.level]!, options: { fontSize: 9, bold: true } },
+      { text: T.riskStatuses[r.status]!, options: { fontSize: 9 } },
+      { text: r.owner ?? g.unassigned, options: { fontSize: 9 } },
     ]);
-    slide.addTable([[th("Risk"), th("Likelihood"), th("Impact"), th("Level"), th("Status"), th("Owner")], ...rows], {
+    slide.addTable([[th(g.risk), th(g.likelihood), th(g.impact), th(g.level), th(g.status), th(g.owner)], ...rows], {
       x: MARGIN,
       y: 1.2,
       w: CONTENT_W,
@@ -474,15 +532,15 @@ function addGovernancePackSlides(pptx: PptxGenJS, governance: GovernanceReport, 
 
   if (governance.governing.length > 0) {
     const slide = pptx.addSlide();
-    const governed = governance.governing.filter((g) => g.policy?.lifecycleStatus === "PUBLISHED").length;
-    title(slide, "Governing Policies", `${governed} of ${governance.governing.length} aspects have a published governing policy.`);
-    const rows: PptxGenJS.TableRow[] = governance.governing.map((g) => [
-      { text: g.aspectName, options: { fontSize: 9, bold: true } },
-      { text: g.policy?.title ?? "No governing policy", options: { fontSize: 9 } },
-      { text: g.policy ? POLICY_LIFECYCLE_LABEL[g.policy.lifecycleStatus] : "—", options: { fontSize: 9 } },
-      { text: g.policy?.effectiveDate ? formatReportDate(g.policy.effectiveDate) : "—", options: { fontSize: 9 } },
+    const governed = governance.governing.filter((row) => row.policy?.lifecycleStatus === "PUBLISHED").length;
+    title(slide, g.governingPolicies, g.governedCount(governed, governance.governing.length));
+    const rows: PptxGenJS.TableRow[] = governance.governing.map((row) => [
+      { text: row.aspectName, options: { fontSize: 9, bold: true } },
+      { text: row.policy?.title ?? g.noGoverning, options: { fontSize: 9 } },
+      { text: row.policy ? T.lifecycle[row.policy.lifecycleStatus]! : "—", options: { fontSize: 9 } },
+      { text: row.policy?.effectiveDate ? formatReportDate(row.policy.effectiveDate, LOCALE) : "—", options: { fontSize: 9 } },
     ]);
-    slide.addTable([[th("Aspect"), th("Governing policy"), th("Status"), th("Effective")], ...rows], {
+    slide.addTable([[th(g.aspect), th(g.governingPolicy), th(g.status), th(g.effective)], ...rows], {
       x: MARGIN,
       y: 1.2,
       w: CONTENT_W,
@@ -497,13 +555,13 @@ function addGovernancePackSlides(pptx: PptxGenJS, governance: GovernanceReport, 
 
   if (governance.policies.length > 0) {
     const slide = pptx.addSlide();
-    title(slide, "Policy Library", `${governance.policies.length} polic${governance.policies.length === 1 ? "y" : "ies"} and where each stands.`);
+    title(slide, g.policyLibrary, g.policyCount(governance.policies.length));
     const rows: PptxGenJS.TableRow[] = governance.policies.map((p) => [
       { text: p.title, options: { fontSize: 9, bold: true } },
-      { text: POLICY_LIFECYCLE_LABEL[p.lifecycleStatus], options: { fontSize: 9 } },
-      { text: p.effectiveDate ? formatReportDate(p.effectiveDate) : "—", options: { fontSize: 9 } },
+      { text: T.lifecycle[p.lifecycleStatus]!, options: { fontSize: 9 } },
+      { text: p.effectiveDate ? formatReportDate(p.effectiveDate, LOCALE) : "—", options: { fontSize: 9 } },
     ]);
-    slide.addTable([[th("Policy"), th("Status"), th("Effective")], ...rows], {
+    slide.addTable([[th(g.policy), th(g.status), th(g.effective)], ...rows], {
       x: MARGIN,
       y: 1.2,
       w: CONTENT_W,
@@ -519,8 +577,8 @@ function addGovernancePackSlides(pptx: PptxGenJS, governance: GovernanceReport, 
 
 function addProcessIndexSlide(pptx: PptxGenJS, processes: ExportProcessData[], accent: string) {
   const slide = pptx.addSlide();
-  slide.addText("Processes in This Report", { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 20, bold: true, color: INK_DARK });
-  slide.addText(`${processes.length} process${processes.length === 1 ? "" : "es"}, in the order they follow.`, {
+  slide.addText(T.sections.index!, { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.4, fontFace: FONT, fontSize: 20, bold: true, color: INK_DARK });
+  slide.addText(T.index.count(processes.length), {
     x: MARGIN,
     y: 0.72,
     w: CONTENT_W,
@@ -534,7 +592,7 @@ function addProcessIndexSlide(pptx: PptxGenJS, processes: ExportProcessData[], a
     { text: String(i + 1), options: { fontSize: 10, color: "ffffff", fill: { color: accent }, align: "center", valign: "middle" } },
     { text: p.code, options: { fontSize: 10, bold: true, fontFace: "Courier New" } },
     { text: p.name, options: { fontSize: 10, bold: true } },
-    { text: p.parentName ? `under ${p.parentCode}` : "top-level", options: { fontSize: 9, color: INK_MUTED } },
+    { text: p.parentName && p.parentCode ? T.cover.under(p.parentCode) : T.cover.topLevel, options: { fontSize: 9, color: INK_MUTED } },
   ]);
 
   slide.addTable(rows, {
@@ -581,16 +639,19 @@ function addProcessSlides(
 
 function addProcessTitleSlide(pptx: PptxGenJS, process: ExportProcessData, accent: string, ink: string) {
   const slide = pptx.addSlide();
-  const eyebrow = process.parentName ? `${process.code}  ·  under ${process.parentCode} · ${process.parentName}` : process.code;
+  const eyebrow =
+    process.parentName && process.parentCode
+      ? `${process.code}  ·  ${T.process.under(process.parentCode, process.parentName)}`
+      : process.code;
   addBanner(slide, { title: process.name, subtitle: process.description ?? undefined, eyebrow, accent, ink });
 
   const meta: [string, string][] = [
-    ["Document ID", `${process.code}-${new Date().getFullYear()}`],
-    ["Version", "1.0"],
-    ["Effective Date", new Date().toISOString().slice(0, 10)],
-    ["Review Cycle", "Annual"],
-    ["Process Owner", process.processOwnerName ?? "—"],
-    ["Process Code", process.code],
+    [T.cover.documentId, `${process.code}-${new Date().getFullYear()}`],
+    [T.cover.version, "1.0"],
+    [T.cover.effectiveDate, new Date().toISOString().slice(0, 10)],
+    [T.process.reviewCycle, T.process.annual],
+    [T.process.owner, process.processOwnerName ?? "—"],
+    [T.process.code, process.code],
   ];
   const colW = CONTENT_W / 3;
   meta.forEach(([label, value], i) => {
@@ -605,18 +666,18 @@ function addProcessTitleSlide(pptx: PptxGenJS, process: ExportProcessData, accen
 
 function addExecutiveSummarySlide(pptx: PptxGenJS, process: ExportProcessData) {
   const slide = pptx.addSlide();
-  slide.addText("1.0  Executive Summary", { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.35, fontFace: FONT, fontSize: 16, bold: true, color: INK_DARK });
+  slide.addText(`1.0  ${T.sections.exec}`, { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.35, fontFace: FONT, fontSize: 16, bold: true, color: INK_DARK });
 
   const runs: { text: string; options?: PptxGenJS.TextPropsOptions }[] = [];
   if (process.processPurpose) {
-    runs.push({ text: "Process Purpose\n", options: { bold: true, fontSize: 10, color: INK_MUTED, breakLine: true } });
+    runs.push({ text: `${T.blocks.purpose}\n`, options: { bold: true, fontSize: 10, color: INK_MUTED, breakLine: true } });
     runs.push({ text: `${process.processPurpose}\n\n`, options: { fontSize: 11, color: INK_DARK, breakLine: true } });
   }
-  if (process.triggerLabel) runs.push({ text: `Trigger: ${process.triggerLabel}\n`, options: { fontSize: 11, color: INK_DARK, breakLine: true } });
-  if (process.outputLabel) runs.push({ text: `Output: ${process.outputLabel}\n\n`, options: { fontSize: 11, color: INK_DARK, breakLine: true } });
+  if (process.triggerLabel) runs.push({ text: `${T.process.triggerLine(process.triggerLabel)}\n`, options: { fontSize: 11, color: INK_DARK, breakLine: true } });
+  if (process.outputLabel) runs.push({ text: `${T.process.outputLine(process.outputLabel)}\n\n`, options: { fontSize: 11, color: INK_DARK, breakLine: true } });
 
   if (process.involvedRoles.length > 0) {
-    runs.push({ text: "Internal Roles\n", options: { bold: true, fontSize: 10, color: INK_MUTED, breakLine: true } });
+    runs.push({ text: `${T.blocks.roles}\n`, options: { bold: true, fontSize: 10, color: INK_MUTED, breakLine: true } });
     for (const role of process.involvedRoles) {
       const dutySummary = role.duties.map((d) => `${d.tasks.length} ${d.label}`).join(" · ");
       runs.push({ text: `${role.name} — ${dutySummary}\n`, options: { fontSize: 10.5, color: INK_DARK, breakLine: true } });
@@ -625,7 +686,7 @@ function addExecutiveSummarySlide(pptx: PptxGenJS, process: ExportProcessData) {
   }
 
   if (process.externalEntities.length > 0) {
-    runs.push({ text: "External Entities\n", options: { bold: true, fontSize: 10, color: INK_MUTED, breakLine: true } });
+    runs.push({ text: `${T.blocks.ext}\n`, options: { bold: true, fontSize: 10, color: INK_MUTED, breakLine: true } });
     for (const entity of process.externalEntities) {
       runs.push({ text: `${entity.name} — ${entity.description}\n`, options: { fontSize: 10.5, color: INK_DARK, breakLine: true } });
     }
@@ -655,7 +716,7 @@ function nodeKindFor(type: StepForDiagram["type"]): keyof typeof NODE_HALF {
 
 function addProcessMapSlide(pptx: PptxGenJS, process: ExportProcessData) {
   const slide = pptx.addSlide();
-  slide.addText("2.0  Process Map & Narrative", { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.35, fontFace: FONT, fontSize: 16, bold: true, color: INK_DARK });
+  slide.addText(`2.0  ${T.sections.map}`, { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.35, fontFace: FONT, fontSize: 16, bold: true, color: INK_DARK });
 
   let y = 0.78;
   const hasScope = process.inScope.length > 0 || process.outOfScope.length > 0;
@@ -664,7 +725,7 @@ function addProcessMapSlide(pptx: PptxGenJS, process: ExportProcessData) {
     if (process.inScope.length > 0) {
       slide.addText(
         [
-          { text: "IN-SCOPE\n", options: { bold: true, fontSize: 8, color: INK_MUTED, breakLine: true } },
+          { text: `${T.process.inScope.toUpperCase()}\n`, options: { bold: true, fontSize: 8, color: INK_MUTED, breakLine: true } },
           { text: process.inScope.map((s) => `•  ${s}`).join("\n"), options: { fontSize: 9.5, color: INK_DARK } },
         ],
         { x: MARGIN, y, w: halfW, h: 0.9, fill: { color: CARD_BG }, valign: "top", margin: 6, shrinkText: true }
@@ -673,7 +734,7 @@ function addProcessMapSlide(pptx: PptxGenJS, process: ExportProcessData) {
     if (process.outOfScope.length > 0) {
       slide.addText(
         [
-          { text: "OUT-OF-SCOPE\n", options: { bold: true, fontSize: 8, color: INK_MUTED, breakLine: true } },
+          { text: `${T.process.outOfScope.toUpperCase()}\n`, options: { bold: true, fontSize: 8, color: INK_MUTED, breakLine: true } },
           { text: process.outOfScope.map((s) => `•  ${s}`).join("\n"), options: { fontSize: 9.5, color: INK_DARK } },
         ],
         { x: MARGIN + halfW + 0.2, y, w: halfW, h: 0.9, fill: { color: CARD_BG }, valign: "top", margin: 6, shrinkText: true }
@@ -731,7 +792,7 @@ function drawProcessDiagram(
     })),
     {
       boxWidth: boxW * SLIDE_UNITS_PER_INCH,
-      laneLabel: (roleId) => (roleId === null ? "Unassigned" : (laneLabel.get(roleId) ?? "")),
+      laneLabel: (roleId) => (roleId === null ? T.map.unassigned : (laneLabel.get(roleId) ?? "")),
       stepSpacing: PRINT_STEP_X_SPACING,
       laneHeight: PRINT_LANE_HEIGHT,
     }
@@ -756,7 +817,7 @@ function drawProcessDiagram(
     ? wrap.rows.flatMap((row) =>
         row.lanes.map((lane, i) => ({ name: lane.label, topUnits: row.y + lane.y, tinted: i % 2 === 1 }))
       )
-    : [...layout.laneOrder.map((id) => laneLabel.get(id) ?? ""), ...(layout.hasUnassignedLane ? ["Unassigned"] : [])].map(
+    : [...layout.laneOrder.map((id) => laneLabel.get(id) ?? ""), ...(layout.hasUnassignedLane ? [T.map.unassigned] : [])].map(
         (name, i) => ({ name, topUnits: i * LANE_HEIGHT + LANE_TOP_OFFSET, tinted: i % 2 === 1 })
       );
   laneBands.forEach(({ name, topUnits, tinted }) => {
@@ -849,7 +910,7 @@ function drawProcessDiagram(
         fill: { color: "fffbeb" },
         line: { color: "f59e0b", width: 1.25 },
       });
-      const gate = gateLine(s.threshold, s.direction);
+      const gate = gateText(s.threshold, s.direction);
       const runs: { text: string; options?: PptxGenJS.TextPropsOptions }[] = [
         { text: `${s.label}\n`, options: { bold: true, fontSize: 7.5, color: "92400e", breakLine: true } },
       ];
@@ -902,20 +963,20 @@ function drawProcessDiagram(
 
 /** The same SLA / hand-off / "no SLA set" read the live canvas and static diagram give a task card. */
 function metaLine(step: StepForDiagram): { text: string; color: string } {
-  if (step.slaDays != null) return { text: `SLA ${step.slaDays}d`, color: "047857" };
+  if (step.slaDays != null) return { text: T.map.sla(step.slaDays), color: "047857" };
   if (step.links.length > 0) return { text: step.links.map((l) => `→ ${l.targetProcess.code}`).join("  "), color: "4338ca" };
-  return { text: "no SLA set", color: INK_MUTED };
+  return { text: T.map.noSla, color: INK_MUTED };
 }
 
 function addRaciAuthoritySlide(pptx: PptxGenJS, process: ExportProcessData) {
   const slide = pptx.addSlide();
-  slide.addText("3.0  RACI & Authority Matrix", { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.35, fontFace: FONT, fontSize: 16, bold: true, color: INK_DARK });
+  slide.addText(`3.0  ${T.sections.raci}`, { x: MARGIN, y: 0.3, w: CONTENT_W, h: 0.35, fontFace: FONT, fontSize: 16, bold: true, color: INK_DARK });
 
   const headerFill = { color: "f1f5f9" };
   const header: PptxGenJS.TableRow = [
-    { text: "Process Step", options: { bold: true, fontSize: 8, fill: headerFill } },
+    { text: T.process.processStep, options: { bold: true, fontSize: 8, fill: headerFill } },
     ...process.matrixRoles.map((r) => ({ text: r.name, options: { bold: true, fontSize: 8, fill: headerFill, align: "center" as const } })),
-    { text: "Authority rules", options: { bold: true, fontSize: 8, fill: headerFill } },
+    { text: T.process.authorityRules, options: { bold: true, fontSize: 8, fill: headerFill } },
   ];
 
   const rows: PptxGenJS.TableRow[] = process.combinedRows.map((row) => [
@@ -930,7 +991,7 @@ function addRaciAuthoritySlide(pptx: PptxGenJS, process: ExportProcessData) {
     {
       text:
         row.ruleSentences.length === 0
-          ? "No authority rules."
+          ? T.process.noRules
           : // Bulleted for the same reason as the report: a wrapped rule is
             // otherwise indistinguishable from the next rule beginning.
             row.ruleSentences.map((sentence) => `• ${sentence}`).join("\n"),
@@ -954,7 +1015,7 @@ function addRaciAuthoritySlide(pptx: PptxGenJS, process: ExportProcessData) {
 
 function addGovernanceSlide(pptx: PptxGenJS, process: ExportProcessData) {
   const slide = pptx.addSlide();
-  slide.addText("3.1  Governance, Controls & Metrics", {
+  slide.addText(`3.1  ${T.sections.gov}`, {
     x: MARGIN,
     y: 0.3,
     w: CONTENT_W,
@@ -967,7 +1028,7 @@ function addGovernanceSlide(pptx: PptxGenJS, process: ExportProcessData) {
 
   let y = 0.85;
   if (process.controlPoints.length > 0) {
-    slide.addText("Key Control Points", { x: MARGIN, y, w: CONTENT_W, h: 0.25, fontFace: FONT, fontSize: 10, bold: true, color: INK_MUTED });
+    slide.addText(T.blocks.controls!, { x: MARGIN, y, w: CONTENT_W, h: 0.25, fontFace: FONT, fontSize: 10, bold: true, color: INK_MUTED });
     y += 0.3;
     const lines = process.controlPoints.map((cp) => ({
       text: `${cp.flagged ? "⚠ " : ""}${cp.statement}\n`,
@@ -979,13 +1040,13 @@ function addGovernanceSlide(pptx: PptxGenJS, process: ExportProcessData) {
   }
 
   if (process.kpis.length > 0) {
-    slide.addText("Operational KPIs & SLAs", { x: MARGIN, y, w: CONTENT_W, h: 0.25, fontFace: FONT, fontSize: 10, bold: true, color: INK_MUTED });
+    slide.addText(T.blocks.kpis!, { x: MARGIN, y, w: CONTENT_W, h: 0.25, fontFace: FONT, fontSize: 10, bold: true, color: INK_MUTED });
     y += 0.35;
     const headerFill = { color: "f1f5f9" };
     const header: PptxGenJS.TableRow = [
-      { text: "Metric", options: { bold: true, fontSize: 9, fill: headerFill } },
-      { text: "Target", options: { bold: true, fontSize: 9, fill: headerFill } },
-      { text: "Frequency", options: { bold: true, fontSize: 9, fill: headerFill } },
+      { text: T.process.metric, options: { bold: true, fontSize: 9, fill: headerFill } },
+      { text: T.process.target, options: { bold: true, fontSize: 9, fill: headerFill } },
+      { text: T.process.frequency, options: { bold: true, fontSize: 9, fill: headerFill } },
     ];
     const rows: PptxGenJS.TableRow[] = process.kpis.map((kpi) => [
       { text: kpi.metric, options: { fontSize: 9 } },

@@ -1,5 +1,15 @@
 import ExcelJS from "exceljs";
 import type { RaciCode } from "@/lib/domain/raci-validation";
+import type { Locale } from "@/lib/i18n/locale";
+import { messagesFor } from "@/lib/i18n/messages";
+
+/**
+ * A sheet in its language (spec 032): an Arabic sheet opens right to left,
+ * so its first column is on the right as an Arabic reader expects.
+ */
+function addSheet(workbook: ExcelJS.Workbook, name: string, locale: Locale) {
+  return workbook.addWorksheet(name, locale === "ar" ? { views: [{ rightToLeft: true }] } : undefined);
+}
 
 const CODE_LETTER: Record<RaciCode, string> = {
   RESPONSIBLE: "R",
@@ -15,18 +25,21 @@ export async function buildRaciWorkbook(params: {
   roles: { id: string; name: string }[];
   activities: { id: string; name: string; assignments: Record<string, RaciCode | undefined> }[];
   status: "DRAFT" | "FINAL";
+  /** The file's language (spec 032); English when not given. */
+  locale?: Locale;
 }): Promise<Buffer> {
-  const { workspaceName, processCode, processName, roles, activities, status } = params;
+  const { workspaceName, processCode, processName, roles, activities, status, locale = "en" } = params;
+  const f = messagesFor(locale).report.files;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "FFProcess";
   workbook.created = new Date();
 
-  const sheet = workbook.addWorksheet("RACI Matrix");
+  const sheet = addSheet(workbook, f.raciTitle, locale);
   sheet.addRow([`${workspaceName} · ${processCode} · ${processName}`]);
-  sheet.addRow([`Status: ${status}${status === "DRAFT" ? " — NOT FINAL" : ""}`]);
+  sheet.addRow([`${f.status(f.statuses[status] ?? status)}${status === "DRAFT" ? f.notFinal : ""}`]);
   sheet.addRow([]);
 
-  const headerRow = sheet.addRow(["Activity", ...roles.map((r) => r.name)]);
+  const headerRow = sheet.addRow([f.activity, ...roles.map((r) => r.name)]);
   headerRow.font = { bold: true };
   headerRow.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
@@ -65,17 +78,20 @@ export async function buildAuthorityWorkbook(params: {
     whoLabel: string;
     sentence: string;
   }[];
+  /** The file's language (spec 032); English when not given. */
+  locale?: Locale;
 }): Promise<Buffer> {
-  const { workspaceName, processCode, processName, rows } = params;
+  const { workspaceName, processCode, processName, rows, locale = "en" } = params;
+  const f = messagesFor(locale).report.files;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "FFProcess";
   workbook.created = new Date();
 
-  const sheet = workbook.addWorksheet("Authority Matrix");
+  const sheet = addSheet(workbook, f.authorityTitle, locale);
   sheet.addRow([`${workspaceName} · ${processCode} · ${processName}`]);
   sheet.addRow([]);
 
-  const headerRow = sheet.addRow(["Task", "Turns on", "Value", "Direction", "Then", "Who", "Rule"]);
+  const headerRow = sheet.addRow([f.task, f.turnsOn, f.value, f.direction, f.then, f.who, f.rule]);
   headerRow.font = { bold: true };
   headerRow.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };

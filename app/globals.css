@@ -27,6 +27,7 @@ body {
 }
 
 /* Arabic interface (spec 031). */
-html[lang="ar"] body {
+html[lang="ar"] body,
+[lang="ar"] {
   font-family: var(--font-arabic), Arial, Helvetica, sans-serif;
 }

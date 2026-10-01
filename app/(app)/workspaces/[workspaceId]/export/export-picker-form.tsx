@@ -10,6 +10,8 @@ import {
   type StoredArrangement,
 } from "@/lib/domain/report-arrangement";
 import { useCanEdit } from "../workspace-access";
+import { ReportLanguageField } from "./report-language-field";
+import type { Locale } from "@/lib/i18n/locale";
 
 type PickerProcess = { id: string; code: string; name: string };
 
@@ -36,11 +38,17 @@ export function ExportPickerForm({
   processes,
   arrangement,
   emptyBlockIds = [],
+  defaultLocale = "en",
+  translationStatus = { total: 0, untranslated: 0 },
 }: {
   workspaceId: string;
   processes: PickerProcess[];
   arrangement: ResolvedArrangement;
   emptyBlockIds?: EmptyBlockIds;
+  /** The report language to start from: the interface's (spec 032). */
+  defaultLocale?: Locale;
+  /** Saved Arabic translations for the workspace's full report. */
+  translationStatus?: { total: number; untranslated: number };
 }) {
   const [ordered, setOrdered] = useState(processes);
 
@@ -62,6 +70,7 @@ export function ExportPickerForm({
       />
 
       <form action={`/reports/${workspaceId}`} method="GET">
+      <ReportLanguageField workspaceId={workspaceId} defaultLocale={defaultLocale} status={translationStatus} />
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-start text-xs font-semibold uppercase text-slate-500">

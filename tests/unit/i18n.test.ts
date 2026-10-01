@@ -41,7 +41,14 @@ describe("interface dictionaries (spec 031)", () => {
   it("Arabic message functions produce Arabic text", () => {
     for (const [path, value] of ar) {
       if (typeof value !== "function") continue;
-      const out = (value as (...args: unknown[]) => unknown)("س", 2, "ص", "ع");
+      const fn = value as (...args: unknown[]) => unknown;
+      // Most take names and counts; a few take a list of names.
+      let out: unknown;
+      try {
+        out = fn("س", 2, "ص", "ع");
+      } catch {
+        out = fn(["س", "ص"], 2);
+      }
       expect(String(out), path).toMatch(ARABIC);
     }
   });

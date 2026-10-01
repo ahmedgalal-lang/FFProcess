@@ -4,9 +4,10 @@ import { prisma } from "@/lib/db/client";
 import { requireWorkspaceAccess } from "@/lib/auth/workspace";
 import { ProcessMapPdfDocument } from "@/lib/export/pdf/process-map-pdf";
 import { auth } from "@/lib/auth/config";
+import { exportLanguage } from "@/lib/export/export-language";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ processId: string }> }
 ) {
   const { processId } = await params;
@@ -34,20 +35,33 @@ export async function GET(
   const predecessorOf = new Map(connections.map((c) => [c.toStepId, c.fromStepId]));
   const stepById = new Map(steps.map((s) => [s.id, s]));
 
+  // The file's language and its entries' saved translations (spec 032).
+  const lang = await exportLanguage(request, process.workspaceId);
+  const tr = await lang.translator([
+    process.name,
+    ...steps.flatMap((s) => [s.label, s.assignedRole?.name ?? "", ...s.links.map((l) => l.targetProcess.name)]),
+  ]);
+
   const buffer = await renderToBuffer(
     ProcessMapPdfDocument({
       workspaceName: workspace?.name ?? "",
       processCode: process.code,
-      processName: process.name,
-      steps: steps.map((s) => ({
-        id: s.id,
-        type: s.type,
-        label: s.label,
-        roleName: s.assignedRole?.name ?? null,
-        predecessorLabel: stepById.get(predecessorOf.get(s.id) ?? "")?.label ?? null,
-        links: s.links.map((l) => ({ code: l.targetProcess.code, name: l.targetProcess.name })),
-      })),
-      generatedFor: session?.user?.email ?? "Unknown",
+      processName: tr(process.name),
+      steps: steps.map((s) => {
+        const predecessor = stepById.get(predecessorOf.get(s.id) ?? "")?.label;
+        return {
+          id: s.id,
+          type: s.type,
+          label: tr(s.label),
+          roleName: s.assignedRole ? tr(s.assignedRole.name) : null,
+          predecessorLabel: predecessor ? tr(predecessor) : null,
+          links: s.links.map((l) => ({ code: l.targetProcess.code, name: tr(l.targetProcess.name) })),
+        };
+      }),
+      generatedFor: session?.user?.email ?? lang.t.files.unknown,
+      locale: lang.locale,
+      t: lang.t,
+      today: lang.today,
     })
   );
 

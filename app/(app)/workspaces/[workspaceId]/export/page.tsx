@@ -3,6 +3,8 @@ import { WorkspacePageHeader } from "../workspace-page-header";
 import { ExportPickerForm } from "./export-picker-form";
 import { resolveArrangement, BLOCKS, isBlockEmpty } from "@/lib/domain/report-arrangement";
 import { loadReportData } from "@/lib/reports/load-report-data";
+import { localizeReportData } from "@/lib/reports/localize-report-data";
+import { getLocale } from "@/lib/i18n/server";
 
 export default async function ExportPickerPage(props: PageProps<"/workspaces/[workspaceId]/export">) {
   const { workspaceId } = await props.params;
@@ -25,6 +27,10 @@ export default async function ExportPickerPage(props: PageProps<"/workspaces/[wo
     (report?.processes ?? []).every((process) => isBlockEmpty(block.id, process))
   ).map((block) => block.id);
 
+  // How much of this workspace's report already has a saved Arabic
+  // translation (spec 032). Reads only: nothing is translated by opening the page.
+  const arabic = report ? await localizeReportData(report, "ar", { allowAi: false }) : null;
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <WorkspacePageHeader
@@ -42,6 +48,8 @@ export default async function ExportPickerPage(props: PageProps<"/workspaces/[wo
           processes={processes.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
           arrangement={resolveArrangement(workspace.reportArrangement)}
           emptyBlockIds={emptyBlockIds}
+          defaultLocale={await getLocale()}
+          translationStatus={{ total: arabic?.total ?? 0, untranslated: arabic?.untranslated ?? 0 }}
         />
       )}
     </main>

@@ -35,6 +35,7 @@ model User {
   policyVersionsAuthored       GovernancePolicyVersion[]
   policiesApproved             GovernancePolicyDraft[]
   governanceActivityLogEntries GovernanceActivityLogEntry[]
+  translationsEdited           ContentTranslation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -188,6 +189,7 @@ model Workspace {
   governanceRisks       GovernanceRisk[]
   governancePolicies    GovernancePolicyDraft[]
   governanceActivityLog GovernanceActivityLogEntry[]
+  contentTranslations   ContentTranslation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1083,4 +1085,38 @@ model GovernanceActivityLogEntry {
 
   @@index([workspaceId, createdAt])
   @@map("governance_activity_log_entries")
+}
+
+enum TranslationOrigin {
+  AI
+  MANUAL
+}
+
+/// A saved translation of one exact piece of a workspace's text (spec 032),
+/// used when a report or export is produced in another language. Keyed by
+/// the source text's hash, so an unchanged entry is never translated twice
+/// and an edited one is translated afresh. The entries themselves are never
+/// changed; the in-app screens keep showing them as typed.
+model ContentTranslation {
+  id          String            @id @default(uuid())
+  workspaceId String
+  /// "ar" for now; a string so a later language needs no migration.
+  locale      String
+  /// SHA-256 hex of the trimmed source text.
+  sourceHash  String
+  sourceText  String
+  text        String
+  origin      TranslationOrigin @default(AI)
+  /// Who corrected it by hand, when origin is MANUAL.
+  editedById  String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  editedBy  User?     @relation(fields: [editedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, locale, sourceHash])
+  @@index([workspaceId, locale, updatedAt])
+  @@map("content_translations")
 }

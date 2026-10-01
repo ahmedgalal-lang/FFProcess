@@ -1,4 +1,8 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { pdfDirection } from "./fonts";
+import type { Locale } from "@/lib/i18n/locale";
+import { messagesFor } from "@/lib/i18n/messages";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 9, fontFamily: "Helvetica" },
@@ -31,32 +35,50 @@ export type OrgChartPdfProps = {
     managerName: string | null;
   }[];
   generatedFor: string;
+  /** The file's language (spec 032); English when not given. */
+  locale?: Locale;
+  t?: ReportMessages;
+  /** Today, as printed in the header. */
+  today?: string;
 };
 
-export function OrgChartPdfDocument({ workspaceName, people, generatedFor }: OrgChartPdfProps) {
+export function OrgChartPdfDocument({
+  workspaceName,
+  people,
+  generatedFor,
+  locale = "en",
+  t = messagesFor(locale).report,
+  today = new Date().toLocaleDateString(),
+}: OrgChartPdfProps) {
+  const dir = pdfDirection(locale);
+  const f = t.files;
   return (
-    <Document title={`${workspaceName} Org Chart`}>
-      <Page size="A4" style={styles.page}>
+    <Document title={`${workspaceName} ${f.orgChart}`}>
+      <Page size="A4" style={[styles.page, dir.page]}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>{workspaceName}</Text>
-          <Text style={styles.title}>Org Chart</Text>
-          <Text style={styles.meta}>
-            Generated for {generatedFor} on {new Date().toLocaleDateString()} · {people.length} people
+          <Text style={[styles.eyebrow, dir.text]}>{workspaceName}</Text>
+          <Text style={[styles.title, dir.text]}>{f.orgChart}</Text>
+          <Text style={[styles.meta, dir.text]}>
+            {f.generatedFor(generatedFor, today)} · {f.people(people.length)}
           </Text>
         </View>
 
         {people.map((p) => (
-          <View key={p.id} style={[styles.row, { paddingLeft: 4 + p.depth * 18 }]} wrap={false}>
+          <View
+            key={p.id}
+            style={[styles.row, dir.row, dir.rtl ? { paddingRight: 4 + p.depth * 18 } : { paddingLeft: 4 + p.depth * 18 }]}
+            wrap={false}
+          >
             <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{p.name}</Text>
-              {p.roleNames.length > 0 && <Text style={styles.roles}>{p.roleNames.join(", ")}</Text>}
+              <Text style={[styles.name, dir.text]}>{p.name}</Text>
+              {p.roleNames.length > 0 && <Text style={[styles.roles, dir.text]}>{p.roleNames.join(dir.rtl ? "، " : ", ")}</Text>}
             </View>
-            <Text style={styles.manager}>{p.managerName ? `Reports to ${p.managerName}` : "No manager"}</Text>
+            <Text style={[styles.manager, dir.text]}>{p.managerName ? f.reportsTo(p.managerName) : f.noManager}</Text>
           </View>
         ))}
 
-        <Text style={styles.footer} fixed>
-          FFProcess · {workspaceName} · Org Chart · Diagram export available as PNG from the app
+        <Text style={[styles.footer, dir.centred]} fixed>
+          FFProcess · {workspaceName} · {f.orgChart} · {f.pngNote}
         </Text>
       </Page>
     </Document>

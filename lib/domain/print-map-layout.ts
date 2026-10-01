@@ -119,7 +119,7 @@ export type RolesGrid = {
 };
 
 export type LayoutOutcome =
-  | { layout: "FLOW"; flow: FlowOutline; fellBackFrom?: "ROLES"; reason?: string }
+  | { layout: "FLOW"; flow: FlowOutline; fellBackFrom?: "ROLES"; reason?: string; roleCount?: number; maxRoleColumns?: number }
   | { layout: "ROLES"; roles: RolesGrid };
 
 /** The label a roleless step's column carries, so the step still appears. */
@@ -144,6 +144,8 @@ export function buildPrintMapLayout(input: LayoutInput): LayoutOutcome {
       layout: "FLOW",
       flow: buildFlowOutline(steps, connections, byId),
       fellBackFrom: "ROLES",
+      roleCount,
+      maxRoleColumns: MAX_ROLE_COLUMNS,
       reason:
         `This process uses ${roleCount} roles. The Roles layout draws at most ` +
         `${MAX_ROLE_COLUMNS} columns before the cards are too narrow to read, so it has ` +

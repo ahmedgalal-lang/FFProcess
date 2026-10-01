@@ -1,5 +1,7 @@
-import type { RolesGrid } from "@/lib/domain/print-map-layout";
+import { NO_ROLE_COLUMN, type RolesGrid } from "@/lib/domain/print-map-layout";
 import type { PrintedMapStep, PrintedMapStepDetail } from "./printed-process-map";
+import { useMessages } from "@/lib/i18n/client";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 
 type LinksByStepId = Map<string, PrintedMapStep["links"]>;
 type DetailByStepId = Map<string, PrintedMapStepDetail>;
@@ -28,6 +30,7 @@ export function RolesLayout({
   linksByStepId: LinksByStepId;
   detailByStepId: DetailByStepId;
 }) {
+  const t = useMessages().report;
   const columns = grid.columns.length;
 
   return (
@@ -35,7 +38,7 @@ export function RolesLayout({
       <div className="pmap-roles__head print-keep">
         {grid.columns.map((role) => (
           <span key={role} className="pmap-roles__role">
-            {role}
+            {role === NO_ROLE_COLUMN ? t.map.noRole : role}
           </span>
         ))}
       </div>
@@ -59,13 +62,13 @@ export function RolesLayout({
                   <p className="pmap-card__label">{cell.step.label}</p>
                   <p className="pmap-card__meta">
                     {cell.step.roleName === null && (
-                      <span className="pmap-card__unowned">No role set</span>
+                      <span className="pmap-card__unowned">{t.map.noRole}</span>
                     )}
                     {detail?.sla && <span className="pmap-card__sla">{detail.sla}</span>}
                     {detail?.gate && <span className="pmap-card__gate">{detail.gate}</span>}
                     {cell.mergesFrom.length > 0 && (
                       <span className="pmap-card__merge">
-                        {mergeWording(cell.step.joinRequiresAll, cell.mergesFrom)}
+                        {mergeWording(t, cell.step.joinRequiresAll, cell.mergesFrom)}
                       </span>
                     )}
                   </p>
@@ -82,12 +85,12 @@ export function RolesLayout({
                     <p key={back.connectionId} className="pmap-card__backref">
                       <span aria-hidden="true">{back.direction === "back" ? "↩" : "↪"}</span>{" "}
                       {back.label ? <strong>{back.label}</strong> : null}{" "}
-                      {back.direction === "back" ? "back to" : "on to"} step {back.toNumberLabel}
+                      {back.direction === "back" ? t.map.backTo : t.map.onTo} {t.map.stepNumber(back.toNumberLabel)}
                     </p>
                   ))}
                 </div>
                 {cell.step.kind !== "task" && (
-                  <span className="pmap-card__kind">{KIND_LABEL[cell.step.kind]}</span>
+                  <span className="pmap-card__kind">{kindLabel(t, cell.step.kind)}</span>
                 )}
               </div>
 
@@ -124,12 +127,6 @@ export function RolesLayout({
   );
 }
 
-const KIND_LABEL: Record<string, string> = {
-  start: "Start",
-  decision: "Decision",
-  end: "End",
-  task: "",
-};
 
 /**
  * The unmarked case reads exactly as it always has — by order number, "joins
@@ -138,10 +135,16 @@ const KIND_LABEL: Record<string, string> = {
  * every predecessor (FR-008), since a reader with no other explanation needs
  * to tell the two kinds of convergence apart by what they actually require.
  */
-function mergeWording(joinRequiresAll: boolean, mergesFrom: { numberLabel: string; label: string }[]): string {
-  if (!joinRequiresAll) return `joins ${mergesFrom.map((m) => `step ${m.numberLabel}`).join(" and ")}`;
-  const names = mergesFrom.map((m) => m.label);
-  const verb = names.length === 2 ? "needs both" : "needs all of";
-  const joined = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
-  return `${verb} ${joined}`;
+function mergeWording(
+  t: ReportMessages,
+  joinRequiresAll: boolean,
+  mergesFrom: { numberLabel: string; label: string }[]
+): string {
+  if (!joinRequiresAll) return t.map.joins(mergesFrom.map((m) => m.numberLabel));
+  return t.map.needsAll(mergesFrom.map((m) => m.label));
+}
+
+/** A step's kind as printed on its card; a task needs no label. */
+function kindLabel(t: ReportMessages, kind: string): string {
+  return kind === "start" ? t.map.start : kind === "decision" ? t.map.decision : kind === "end" ? t.map.end : "";
 }

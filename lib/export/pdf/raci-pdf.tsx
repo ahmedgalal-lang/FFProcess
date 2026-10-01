@@ -1,4 +1,8 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { pdfDirection } from "./fonts";
+import type { Locale } from "@/lib/i18n/locale";
+import { messagesFor } from "@/lib/i18n/messages";
+import type { ReportMessages } from "@/lib/i18n/messages/report.en";
 import type { RaciCode } from "@/lib/domain/raci-validation";
 
 const styles = StyleSheet.create({
@@ -51,6 +55,11 @@ export type RaciPdfProps = {
   status: "DRAFT" | "FINAL";
   issueCount: number;
   generatedFor: string;
+  /** The file's language (spec 032); English when not given. */
+  locale?: Locale;
+  t?: ReportMessages;
+  /** Today, as printed in the header. */
+  today?: string;
 };
 
 export function RaciPdfDocument({
@@ -62,38 +71,41 @@ export function RaciPdfDocument({
   status,
   issueCount,
   generatedFor,
+  locale = "en",
+  t = messagesFor(locale).report,
+  today = new Date().toLocaleDateString(),
 }: RaciPdfProps) {
+  const dir = pdfDirection(locale);
+  const f = t.files;
   return (
-    <Document title={`${processCode} RACI Matrix`}>
-      <Page size="A4" orientation="landscape" style={styles.page}>
+    <Document title={`${processCode} ${f.raciTitle}`}>
+      <Page size="A4" orientation="landscape" style={[styles.page, dir.page]}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>{workspaceName} · {processCode}</Text>
-          <Text style={styles.title}>{processName} — RACI Matrix</Text>
-          <Text style={styles.meta}>
-            Generated for {generatedFor} on {new Date().toLocaleDateString()} · Status: {status}
+          <Text style={[styles.eyebrow, dir.text]}>{workspaceName} · {processCode}</Text>
+          <Text style={[styles.title, dir.text]}>{processName} — {f.raciTitle}</Text>
+          <Text style={[styles.meta, dir.text]}>
+            {f.generatedFor(generatedFor, today)} · {f.status(f.statuses[status] ?? status)}
           </Text>
         </View>
 
         {status === "DRAFT" && (
           <View style={styles.banner}>
-            <Text style={styles.bannerText}>
-              ⚠ DRAFT — NOT FINAL{issueCount > 0 ? ` · ${issueCount} unresolved validation issue(s)` : ""}
-            </Text>
+            <Text style={[styles.bannerText, dir.text]}>{f.draftBanner(issueCount)}</Text>
           </View>
         )}
 
         <View style={styles.table}>
-          <View style={[styles.row, styles.headerRow]}>
-            <Text style={styles.activityCell}>Activity</Text>
+          <View style={[styles.row, styles.headerRow, dir.row]}>
+            <Text style={[styles.activityCell, dir.text]}>{f.activity}</Text>
             {roles.map((r) => (
-              <Text key={r.id} style={styles.headerCell}>
+              <Text key={r.id} style={[styles.headerCell, dir.centred]}>
                 {r.name}
               </Text>
             ))}
           </View>
           {activities.map((a) => (
-            <View key={a.id} style={styles.row}>
-              <Text style={styles.activityCell}>{a.name}</Text>
+            <View key={a.id} style={[styles.row, dir.row]}>
+              <Text style={[styles.activityCell, dir.text]}>{a.name}</Text>
               {roles.map((r) => (
                 <Text key={r.id} style={styles.codeCell}>
                   {a.assignments[r.id] ? CODE_LETTER[a.assignments[r.id]!] : ""}
@@ -103,14 +115,15 @@ export function RaciPdfDocument({
           ))}
         </View>
 
-        <View style={styles.legend}>
-          <Text style={styles.legendItem}>R — Responsible</Text>
-          <Text style={styles.legendItem}>A — Accountable</Text>
-          <Text style={styles.legendItem}>C — Consulted</Text>
-          <Text style={styles.legendItem}>I — Informed</Text>
+        <View style={[styles.legend, dir.row]}>
+          {f.legend.map((item) => (
+            <Text key={item} style={[styles.legendItem, dir.centred]}>
+              {item}
+            </Text>
+          ))}
         </View>
 
-        <Text style={styles.footer} fixed>
+        <Text style={[styles.footer, dir.centred]} fixed>
           FFProcess · {workspaceName} · {processCode}
         </Text>
       </Page>

@@ -4,6 +4,9 @@ import { loadReportData } from "@/lib/reports/load-report-data";
 import { prisma } from "@/lib/db/client";
 import { resolveArrangement } from "@/lib/domain/report-arrangement";
 import { ExportPreview } from "./export-preview";
+import { isLocale } from "@/lib/i18n/locale";
+import { getLocale } from "@/lib/i18n/server";
+import { localizeReportData } from "@/lib/reports/localize-report-data";
 
 /**
  * The Export Report lives outside the (app) route group on purpose: it renders
@@ -16,6 +19,10 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
   const searchParams = await props.searchParams;
   const idsRaw = searchParams["ids"];
   const processIds = (Array.isArray(idsRaw) ? idsRaw : idsRaw ? [idsRaw] : []).filter(Boolean);
+  // The report's own language (spec 032), chosen on the export picker; the
+  // interface language when the link doesn't say.
+  const langRaw = searchParams["lang"];
+  const locale = isLocale(langRaw) ? langRaw : await getLocale();
 
   const access = await requireWorkspaceAccess(workspaceId, "VIEWER");
   if (!access.ok) {
@@ -39,9 +46,17 @@ export default async function ReportPage(props: PageProps<"/reports/[workspaceId
   // actually protects it (Constitution Principle V).
   const editorAccess = await requireWorkspaceAccess(workspaceId, "EDITOR");
 
+  // Entries in the report's language. Only an editor's request asks the AI for
+  // missing translations, since that writes to the workspace and costs money;
+  // anyone else gets the saved ones and a notice for the rest.
+  const localized = await localizeReportData(data, locale, { allowAi: editorAccess.ok });
+
   return (
     <ExportPreview
-      {...data}
+      {...localized.data}
+      locale={locale}
+      untranslated={localized.untranslated}
+      translationFailure={localized.failureKind}
       arrangement={resolveArrangement(workspace?.reportArrangement)}
       mapLayout={workspace?.reportMapLayout ?? "FLOW"}
       canEdit={editorAccess.ok}

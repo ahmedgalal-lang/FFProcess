@@ -1,4 +1,5 @@
 import { governanceEn } from "./governance.en";
+import { reportEn } from "./report.en";
 /**
  * English interface strings (spec 031): the source of truth. ar.ts is typed
  * against this object, so a key missing from Arabic fails the type check.
@@ -60,6 +61,7 @@ export const en = {
     },
   },
   governance: governanceEn,
+  report: reportEn,
 };
 
 export type Messages = typeof en;

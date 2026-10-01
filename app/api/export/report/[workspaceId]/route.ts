@@ -4,6 +4,9 @@ import { loadReportData } from "@/lib/reports/load-report-data";
 import { buildReportPptx } from "@/lib/export/pptx/report-pptx";
 import { prisma } from "@/lib/db/client";
 import { resolveArrangement } from "@/lib/domain/report-arrangement";
+import { isLocale } from "@/lib/i18n/locale";
+import { getLocale } from "@/lib/i18n/server";
+import { localizeReportData } from "@/lib/reports/localize-report-data";
 
 /**
  * The whole Export Report as a downloadable slide deck — the same pack of
@@ -14,6 +17,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ work
   const { workspaceId } = await params;
   const url = new URL(request.url);
   const processIds = url.searchParams.getAll("ids").filter(Boolean);
+  const langRaw = url.searchParams.get("lang");
+  const locale = isLocale(langRaw) ? langRaw : await getLocale();
 
   const access = await requireWorkspaceAccess(workspaceId, "VIEWER");
   if (!access.ok) {
@@ -32,7 +37,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ work
     select: { reportArrangement: true },
   });
 
-  const buffer = await buildReportPptx(data, resolveArrangement(workspace?.reportArrangement));
+  // The same saved translations the report uses (spec 032); only an editor's
+  // download asks the AI for missing ones, as on the report page.
+  const editor = await requireWorkspaceAccess(workspaceId, "EDITOR");
+  const localized = await localizeReportData(data, locale, { allowAi: editor.ok });
+
+  const buffer = await buildReportPptx(localized.data, resolveArrangement(workspace?.reportArrangement), locale);
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
